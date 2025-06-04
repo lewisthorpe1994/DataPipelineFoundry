@@ -1,0 +1,12 @@
+[package]
+name = "ff_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_yaml = { workspace = true}
+serde = {workspace = true}
+
+[dev-dependencies]
+tempfile = "3"   
