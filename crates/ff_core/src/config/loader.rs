@@ -4,6 +4,8 @@ use std::fs;
 use std::path::Path;
 use serde::Deserialize;
 
+pub type ConnectionProfile = HashMap<String, String>;
+
 #[derive(Debug, Deserialize)]
 pub struct FoundryConfig {
     pub project_name: String,
@@ -12,6 +14,8 @@ pub struct FoundryConfig {
     pub modelling_architecture: String,
     pub connection_profile: String,
     pub paths: PathsConfig,
+    #[serde(default)]
+    pub connections: HashMap<String, ConnectionProfile>,
     // pub description: String,           // Omit if not in the YAML
     // pub target_engine: String,
 }
@@ -33,7 +37,13 @@ pub fn read_config(
     connections_path: &Path
 ) -> Result<FoundryConfig, Box<dyn Error>> {
     let project_file = fs::File::open(project_config_path)?;
-    let config = serde_yaml::from_reader(project_file)?;
+    let mut config: FoundryConfig = serde_yaml::from_reader(project_file)?;
+
+    if connections_path.exists() {
+        let conn_file = fs::File::open(connections_path)?;
+        let connections: HashMap<String, ConnectionProfile> = serde_yaml::from_reader(conn_file)?;
+        config.connections = connections;
+    }
 
     Ok(config)
 }
@@ -62,14 +72,24 @@ modelling_architecture: medallion
 connection_profile: dev
 "#;
 
-        // Write YAML to a temp file
-        let mut temp = NamedTempFile::new().unwrap();
-        write!(temp, "{}", yaml).unwrap();
+        // Write project YAML to a temp file
+        let mut project_temp = NamedTempFile::new().unwrap();
+        write!(project_temp, "{}", yaml).unwrap();
 
-        // Use dummy connections path, not used in read_config
-        let dummy_path = temp.path(); // Just reusing the same temp file
+        // Connections YAML
+        let connections_yaml = r#"
+dev:
+  adapter: postgres
+  host: localhost
+  port: "5432"
+  user: postgres
+  password: postgres
+  database: test
+"#;
+        let mut conn_temp = NamedTempFile::new().unwrap();
+        write!(conn_temp, "{}", connections_yaml).unwrap();
 
-        let config = read_config(temp.path(), dummy_path).expect("Failed to read config");
+        let config = read_config(project_temp.path(), conn_temp.path()).expect("Failed to read config");
 
         assert_eq!(config.project_name, "test_project");
         assert_eq!(config.version, "1.0.0");
@@ -81,5 +101,7 @@ connection_profile: dev
         assert_eq!(layers["bronze"], "foundry_models/bronze");
         assert_eq!(layers["silver"], "foundry_models/silver");
         assert_eq!(layers["gold"], "foundry_models/gold");
+
+        assert_eq!(config.connections.get("dev").unwrap()["adapter"], "postgres");
     }
 }
