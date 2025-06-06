@@ -1,0 +1,17 @@
+name: dev_project
+description: "This is a generated description for the dev_project project. Overwrite this with
+a description of the project"
+version: "1.0.0"
+
+compile_path: "compiled"
+
+paths:
+  models:
+    dir: foundry_models
+    layers:
+        bronze: foundry_models/bronze
+        silver: foundry_models/silver
+        gold: foundry_models/gold
+        
+modelling_architecture: medallion
+connection_profile: dev
