@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use minijinja::{Environment, value::Value, Error};
-use crate::dag::ModelGraph;
+use crate::dag::ModelDag;
 
 /// Registers the `ref` macro with the given Jinja `Environment`.
 ///
@@ -9,7 +9,7 @@ use crate::dag::ModelGraph;
 /// For now the resolver only returns the model name unchanged.
 /// In future revisions this will look up the model in the DAG and
 /// return the fully qualified relation.
-pub fn register_ref(env: &mut Environment<'_>, graph: Arc<ModelGraph>) {
+pub fn register_ref(env: &mut Environment<'_>, graph: Arc<ModelDag>) {
     let func_graph = graph.clone();
     env.add_function("ref", move |model: String| -> Result<Value, Error> {
         // TODO: lookup model in `func_graph` once the graph is implemented

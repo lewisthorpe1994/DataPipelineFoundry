@@ -2,7 +2,6 @@ pub mod ref_macro;
 
 use std::sync::Arc;
 use minijinja::Environment;
-use crate::dag::ModelGraph;
 
 /// Register default macros in the given Jinja `Environment`.
 ///

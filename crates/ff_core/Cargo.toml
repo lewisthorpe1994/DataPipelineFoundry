@@ -8,6 +8,8 @@ license.workspace = true
 serde_yaml = { workspace = true}
 serde = {workspace = true}
 minijinja = "2.10.2"
+petgraph = "0.8.2"
+common = { workspace = true}
 
 [dev-dependencies]
 tempfile = "3"   
