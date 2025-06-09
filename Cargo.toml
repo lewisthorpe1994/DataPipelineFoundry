@@ -6,6 +6,7 @@ members = [
     "crates/adapter_postgres",
     "crates/engine_df",
     "crates/parser",
+    "crates/common",
 ]
 
 [workspace.package]
@@ -27,3 +28,4 @@ log = "0.4"
 env_logger = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
+common = { path = "crates/common"}
