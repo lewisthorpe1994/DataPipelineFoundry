@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use minijinja::{value::Value, Environment, Error};
+use minijinja::{value::Value, Environment, Error, ErrorKind};
 use crate::dag::ModelDag;
 
 /// Register the `ref` macro with the provided Jinja [`Environment`].
@@ -16,7 +16,7 @@ pub fn register_ref(env: &mut Environment<'_>, dag: Arc<ModelDag>) {
     env.add_function("ref", move |model: String| -> Result<Value, Error> {
         let resolved = func_graph
             .resolve_ref(&model)
-            .unwrap_or_else(|_| model.clone());
+            .map_err(|e| Error::new(ErrorKind::UndefinedError, e.to_string()))?;
         Ok(Value::from(resolved))
     });
 }
@@ -51,8 +51,12 @@ mod tests {
         let dag = Arc::new(ModelDag::new(vec![]).unwrap());
         register_ref(&mut env, dag);
 
-        let rendered = env.render_str("{{ ref('missing') }}", ()).unwrap();
-        assert_eq!(rendered, "missing");
+        let rendered = env
+            .render_str("{{ ref('model_a') }}", ());
+        match rendered {
+            Ok(s) => panic!("This should have failed: {}", s),
+            Err(e) => assert_eq!(e.kind(), ErrorKind::UndefinedError),
+        }
     }
 }
 

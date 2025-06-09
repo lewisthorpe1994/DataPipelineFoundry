@@ -12,7 +12,7 @@ use std::{fmt, io};
 /// This struct has no fields and serves as a placeholder or marker.
 /// It can be used when an edge's data does not carry any inherent value or properties.
 #[derive(Clone, Copy, Debug, Default)]
-struct EmtpyEdge;
+pub struct EmtpyEdge;
 impl Display for EmtpyEdge {
     fn fmt(&self, _: &mut Formatter<'_>) -> std::fmt::Result {
         Ok(())
