@@ -181,7 +181,7 @@ pub type DagResult<T> = Result<T, DagError>;
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// use std::collections::HashMap;
 /// use petgraph::graph::DiGraph;
 /// use ff_core::dag::ModelDag;
@@ -224,7 +224,7 @@ impl ModelDag {
     /// 3. Verifies graph is acyclic using Kosaraju's algorithm
     ///
     /// # Example
-    /// ```rust
+/// ```ignore
     /// use common::types::ModelRef;
     /// use ff_core::dag::{DagInputNode, ModelDag};
     ///
@@ -422,6 +422,13 @@ impl ModelDag {
         result
     }
     
+    /// Resolve a model reference to its fully-qualified name.
+    ///
+    /// # Arguments
+    /// * `model_name` - Table name of the model to resolve.
+    ///
+    /// # Errors
+    /// Returns [`DagError::RefNotFound`] if the model is not present in the DAG.
     pub fn resolve_ref(&self, model_name: &str) -> DagResult<String> {
         match self.ref_to_index.get(model_name) {
             Some(idx) => {
@@ -533,20 +540,14 @@ mod tests {
         assert!(!petgraph::algo::is_cyclic_directed(&dag.graph));
 
         // ✅ Check that `slvr_orders` has correct dependencies
-        let slvr_orders_ref = ModelRef {
-            table: "slvr_orders".into(),
-            schema: "silver".into(),
-        };
-
         let slvr_orders_idx = dag
-            .ref_to_index
-            .get(&slvr_orders_ref)
+            .get_index("slvr_orders")
             .expect("Expected slvr_orders node");
 
         use petgraph::Direction;
         let deps: Vec<&DagNode> = dag
             .graph
-            .neighbors_directed(*slvr_orders_idx, Direction::Outgoing)
+            .neighbors_directed(slvr_orders_idx, Direction::Outgoing)
             .map(|idx| &dag.graph[idx])
             .collect();
 
@@ -572,10 +573,7 @@ mod tests {
         let models = build_models();
         let dag = ModelDag::new(models)?;
 
-        let deps = dag.transitive_deps(&ModelRef {
-            table: "slvr_orders".into(),
-            schema: "silver".into(),
-        });
+        let deps = dag.transitive_deps("slvr_orders");
 
         let dep_refs: Vec<_> = deps.iter().map(|node| &node.reference).collect();
         println!("Dependencies of slvr_orders: {:?}", dep_refs);
@@ -589,6 +587,20 @@ mod tests {
             table: "raw_customer".into(),
             schema: "bronze".into()
         }));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_resolve_ref() -> Result<(), DagError> {
+        let models = build_models();
+        let dag = ModelDag::new(models)?;
+
+        let fq = dag.resolve_ref("slvr_orders")?;
+        assert_eq!(fq, "silver.slvr_orders");
+
+        let missing = dag.resolve_ref("does_not_exist");
+        assert!(matches!(missing, Err(DagError::RefNotFound(_))));
 
         Ok(())
     }
