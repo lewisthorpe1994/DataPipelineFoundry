@@ -5,7 +5,9 @@ use std::path::Path;
 use serde::Deserialize;
 
 pub type ConnectionProfile = HashMap<String, String>;
-
+pub type LayerName = String;
+pub type LayerDir = String;
+pub type Layers = HashMap<LayerName, LayerDir>;
 #[derive(Debug, Deserialize)]
 pub struct FoundryConfig {
     pub project_name: String,
@@ -28,7 +30,7 @@ pub struct PathsConfig {
 #[derive(Debug, Deserialize)]
 pub struct ModelsConfig {
     pub dir: String,
-    pub layers: Option<HashMap<String, String>>,
+    pub layers: Option<Layers>,
 }
 
 
@@ -53,7 +55,6 @@ mod tests {
     use super::*;
     use tempfile::NamedTempFile;
     use std::io::Write;
-    use std::fs;
 
     #[test]
     fn test_read_config() {
