@@ -4,8 +4,10 @@ use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt::{write, Display, Formatter};
+use std::fmt::{format, Display, Formatter};
 use std::{fmt, io};
+use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
+
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -151,6 +153,11 @@ impl std::error::Error for DagError {}
 impl From<io::Error> for DagError {
     fn from(value: io::Error) -> Self {
         DagError::Io(value)
+    }
+}
+impl From<DagError> for JinjaError {
+    fn from(err: DagError) -> Self {
+        JinjaError::new(JinjaErrorKind::UndefinedError, err.to_string())
     }
 }
 

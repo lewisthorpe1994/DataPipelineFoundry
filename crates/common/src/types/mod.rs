@@ -1,5 +1,8 @@
-use std::fmt::{Display, Formatter};
+pub mod schema;
+
+use std::ops::Deref;
 use serde::{Deserialize, Serialize};
+use regex::Regex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum Materialize {
@@ -27,3 +30,83 @@ impl ModelRef {
     }
 }
 
+#[derive(Debug)]
+pub enum RelationType {
+    Source,
+    Model,
+}
+#[derive(Debug)]
+pub struct Relation {
+    pub relation_type: RelationType,
+    pub name: String,
+}
+impl Relation {
+    pub fn new(relation_type: RelationType, name: String) -> Self {
+        Self {
+            relation_type,
+            name
+        }
+    }
+}
+pub type ParsedSql = String;
+
+#[derive(Debug)]
+pub struct Relations(Vec<Relation>);
+impl Deref for Relations {
+    type Target = Vec<Relation>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl From<ParsedSql> for Relations {
+    fn from(sql: ParsedSql) -> Self {
+        let mut out = Vec::new();
+
+        // ---------- ref(...) ------------------------------------------------
+        let re_ref = Regex::new(r#"ref\(\s*["']([\w_]+)["']\s*\)"#).unwrap();
+        out.extend(
+            re_ref
+                .captures_iter(&sql)
+                .filter_map(|cap| cap.get(1))
+                .map(|m| Relation::new(RelationType::Model, m.as_str().to_string())),
+        );
+
+        // ---------- source(schema, table) -----------------------------------
+        // capture group 2 = table name
+        let re_src = Regex::new(
+            r#"source\(\s*["'][\w_]+["']\s*,\s*["']([\w_]+)["']\s*\)"#,
+        )
+            .unwrap();
+        out.extend(
+            re_src
+                .captures_iter(&sql)
+                .filter_map(|cap| cap.get(1))
+                .map(|m| Relation::new(RelationType::Source, m.as_str().to_string())),
+        );
+
+        Self(out)
+    }
+}
+#[derive(Debug)]
+pub struct ParsedNode {
+    pub schema: String,
+    pub model: String,
+    pub relations: Relations,
+    pub materialization: Option<Materialize>,
+}
+impl ParsedNode {
+    pub fn new(
+        schema: String,
+        model: String,
+        materialization: Option<Materialize>,
+        relations: Relations,
+    ) -> Self {
+        Self {
+            schema,
+            model,
+            materialization,
+            relations,
+        }
+    }
+}
