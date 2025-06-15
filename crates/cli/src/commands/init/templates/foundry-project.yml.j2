@@ -14,5 +14,9 @@ paths:
         {{ layer.name }}: {{ layer.dir }}
         {% endfor -%}
     {%- endif %}
+  sources:
+    - name: {{ source.name }}
+      path: {{ source.path }}
+  connections: connections.yml
 modelling_architecture: {{ modelling_arch }}
 connection_profile: dev

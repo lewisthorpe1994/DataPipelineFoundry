@@ -1,56 +1,85 @@
-use std::io::Error;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufReader, Error, Read};
 use crate::config::loader::Layers;
 use walkdir::WalkDir;
+use common::types::{ParsedNode, Relations};
 
-pub fn walk_dirs(dirs: Layers) -> Result<(), Error>{
-    let current_dir = std::env::current_dir()?;
-
+pub fn parse_models(dirs: Layers) -> Result<Vec<ParsedNode>, Error> {
+    let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for (name, dir) in dirs.iter() {
-        let current_dir = std::env::current_dir().unwrap();
         for file in WalkDir::new(dir) {
-            
+            let path = file?
+                .into_path();
+
+            if path.extension().and_then(|ext| ext.to_str()) == Some("sql") {
+                let file = File::open(&path)?;
+                let mut buf_reader = BufReader::new(file);
+                let mut contents = String::new();
+                buf_reader.read_to_string(&mut contents)?;
+
+                let node = ParsedNode::new(
+                    name.to_string(),
+                    path.display().to_string(),
+                    None, // TODO: handle materialisation 
+                    Relations::from(contents),
+                );
+                parsed_nodes.push(node);
+            }
         }
     }
-    Ok(())
-
-}
-
-fn scan_dir(dir: &PathBuf) -> Result<Vec<String>, Error> {
-    let mut files = Vec::new();
-    for file in WalkDir::new(dir) {
-        let entry = file?
-            .into_path()
-            .to_str()
-            .unwrap()
-            .to_string();
-        files.push(entry);
-    }
-    
-    Ok(files)
+    Ok(parsed_nodes)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::fs::File;
-    use std::io::Error;
-    use std::path::PathBuf;
-    use crate::directory::scan_dir;
+    use super::*;
+    use common::types::RelationType;
+    use std::collections::HashMap;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    /// helper: write a SQL file that has one ref() and one source()
+    fn write_sql(path: &Path, layer: &str) -> std::io::Result<()> {
+        let sql = format!(
+            r#"
+            select *
+            from {{ ref('stg_{layer}_orders') }} o
+            join {{ source('raw', '{layer}_customers') }} c
+              on o.customer_id = c.id
+            "#
+        );
+        std::fs::write(path, sql)
+    }
 
     #[test]
-    fn test_scan_dir() -> Result<(), Error >{
-        let test_path = "./tmp/foundry_models/bronze";
-        fs::create_dir_all(test_path)?;
-        let path = PathBuf::from(test_path);
+    fn test_parse_models_across_layers() -> std::io::Result<()> {
+        // 1. temp project root
+        let tmp = tempdir()?;
+        let root = tmp.path();
+
+        // 2. create three layer dirs and one sql file in each
+        let mut layers: Layers = HashMap::new();
+        for layer in ["bronze", "silver", "gold"] {
+            let dir = root.join(layer);
+            std::fs::create_dir(&dir)?;
+            write_sql(&dir.join(format!("{layer}.sql")), layer)?;
+            layers.insert(layer.to_string(), dir.to_string_lossy().into_owned());
+        }
+
+        // 3. parse
+        let nodes = parse_models(layers)?;
         
-        let file_path = path.join("test.sql");
-        File::create(&file_path)?;
-        
-        let files = scan_dir(&file_path)?;
-        
-        assert_eq!(files, vec![String::from("./tmp/foundry_models/bronze/test.sql")]);
-        fs::remove_file(file_path)?;
+        println!("Nodes {:?}", nodes);
+
+        assert_eq!(nodes.len(), 3, "one ParsedNode per file");
+
+        // 4. every node must have exactly 2 relations: 1 Model + 1 Source
+        for n in nodes {
+            assert_eq!(n.relations.len(), 2);
+            assert!(n.relations.iter().any(|r| matches!(r.relation_type, RelationType::Model)));
+            assert!(n.relations.iter().any(|r| matches!(r.relation_type, RelationType::Source)));
+        }
+
         Ok(())
     }
 }

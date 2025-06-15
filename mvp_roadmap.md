@@ -85,4 +85,4 @@ mycli-workspace/
 
 ---
 
-*Generated 2025-06-02*  
+*Generated 2025-06-02*
