@@ -52,8 +52,7 @@ pub fn register_macros(
 mod tests {
     use std::collections::HashMap;
     use super::*;
-    use crate::dag::DagInputNode;
-    use common::types::ModelRef;
+    use common::types::{ParsedNode, Relations, Relation, RelationType};
     use common::types::schema::{Database, Schema, Table};
     use crate::config::loader::SourceConfig;
 
@@ -61,10 +60,12 @@ mod tests {
     fn ref_resolves_known_model() {
         let mut env = Environment::new();
         let dag = Arc::new(
-            ModelDag::new(vec![DagInputNode {
-                model: ModelRef::new("schema", "model_a"),
-                deps: None,
-            }])
+            ModelDag::new(vec![ParsedNode::new(
+                "schema".to_string(),
+                "model_a".to_string(),
+                None,
+                Relations::from(vec![]),
+            )])
             .unwrap(),
         );
         register_ref(&mut env, dag);
