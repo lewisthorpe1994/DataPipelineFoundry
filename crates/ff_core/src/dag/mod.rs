@@ -1,4 +1,4 @@
-use common::types::{Materialize, ModelRef};
+use common::types::{Materialize, ModelRef, ParsedNode, Relations, RelationType, Relation};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
@@ -21,48 +21,6 @@ impl Display for EmtpyEdge {
     }
 }
 
-/// A structure representing a node in a Directed Acyclic Graph (DAG) for a computation or processing model.
-///
-/// `DagInputNode` is designed to hold a reference to a specific model along with its dependencies,
-/// if any, allowing the representation of dependent relationships in a task pipeline or processing graph.
-///
-/// # Fields
-///
-/// - `model` (`ModelRef`):
-///     A reference to the primary model associated with this node in the DAG. This is the main
-///     computational unit or entity represented by the node.
-///
-/// - `deps` (`Option<Vec<ModelRef>>`):
-///     An optional vector of references to models that this node is dependent on. Dependencies
-///     represent the parent nodes in the graph that must be computed or processed before this node
-///     can be executed. If there are no dependencies, this will be `None`.
-///
-/// # Examples
-///
-/// ```ignore
-/// use common::types::ModelRef;
-/// use ff_core::dag::DagInputNode;
-///
-/// let model_a: ModelRef = ...; // Reference to a model
-/// let model_b: ModelRef = ...; // Reference to another model
-/// let model_c: ModelRef = ...; // Reference to yet another model
-///
-/// // Create a DAG input node for `model_a` with dependencies on `model_b` and `model_c`.
-/// let dag_node = DagInputNode {
-///     model: model_a,
-///     deps: Some(vec![model_b, model_c]),
-/// };
-///
-/// // Create a DAG input node for `model_b` with no dependencies.
-/// let independent_node = DagInputNode {
-///     model: model_b,
-///     deps: None,
-/// };
-/// ```
-pub struct DagInputNode {
-    pub model: ModelRef,
-    pub deps: Option<Vec<ModelRef>>,
-}
 /// Represents a Directed Acyclic Graph (DAG) node in a data processing or computational structure.
 ///
 /// This structure is used to model a node within a DAG, holding references to specific
@@ -106,12 +64,19 @@ pub struct DagInputNode {
 pub struct DagNode {
     pub reference: ModelRef,
     pub materialized: Materialize,
+    pub relations: Relations,
 }
 impl DagNode {
-    pub fn new(reference: ModelRef, materialize: Option<Materialize>) -> Self {
+    /// Create a new [`DagNode`].
+    ///
+    /// * `reference` - Fully qualified model reference for this node.
+    /// * `materialize` - Optional materialisation directive for the model.
+    /// * `relations` - Parsed relations (models or sources) referenced by the node.
+    pub fn new(reference: ModelRef, materialize: Option<Materialize>, relations: Relations) -> Self {
         Self {
             reference,
             materialized: materialize.unwrap_or_default(),
+            relations,
         }
     }
 }
@@ -208,9 +173,9 @@ impl ModelDag {
     /// Constructs a new directed acyclic graph (DAG) from the provided input nodes.
     ///
     /// # Parameters
-    /// - `input_nodes`: A vector of `DagInputNode` where each node has:
-    ///   - A `model` reference (`ModelRef`) identifying the node
-    ///   - Optional `deps` listing references to nodes it depends on
+    /// - `input_nodes`: A vector of [`ParsedNode`] where each node has:
+    ///   - A `schema` and `model` identifying the node
+    ///   - Parsed `relations` which may reference other models or sources
     ///
     /// # Returns
     /// A `DagResult<Self>` containing:
@@ -232,43 +197,53 @@ impl ModelDag {
     ///
     /// # Example
 /// ```ignore
-    /// use common::types::ModelRef;
-    /// use ff_core::dag::{DagInputNode, ModelDag};
+    /// use ff_core::dag::ModelDag;
+    /// use common::types::{ParsedNode, Relations, Relation, RelationType};
     ///
     /// let nodes = vec![
-    ///     DagInputNode {
-    ///         model: ModelRef::new("SchemaA", "ModelA"),
-    ///         deps: Some(vec![ModelRef::new("SchemaA", "ModelB")])
-    ///     },
-    ///     DagInputNode {
-    ///         model: ModelRef::new("SchemaA", "ModelB"),
-    ///         deps: None
-    ///     }
+    ///     ParsedNode::new(
+    ///         "SchemaA".to_string(),
+    ///         "ModelA".to_string(),
+    ///         None,
+    ///         Relations::from(vec![Relation::new(RelationType::Model, "ModelB".into())])
+    ///     ),
+    ///     ParsedNode::new(
+    ///         "SchemaA".to_string(),
+    ///         "ModelB".to_string(),
+    ///         None,
+    ///         Relations::from(vec![])
+    ///     )
     /// ];
     ///
     /// let dag = ModelDag::new(nodes)?;
     /// ```
-    pub fn new(input_nodes: Vec<DagInputNode>) -> DagResult<Self> {
+    /// Build a [`ModelDag`] from parsed model nodes.
+    pub fn new(input_nodes: Vec<ParsedNode>) -> DagResult<Self> {
         let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
         let mut ref_to_index: HashMap<String, NodeIndex> =
             HashMap::with_capacity(input_nodes.len());
 
-        for DagInputNode { model, .. } in &input_nodes {
-            if ref_to_index.contains_key(&model.table) {
-                return Err(DagError::DuplicateModel(model.clone()));
+        for ParsedNode { schema, model, materialization, relations } in &input_nodes {
+            if ref_to_index.contains_key(model) {
+                return Err(DagError::DuplicateModel(ModelRef::new(schema.clone(), model.clone())));
             }
-            let from_idx = graph.add_node(DagNode::new(model.clone(), None));
-            ref_to_index.insert(model.table.to_string(), from_idx);
+            let model_ref = ModelRef::new(schema.clone(), model.clone());
+            let from_idx = graph.add_node(DagNode::new(model_ref.clone(), materialization.clone(), relations.clone()));
+            ref_to_index.insert(model.clone(), from_idx);
         }
 
-        for DagInputNode { model, deps } in &input_nodes {
-            let to_idx = ref_to_index[&model.table];
+        for ParsedNode { schema: pschema, model, relations, .. } in &input_nodes {
+            let to_idx = ref_to_index[model];
 
-            if let Some(deps) = deps {
-                for dep in deps {
-                    let from_idx = match ref_to_index.get(&dep.table) {
+            for rel in relations.iter() {
+                if matches!(rel.relation_type, RelationType::Model) {
+                    let dep_table = &rel.name;
+                    let from_idx = match ref_to_index.get(dep_table) {
                         Some(idx) => *idx,
-                        None => return Err(DagError::MissingDependency(dep.clone())),
+                        None => {
+                            let missing = ModelRef::new(pschema.clone(), dep_table.clone());
+                            return Err(DagError::MissingDependency(missing));
+                        }
                     };
                     graph.add_edge(to_idx, from_idx, EmtpyEdge);
                 }
@@ -509,33 +484,43 @@ impl ModelDag {
 mod tests {
     use super::*;
     use std::fs;
-    use ModelRef as MR;
+    use common::types::ModelRef as MR;
 
-    fn build_models() -> Vec<DagInputNode> {
+    fn build_models() -> Vec<ParsedNode> {
         vec![
-            DagInputNode {
-                model: MR::new("gold", "final_orders"),
-                deps: Some(vec![MR::new("silver", "slvr_orders")]),
-            },
-            DagInputNode {
-                model: MR::new("silver", "slvr_orders"),
-                deps: Some(vec![
-                    MR::new("bronze", "raw_orders"),
-                    MR::new("silver", "slvr_customers"),
+            ParsedNode::new(
+                "gold".to_string(),
+                "final_orders".to_string(),
+                None,
+                Relations::from(vec![Relation::new(RelationType::Model, "slvr_orders".into())]),
+            ),
+            ParsedNode::new(
+                "silver".to_string(),
+                "slvr_orders".to_string(),
+                None,
+                Relations::from(vec![
+                    Relation::new(RelationType::Model, "raw_orders".into()),
+                    Relation::new(RelationType::Model, "slvr_customers".into()),
                 ]),
-            },
-            DagInputNode {
-                model: MR::new("silver", "slvr_customers"),
-                deps: Some(vec![MR::new("bronze", "raw_customer")]),
-            },
-            DagInputNode {
-                model: MR::new("bronze", "raw_orders"),
-                deps: None,
-            },
-            DagInputNode {
-                model: MR::new("bronze", "raw_customer"),
-                deps: None,
-            },
+            ),
+            ParsedNode::new(
+                "silver".to_string(),
+                "slvr_customers".to_string(),
+                None,
+                Relations::from(vec![Relation::new(RelationType::Model, "raw_customer".into())]),
+            ),
+            ParsedNode::new(
+                "bronze".to_string(),
+                "raw_orders".to_string(),
+                None,
+                Relations::from(vec![]),
+            ),
+            ParsedNode::new(
+                "bronze".to_string(),
+                "raw_customer".to_string(),
+                None,
+                Relations::from(vec![]),
+            ),
         ]
     }
 
@@ -630,14 +615,18 @@ mod tests {
         let model_ref_a = MR::new("Test", "TestA");
         let model_ref_b = MR::new("Test", "TestB");
         let models = vec![
-            DagInputNode {
-                model: model_ref_a.clone(),
-                deps: Some(vec![model_ref_b.clone()]),
-            },
-            DagInputNode {
-                model: model_ref_b.clone(),
-                deps: Some(vec![model_ref_a.clone()]),
-            },
+            ParsedNode::new(
+                "Test".to_string(),
+                "TestA".to_string(),
+                None,
+                Relations::from(vec![Relation::new(RelationType::Model, "TestB".into())]),
+            ),
+            ParsedNode::new(
+                "Test".to_string(),
+                "TestB".to_string(),
+                None,
+                Relations::from(vec![Relation::new(RelationType::Model, "TestA".into())]),
+            ),
         ];
 
         match ModelDag::new(models) {

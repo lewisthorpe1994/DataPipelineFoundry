@@ -30,12 +30,12 @@ impl ModelRef {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RelationType {
     Source,
     Model,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Relation {
     pub relation_type: RelationType,
     pub name: String,
@@ -50,7 +50,7 @@ impl Relation {
 }
 pub type ParsedSql = String;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Relations(Vec<Relation>);
 impl Deref for Relations {
     type Target = Vec<Relation>;
@@ -86,6 +86,12 @@ impl From<ParsedSql> for Relations {
         );
 
         Self(out)
+    }
+}
+
+impl From<Vec<Relation>> for Relations {
+    fn from(v: Vec<Relation>) -> Self {
+        Self(v)
     }
 }
 #[derive(Debug)]
