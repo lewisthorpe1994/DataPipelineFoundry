@@ -1,21 +1,9 @@
-use std::fs;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::sync::Arc;
-use ff_core::{
-    config::loader::read_config,
-    parser::parse_models
-};
 use common::error::FFError;
-use common::types::{Identifier, Materialize};
-use ff_core::dag::ModelDag;
-use ff_core::macros::build_jinja_env;
+use ff_core::{compiler, config::loader::read_config};
 
-
-pub fn compile(compile_path: String) -> Result<(), FFError> {
-
-    }
-
-    Ok(())
+/// Compile the current project using settings from `foundry-project.yml`.
+pub fn handle_compile() -> Result<(), FFError> {
+    let cfg = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
+    compiler::compile(cfg.project.compile_path)
 }
+
