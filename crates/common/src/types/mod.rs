@@ -1,6 +1,7 @@
 pub mod schema;
 
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use regex::Regex;
 
@@ -10,6 +11,18 @@ pub enum Materialize {
     View,
     Table,
     MaterializedView,
+}
+
+impl Materialize {
+    pub fn to_sql(&self) -> String {
+        let materialised = match self { 
+            Self::View => "View",
+            Self::Table => "Table",
+            Self::MaterializedView => "MATERIALISED VIEW",
+        };
+        
+        materialised.to_string()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -100,6 +113,7 @@ pub struct ParsedNode {
     pub model: String,
     pub relations: Relations,
     pub materialization: Option<Materialize>,
+    pub path: PathBuf
 }
 impl ParsedNode {
     pub fn new(
@@ -107,12 +121,18 @@ impl ParsedNode {
         model: String,
         materialization: Option<Materialize>,
         relations: Relations,
+        path: PathBuf
     ) -> Self {
         Self {
             schema,
             model,
             materialization,
             relations,
+            path
         }
     }
+}
+
+pub trait Identifier {
+    fn identifier(&self) -> String;
 }

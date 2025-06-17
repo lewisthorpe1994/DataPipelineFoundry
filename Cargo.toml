@@ -5,7 +5,6 @@ members = [
     "crates/ff_core",
     "crates/adapter_postgres",
     "crates/engine_df",
-    "crates/parser",
     "crates/common",
 ]
 
@@ -23,3 +22,4 @@ minijinja = "2.10.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 common = { path = "crates/common"}
+ff_core = { path = "crates/ff_core"}

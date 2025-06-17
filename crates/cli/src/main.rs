@@ -1,6 +1,5 @@
 mod commands;
 
-use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use commands::handle_init;
 use crate::commands::init::InitArgs;
