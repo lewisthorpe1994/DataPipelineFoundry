@@ -1,11 +1,13 @@
-use common::types::{Materialize, ModelRef, ParsedNode, Relations, RelationType, Relation};
+use common::types::{Materialize, ModelRef, ParsedNode, Relations, RelationType, Relation, Identifier};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
+use std::path::Path;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{format, Display, Formatter};
 use std::{fmt, io};
+use std::path::PathBuf;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 
 
@@ -65,6 +67,7 @@ pub struct DagNode {
     pub reference: ModelRef,
     pub materialized: Materialize,
     pub relations: Relations,
+    pub path: PathBuf,
 }
 impl DagNode {
     /// Create a new [`DagNode`].
@@ -72,12 +75,24 @@ impl DagNode {
     /// * `reference` - Fully qualified model reference for this node.
     /// * `materialize` - Optional materialisation directive for the model.
     /// * `relations` - Parsed relations (models or sources) referenced by the node.
-    pub fn new(reference: ModelRef, materialize: Option<Materialize>, relations: Relations) -> Self {
+    pub fn new(
+        reference: ModelRef,
+        materialize: Option<Materialize>,
+        relations: Relations,
+        path: PathBuf,
+    ) -> Self {
         Self {
             reference,
             materialized: materialize.unwrap_or_default(),
             relations,
+            path
         }
+    }
+}
+
+impl Identifier for DagNode {
+    fn identifier(&self) -> String {
+        format!("{}.{}", self.reference.schema, self.reference.table)
     }
 }
 impl Display for DagNode {
@@ -223,12 +238,19 @@ impl ModelDag {
         let mut ref_to_index: HashMap<String, NodeIndex> =
             HashMap::with_capacity(input_nodes.len());
 
-        for ParsedNode { schema, model, materialization, relations } in &input_nodes {
+        for ParsedNode { schema, model, materialization, relations, path } in &input_nodes {
             if ref_to_index.contains_key(model) {
                 return Err(DagError::DuplicateModel(ModelRef::new(schema.clone(), model.clone())));
             }
             let model_ref = ModelRef::new(schema.clone(), model.clone());
-            let from_idx = graph.add_node(DagNode::new(model_ref.clone(), materialization.clone(), relations.clone()));
+            let from_idx = graph.add_node(
+                DagNode::new(
+                    model_ref.clone(),
+                    materialization.clone(),
+                    relations.clone(),
+                    path.clone(),
+                )
+            );
             ref_to_index.insert(model.clone(), from_idx);
         }
 
@@ -440,7 +462,7 @@ impl ModelDag {
     /// 2. The `rankdir=LR;` attribute is inserted right after the `digraph {`
     ///    declaration in the DOT file.
     /// 3. The manipulated DOT string is written to a file named `dag.dot` in the
-    ///    current working directory.
+    ///    current working parser.
     ///
     /// # Panics
     /// This function will panic if the function call to `std::fs::write` fails
@@ -453,6 +475,11 @@ impl ModelDag {
     /// // $ dot -Tpng dag.dot -o dag.png
     /// ```
     pub fn export_dot(&self) {
+        let _ = self.export_dot_to("dag.dot");
+    }
+
+    /// Write the dependency graph to the given path in DOT format.
+    pub fn export_dot_to<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
         use std::fmt::Write;
 
         let mut dot = String::new();
@@ -471,12 +498,10 @@ impl ModelDag {
                 "    {} -> {};",
                 edge.target().index(), // flip direction!
                 edge.source().index()
-            )
-            .unwrap();
+            ).unwrap();
         }
-
         writeln!(dot, "}}").unwrap();
-        std::fs::write("dag.dot", dot).unwrap();
+        std::fs::write(path, dot)
     }
 }
 
@@ -493,6 +518,7 @@ mod tests {
                 "final_orders".to_string(),
                 None,
                 Relations::from(vec![Relation::new(RelationType::Model, "slvr_orders".into())]),
+                PathBuf::from("final_orders"),
             ),
             ParsedNode::new(
                 "silver".to_string(),
@@ -502,24 +528,28 @@ mod tests {
                     Relation::new(RelationType::Model, "raw_orders".into()),
                     Relation::new(RelationType::Model, "slvr_customers".into()),
                 ]),
+                PathBuf::from("slvr_orders"),
             ),
             ParsedNode::new(
                 "silver".to_string(),
                 "slvr_customers".to_string(),
                 None,
                 Relations::from(vec![Relation::new(RelationType::Model, "raw_customer".into())]),
+                PathBuf::from("slvr_customers"),
             ),
             ParsedNode::new(
                 "bronze".to_string(),
                 "raw_orders".to_string(),
                 None,
                 Relations::from(vec![]),
+                PathBuf::from("raw_orders"),
             ),
             ParsedNode::new(
                 "bronze".to_string(),
                 "raw_customer".to_string(),
                 None,
                 Relations::from(vec![]),
+                PathBuf::from("raw_customers"),
             ),
         ]
     }
@@ -620,12 +650,14 @@ mod tests {
                 "TestA".to_string(),
                 None,
                 Relations::from(vec![Relation::new(RelationType::Model, "TestB".into())]),
+                PathBuf::from("TestB"),
             ),
             ParsedNode::new(
                 "Test".to_string(),
                 "TestB".to_string(),
                 None,
                 Relations::from(vec![Relation::new(RelationType::Model, "TestA".into())]),
+                PathBuf::from("test")
             ),
         ];
 

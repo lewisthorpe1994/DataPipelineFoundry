@@ -8,3 +8,4 @@ license.workspace = true
 serde = { version = "1.0.219", features = ["derive"] }
 regex = "1.11.1"
 minijinja = { workspace = true}
+thiserror = "2.0.12"

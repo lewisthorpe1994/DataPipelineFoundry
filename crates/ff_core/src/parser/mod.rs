@@ -4,7 +4,7 @@ use crate::config::loader::Layers;
 use walkdir::WalkDir;
 use common::types::{ParsedNode, Relations};
 
-pub fn parse_models(dirs: Layers) -> Result<Vec<ParsedNode>, Error> {
+pub fn parse_models(dirs: &Layers) -> Result<Vec<ParsedNode>, Error> {
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for (name, dir) in dirs.iter() {
         for file in WalkDir::new(dir) {
@@ -22,6 +22,7 @@ pub fn parse_models(dirs: Layers) -> Result<Vec<ParsedNode>, Error> {
                     path.display().to_string(),
                     None, // TODO: handle materialisation 
                     Relations::from(contents),
+                    path
                 );
                 parsed_nodes.push(node);
             }
@@ -67,7 +68,7 @@ mod tests {
         }
 
         // 3. parse
-        let nodes = parse_models(layers)?;
+        let nodes = parse_models(&layers)?;
         
         println!("Nodes {:?}", nodes);
 

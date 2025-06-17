@@ -1,4 +1,5 @@
-use common::types::schema::Database;
+use common::{types::schema::Database, error::FFError};
+
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -147,9 +148,9 @@ impl From<SourceConfigError> for JinjaError {
 /// global config
 #[derive(Debug)]
 pub struct FoundryConfig {
-    project: FoundryProjectConfig,
-    source: SourceConfigs,
-    connections: ConnectionsConfig,   
+    pub project: FoundryProjectConfig,
+    pub source: SourceConfigs,
+    pub connections: ConnectionsConfig,   
 }
 impl FoundryConfig {
     fn new(project: FoundryProjectConfig, source: SourceConfigs, connections: ConnectionsConfig) -> Self {
@@ -184,16 +185,19 @@ impl From<std::io::Error> for ConfigError {
     }
 }
 
-impl From<serde_yaml::Error> for ConfigError{
+impl From<serde_yaml::Error> for ConfigError {
     fn from(err: serde_yaml::Error) -> Self {
         Self::ParseError(err)
     }
 }
 
 pub fn read_config(
-    project_config_path: &Path,
+    project_config_path: Option<&Path>,
 ) -> Result<FoundryConfig, ConfigError> {
-    let project_file = fs::File::open(project_config_path)?;
+    
+    let proj_config_path = project_config_path.unwrap_or(Path::new("foundry-project.yml"));
+    
+    let project_file = fs::File::open(proj_config_path)?;
     let proj_config: FoundryProjectConfig = serde_yaml::from_reader(project_file)?;
     
     let connections_path = Path::new(&proj_config.paths.connections);
@@ -279,7 +283,7 @@ connection_profile: dev
         write!(project_file, "{}", project_yaml).unwrap();
 
         // 5️⃣  ── load and assert ────────────────────────────────────────────────
-        let cfg = read_config(project_file.path()).expect("Failed to read config");
+        let cfg = read_config(Some(project_file.path())).expect("Failed to read config");
 
         assert_eq!(cfg.project.project_name, "test_project");
         assert_eq!(cfg.project.version, "1.0.0");

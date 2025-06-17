@@ -136,6 +136,7 @@ dependencies = [
  "minijinja",
  "regex",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -172,6 +173,7 @@ dependencies = [
  "minijinja",
  "petgraph",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tempfile",
  "walkdir",
@@ -194,9 +196,10 @@ name = "foundry"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "common",
+ "ff_core",
  "minijinja",
  "serde",
- "serde_yaml",
  "tempfile",
 ]
 
@@ -289,10 +292,6 @@ name = "once_cell_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
-
-[[package]]
-name = "parser"
-version = "0.1.0"
 
 [[package]]
 name = "petgraph"
@@ -408,6 +407,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_json"
+version = "1.0.140"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
+dependencies = [
+ "itoa",
+ "memchr",
+ "ryu",
+ "serde",
+]
+
+[[package]]
 name = "serde_yaml"
 version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -448,6 +459,26 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567b8a2dae586314f7be2a752ec7474332959c6460e02bde30d702a66d488708"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

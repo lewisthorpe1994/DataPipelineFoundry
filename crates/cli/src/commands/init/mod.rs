@@ -148,7 +148,7 @@ pub fn handle_init(
 ) -> std::io::Result<()> {
     if !path.exists() {
         println!(
-            "No existing dir detected!\nCreating project directory at {}",
+            "No existing dir detected!\nCreating project parser at {}",
             path.display()
         );
         fs::create_dir_all(path)?;

@@ -2,6 +2,7 @@ use crate::config::loader::SourceConfigs;
 use crate::dag::ModelDag;
 use minijinja::{Environment, Error, ErrorKind, Value};
 use std::sync::Arc;
+use common::types::{Materialize, Relation};
 
 /// Register the `ref` macro with the provided Jinja [`Environment`].
 ///
@@ -45,12 +46,20 @@ pub fn register_macros(
     source_config: Arc<SourceConfigs>,
 ) {
     register_ref(env, dag);
-    register_source(env, source_config)
+    register_source(env, source_config);
 }
+
+pub fn build_jinja_env(dag: Arc<ModelDag>, source_config: Arc<SourceConfigs>) -> Environment<'static> {
+    let mut env = Environment::new();
+    register_macros(&mut env, dag, source_config);
+    env
+}
+
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::path::PathBuf;
     use super::*;
     use common::types::{ParsedNode, Relations, Relation, RelationType};
     use common::types::schema::{Database, Schema, Table};
@@ -65,6 +74,7 @@ mod tests {
                 "model_a".to_string(),
                 None,
                 Relations::from(vec![]),
+                PathBuf::from("test")
             )])
             .unwrap(),
         );
