@@ -3,6 +3,7 @@ use petgraph::algo::kosaraju_scc;
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
+use std::path::Path;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{format, Display, Formatter};
 use std::{fmt, io};
@@ -474,6 +475,11 @@ impl ModelDag {
     /// // $ dot -Tpng dag.dot -o dag.png
     /// ```
     pub fn export_dot(&self) {
+        let _ = self.export_dot_to("dag.dot");
+    }
+
+    /// Write the dependency graph to the given path in DOT format.
+    pub fn export_dot_to<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
         use std::fmt::Write;
 
         let mut dot = String::new();
@@ -492,12 +498,10 @@ impl ModelDag {
                 "    {} -> {};",
                 edge.target().index(), // flip direction!
                 edge.source().index()
-            )
-            .unwrap();
+            ).unwrap();
         }
-
         writeln!(dot, "}}").unwrap();
-        std::fs::write("dag.dot", dot).unwrap();
+        std::fs::write(path, dot)
     }
 }
 

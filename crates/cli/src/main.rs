@@ -1,7 +1,7 @@
 mod commands;
 
 use clap::{Parser, Subcommand};
-use commands::handle_init;
+use commands::{handle_init, handle_compile};
 use crate::commands::init::InitArgs;
 
 #[derive(Parser)]
@@ -36,6 +36,12 @@ fn main() {
         Cmd::Init(args) => {
             if let Err(e) = handle_init(&args.path, args.project_name, args.flow_arch) {
                 eprintln!("Failed to initialize project at {}: {}", args.path.display(), e);
+                std::process::exit(1);
+            }
+        }
+        Cmd::Compile => {
+            if let Err(e) = handle_compile() {
+                eprintln!("Compilation failed: {}", e);
                 std::process::exit(1);
             }
         }
