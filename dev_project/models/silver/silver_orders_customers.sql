@@ -1,0 +1,1 @@
+select o.*, c.customer_name from {{ ref('bronze_orders') }} o join {{ ref('bronze_customers') }} c on o.customer_id = c.customer_id

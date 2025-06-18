@@ -21,7 +21,7 @@ impl Materialize {
             Self::MaterializedView => "MATERIALISED VIEW",
         };
         
-        materialised.to_string()
+        materialised.to_string().to_uppercase()
     }
 }
 

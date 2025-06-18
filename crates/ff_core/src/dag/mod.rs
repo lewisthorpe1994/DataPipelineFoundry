@@ -104,7 +104,7 @@ impl Display for DagNode {
 #[derive(Debug)]
 pub enum DagError {
     DuplicateModel(ModelRef),
-    MissingDependency(ModelRef),
+    MissingDependency(ModelRef, String),
     CycleDetected(Vec<ModelRef>),
     Io(io::Error),
     RefNotFound(String)
@@ -123,7 +123,7 @@ impl Display for DagError {
             DagError::DuplicateModel(r) => {
                 write!(f, "Found duplicated declaration of model: {r:?}")
             }
-            DagError::MissingDependency(r) => write!(f, "Dependency {r:?} not found"),
+            DagError::MissingDependency(d, r) => write!(f, "Dependency {d:?} not found for {r:?}"),
             DagError::RefNotFound(r) => write!(f, "Ref {r} not found!")
         }
     }
@@ -264,7 +264,7 @@ impl ModelDag {
                         Some(idx) => *idx,
                         None => {
                             let missing = ModelRef::new(pschema.clone(), dep_table.clone());
-                            return Err(DagError::MissingDependency(missing));
+                            return Err(DagError::MissingDependency(missing, model.clone()));
                         }
                     };
                     graph.add_edge(to_idx, from_idx, EmtpyEdge);

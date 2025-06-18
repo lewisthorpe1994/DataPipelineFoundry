@@ -1,0 +1,1 @@
+select customer_name, count(*) as order_count from {{ ref('silver_orders_customers') }} group by customer_name

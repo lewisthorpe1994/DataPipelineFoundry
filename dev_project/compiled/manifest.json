@@ -1,0 +1,29 @@
+{
+  "models": [
+    {
+      "name": "bronze.bronze_customers",
+      "path": "compiled/bronze/bronze_customers.sql",
+      "depends_on": []
+    },
+    {
+      "name": "bronze.bronze_orders",
+      "path": "compiled/bronze/bronze_orders.sql",
+      "depends_on": []
+    },
+    {
+      "name": "gold.gold_summary",
+      "path": "compiled/gold/gold_summary.sql",
+      "depends_on": [
+        "silver_orders_customers"
+      ]
+    },
+    {
+      "name": "silver.silver_orders_customers",
+      "path": "compiled/silver/silver_orders_customers.sql",
+      "depends_on": [
+        "bronze_orders",
+        "bronze_customers"
+      ]
+    }
+  ]
+}

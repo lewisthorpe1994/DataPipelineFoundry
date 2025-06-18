@@ -1,0 +1,1 @@
+CREATE VIEW bronze.bronze_customers AS select * from orders.bronze.customers

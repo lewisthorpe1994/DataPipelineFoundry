@@ -2,14 +2,13 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use minijinja::Environment;
 use serde::Serialize;
-
+use tracing::info;
 use common::error::FFError;
 use common::types::{Identifier, RelationType};
 
-use crate::config::loader::{read_config, FoundryProjectConfig};
-use crate::dag::{ModelDag, DagError, DagNode};
+use crate::config::loader::{read_config};
+use crate::dag::{ModelDag};
 use crate::macros::build_jinja_env;
 use crate::parser::parse_models;
 
@@ -46,6 +45,7 @@ struct Manifest {
 }
 
 pub fn compile(compile_path: String) -> Result<(), FFError> {
+    info!("Compiling models");
     let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
 
     // ---------------------------------------------------------------------
@@ -109,18 +109,20 @@ pub fn compile(compile_path: String) -> Result<(), FFError> {
     // ---------------------------------------------------------------------
     // 3️⃣  Export the DAG and manifest
     // ---------------------------------------------------------------------
-    let dag_path = Path::new(&compile_path).join("dag.dot");
+    let compiled_path = Path::new(&compile_path);
+    let dag_path = &compiled_path.join("dag.dot");
     dag_arc
         .export_dot_to(&dag_path)
         .map_err(|e| FFError::Compile(e.into()))?;
 
+    let n_models = manifest_models.len();
     let manifest = Manifest {
         models: manifest_models,
     };
     let manifest_path = Path::new(&compile_path).join("manifest.json");
     let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
     serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
-
+    info!("Compiled {} models to {}", n_models, compiled_path.canonicalize().unwrap().display());
     Ok(())
 }
 

@@ -1,0 +1,1 @@
+CREATE VIEW gold.gold_summary AS select customer_name, count(*) as order_count from silver.silver_orders_customers group by customer_name
