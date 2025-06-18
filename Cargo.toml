@@ -8,6 +8,7 @@ members = [
     "crates/common",
     "crates/dev",
     "crates/logging",
+    "crates/dag_web",
 ]
 
 [workspace.package]
@@ -27,3 +28,4 @@ serde_json = "1.0"
 common = { path = "crates/common" }
 ff_core = { path = "crates/ff_core" }
 logging = { path = "crates/logging" }
+actix-web = "4"
