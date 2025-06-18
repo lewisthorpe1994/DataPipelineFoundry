@@ -8,25 +8,25 @@ struct Args {
     #[arg(long, default_value = "manifest.json")]
     manifest: String,
     /// Address to bind the HTTP server to
-    #[arg(long, default_value = "127.0.0.1:8080")]
+    #[arg(long, default_value = "0.0.0.0:8085")]
     addr: String,
 }
 
 const TEMPLATE: &str = r#"<!DOCTYPE html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-<meta charset=\"utf-8\" />
+<meta charset="utf-8" />
 <title>DAG Viewer</title>
 <style>
   body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
   #cy { width: 100%; height: 800px; border: 1px solid #ccc; }
 </style>
-<script src=\"https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js\"></script>
-<script src=\"https://unpkg.com/dagre@0.8.5/dist/dagre.min.js\"></script>
-<script src=\"https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js\"></script>
+<script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
 </head>
 <body>
-<div id=\"cy\"></div>
+<div id="cy"></div>
 <script>
 const manifest = __MANIFEST__;
 
