@@ -1,17 +1,16 @@
-name: dev_project
-description: "This is a generated description for the dev_project project. Overwrite this with
-a description of the project"
-version: "1.0.0"
-
-compile_path: "compiled"
-
+project_name: test
+version: '1.0'
+compile_path: compiled
 paths:
   models:
-    dir: foundry_models
+    dir: /home/lewis/PycharmProjects/LLMsql-dashboard/FlowFoundry/dev_project/models
     layers:
-        bronze: foundry_models/bronze
-        silver: foundry_models/silver
-        gold: foundry_models/gold
-        
+      bronze: /home/lewis/PycharmProjects/LLMsql-dashboard/FlowFoundry/dev_project/models/bronze
+      silver: /home/lewis/PycharmProjects/LLMsql-dashboard/FlowFoundry/dev_project/models/silver
+      gold: /home/lewis/PycharmProjects/LLMsql-dashboard/FlowFoundry/dev_project/models/gold
+  connections: /home/lewis/PycharmProjects/LLMsql-dashboard/FlowFoundry/dev_project/connections.yml
+  sources:
+    - name: orders
+      path: /home/lewis/PycharmProjects/LLMsql-dashboard/FlowFoundry/dev_project/foundry_sources/sources.yml
 modelling_architecture: medallion
 connection_profile: dev

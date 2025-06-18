@@ -6,6 +6,9 @@ members = [
     "crates/adapter_postgres",
     "crates/engine_df",
     "crates/common",
+    "crates/dev",
+    "crates/logging",
+    "crates/dag_web",
 ]
 
 [workspace.package]
@@ -22,5 +25,7 @@ minijinja = "2.10.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
-common = { path = "crates/common"}
-ff_core = { path = "crates/ff_core"}
+common = { path = "crates/common" }
+ff_core = { path = "crates/ff_core" }
+logging = { path = "crates/logging" }
+actix-web = "4"

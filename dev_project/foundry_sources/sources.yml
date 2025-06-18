@@ -1,0 +1,11 @@
+sources:
+  - name: orders
+    database:
+      name: some_db
+      schemas:
+        - name: bronze
+          tables:
+            - name: orders
+              description: Raw orders
+            - name: customers
+              description: Raw customers

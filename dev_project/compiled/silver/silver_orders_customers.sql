@@ -1,0 +1,1 @@
+CREATE VIEW silver.silver_orders_customers AS select o.*, c.customer_name from bronze.bronze_orders o join bronze.bronze_customers c on o.customer_id = c.customer_id

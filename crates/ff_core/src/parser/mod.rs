@@ -17,9 +17,13 @@ pub fn parse_models(dirs: &Layers) -> Result<Vec<ParsedNode>, Error> {
                 let mut contents = String::new();
                 buf_reader.read_to_string(&mut contents)?;
 
+                let model_name = path.file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or_default();
+
                 let node = ParsedNode::new(
                     name.to_string(),
-                    path.display().to_string(),
+                    model_name.to_string(),
                     None, // TODO: handle materialisation 
                     Relations::from(contents),
                     path
