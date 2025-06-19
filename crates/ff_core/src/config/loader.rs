@@ -8,6 +8,9 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::ops::Deref;
 use std::path::Path;
+use serde_json::Value;
+use common::types::Materialize;
+use common::types::schema::Column;
 
 pub type ConnectionProfile = HashMap<String, String>;
 pub type LayerName = String;
@@ -27,13 +30,13 @@ pub struct FoundryProjectConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct PathsConfig {
-    pub models: ModelsConfig,
+    pub models: ModelsPathConfig,
     pub sources: Vec<SourcesPath>,
     pub connections: String
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ModelsConfig {
+pub struct ModelsPathConfig {
     pub dir: String,
     pub layers: Option<Layers>,
 }
@@ -145,16 +148,63 @@ impl From<SourceConfigError> for JinjaError {
     }
 }
 
+/// Models Config
+
+pub struct ModelsFileConfig {
+    pub models: Vec<ModelConfig>
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModelConfig {
+    pub name: String,
+    pub description: Option<String>,
+    pub columns: Vec<Column>,
+    pub serve: Option<bool>, // TODO - requires implementation
+    pub pipelines: Option<Vec<String>>, // TODO - requires its own type
+    pub quality_tests: Option<Vec<String>>, // Todo - requires its own type
+    pub meta: Option<Value>,
+    pub materialization: Materialize,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModelsConfig(HashMap<String, ModelConfig>);
+
+pub enum ModelsConfigError {
+    DeserializeError(serde_yaml::Error)
+}
+
+impl From<serde_yaml::Error> for ModelsConfigError {
+    fn from(value: serde_yaml::Error) -> Self {
+        Self::DeserializeError(value)
+    }
+}
+
+impl From<ModelsFileConfig> for ModelsConfig {
+    fn from(value: ModelsFileConfig) -> Self {
+        let mapped = value.models.into_iter().map(|m| (
+            m.name.clone(), m)).collect::<HashMap<_,_>>();
+        
+        Self(mapped)
+    }
+}
+
+
 /// global config
 #[derive(Debug)]
 pub struct FoundryConfig {
     pub project: FoundryProjectConfig,
     pub source: SourceConfigs,
-    pub connections: ConnectionsConfig,   
+    pub connections: ConnectionsConfig,
+    pub models: Option<ModelsConfig>
 }
 impl FoundryConfig {
-    fn new(project: FoundryProjectConfig, source: SourceConfigs, connections: ConnectionsConfig) -> Self {
-        Self { project, source, connections }
+    fn new(
+        project: FoundryProjectConfig,
+        source: SourceConfigs,
+        connections: ConnectionsConfig,
+        models: Option<ModelsConfig>
+    ) -> Self {
+        Self { project, source, connections, models }
     }
 }
 
@@ -189,6 +239,10 @@ impl From<serde_yaml::Error> for ConfigError {
     fn from(err: serde_yaml::Error) -> Self {
         Self::ParseError(err)
     }
+}
+
+fn read_models_config(layers: &Layers) -> Result<ModelsConfig, ModelsConfigError> {
+    
 }
 
 pub fn read_config(
