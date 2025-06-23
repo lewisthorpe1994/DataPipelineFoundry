@@ -6,6 +6,7 @@ members = [
     "crates/adapter_postgres",
     "crates/engine_df",
     "crates/common",
+    "crates/sqlparser"
 ]
 
 [workspace.package]
@@ -24,3 +25,4 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 common = { path = "crates/common"}
 ff_core = { path = "crates/ff_core"}
+sqlparser = {path = "crates/sqlparser"}

@@ -1,17 +1,18 @@
 use std::fs::File;
 use std::io::{BufReader, Error, Read};
-use crate::config::loader::Layers;
+use crate::config::components::foundry_project::ModelLayers;
 use walkdir::WalkDir;
-use common::types::{ParsedNode, Relations};
+use common::{types::{ParsedNode, Relations}, traits::IsFileExtension};
 
-pub fn parse_models(dirs: &Layers) -> Result<Vec<ParsedNode>, Error> {
+
+pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ParsedNode>, Error> {
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for (name, dir) in dirs.iter() {
         for file in WalkDir::new(dir) {
             let path = file?
                 .into_path();
 
-            if path.extension().and_then(|ext| ext.to_str()) == Some("sql") {
+            if path.is_extension("sql") {
                 let file = File::open(&path)?;
                 let mut buf_reader = BufReader::new(file);
                 let mut contents = String::new();
@@ -59,7 +60,7 @@ mod tests {
         let root = tmp.path();
 
         // 2. create three layer dirs and one sql file in each
-        let mut layers: Layers = HashMap::new();
+        let mut layers: ModelLayers = HashMap::new();
         for layer in ["bronze", "silver", "gold"] {
             let dir = root.join(layer);
             std::fs::create_dir(&dir)?;

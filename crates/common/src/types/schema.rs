@@ -9,7 +9,7 @@ pub struct Table {
 
 #[derive(Deserialize, Debug)]
 pub struct Column {
-    name: String,
+    pub name: String,
     description: Option<String>,
     data_type: String, // TODO - implement enum
 }

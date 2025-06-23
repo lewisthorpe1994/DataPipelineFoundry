@@ -1,4 +1,5 @@
+use crate::config::components::global::FoundryConfig;
 
-fn run() {
-    unimplemented!()
+pub fn run(config: FoundryConfig, connection_profile: String) {
+    
 }

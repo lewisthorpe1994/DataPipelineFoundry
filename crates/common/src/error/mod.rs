@@ -7,6 +7,7 @@ use std::{
 pub enum FFError {
     Init(Box<dyn Error + Send + Sync>), // carries *why* init failed
     Compile(Box<dyn Error + Send + Sync>),
+    
 }
 
 impl Display for FFError {
