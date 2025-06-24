@@ -2,15 +2,17 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use minijinja::Environment;
 use serde::Serialize;
-use tracing::info;
+
 use common::error::FFError;
 use common::types::{Identifier, RelationType};
 
-use crate::config::loader::{read_config};
-use crate::dag::{ModelDag};
+use crate::config::loader::read_config;
+use crate::dag::ModelDag;
 use crate::macros::build_jinja_env;
 use crate::parser::parse_models;
+
 
 /// Compiles a materialized SQL statement.
 ///
@@ -44,8 +46,7 @@ struct Manifest {
     models: Vec<ManifestModel>,
 }
 
-pub fn compile(compile_path: String) -> Result<(), FFError> {
-    info!("Compiling models");
+pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelDag>, FFError> {
     let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
 
     // ---------------------------------------------------------------------
@@ -109,21 +110,19 @@ pub fn compile(compile_path: String) -> Result<(), FFError> {
     // ---------------------------------------------------------------------
     // 3️⃣  Export the DAG and manifest
     // ---------------------------------------------------------------------
-    let compiled_path = Path::new(&compile_path);
-    let dag_path = &compiled_path.join("dag.dot");
+    let dag_path = Path::new(&compile_path).join("dag.dot");
     dag_arc
         .export_dot_to(&dag_path)
         .map_err(|e| FFError::Compile(e.into()))?;
 
-    let n_models = manifest_models.len();
     let manifest = Manifest {
         models: manifest_models,
     };
     let manifest_path = Path::new(&compile_path).join("manifest.json");
     let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
     serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
-    info!("Compiled {} models to {}", n_models, compiled_path.canonicalize().unwrap().display());
-    Ok(())
+
+    Ok(dag_arc)
 }
 
 #[cfg(test)]
@@ -200,7 +199,7 @@ connection_profile: dev
         // run compile
         let orig = std::env::current_dir().unwrap();
         std::env::set_current_dir(root).unwrap();
-        compile("compiled".into()).unwrap();
+        let _ = compile("compiled".into()).unwrap();
         std::env::set_current_dir(orig).unwrap();
 
         // assert outputs

@@ -1,4 +1,4 @@
-use crate::config::loader::SourceConfigs;
+use crate::config::components::source::SourceConfigs;
 use crate::dag::ModelDag;
 use minijinja::{Environment, Error, ErrorKind, Value};
 use std::sync::Arc;
@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     use common::types::{ParsedNode, Relations, Relation, RelationType};
     use common::types::schema::{Database, Schema, Table};
-    use crate::config::loader::SourceConfig;
+    use crate::config::components::source::SourceConfig;
 
     #[test]
     fn ref_resolves_known_model() {

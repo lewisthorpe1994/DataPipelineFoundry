@@ -237,6 +237,8 @@ impl ModelDag {
         let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
         let mut ref_to_index: HashMap<String, NodeIndex> =
             HashMap::with_capacity(input_nodes.len());
+        
+        eprintln!("{:#?}", input_nodes);
 
         for ParsedNode { schema, model, materialization, relations, path } in &input_nodes {
             if ref_to_index.contains_key(model) {
@@ -253,6 +255,8 @@ impl ModelDag {
             );
             ref_to_index.insert(model.clone(), from_idx);
         }
+        
+        eprintln!("ref to index {:#?}", ref_to_index);
 
         for ParsedNode { schema: pschema, model, relations, .. } in &input_nodes {
             let to_idx = ref_to_index[model];

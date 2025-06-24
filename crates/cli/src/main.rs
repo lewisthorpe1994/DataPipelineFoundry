@@ -1,7 +1,7 @@
 mod commands;
 
 use clap::{Parser, Subcommand};
-use commands::{handle_init, handle_compile};
+use commands::{handle_init, handle_compile, handle_run};
 use crate::commands::init::InitArgs;
 use tracing_subscriber::{fmt};
 use tracing_subscriber::prelude::*;
@@ -66,6 +66,12 @@ fn main() {
         Cmd::Compile => {
             if let Err(e) = handle_compile() {
                 eprintln!("Compilation failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Cmd::Run { target } => {
+            if let Err(e) = handle_run(target) {
+                eprintln!("Run failed: {}", e);
                 std::process::exit(1);
             }
         }
