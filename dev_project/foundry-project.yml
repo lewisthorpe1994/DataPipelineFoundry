@@ -12,6 +12,10 @@ paths:
         bronze: foundry_models/bronze
         silver: foundry_models/silver
         gold: foundry_models/gold
+  connections: connections.yml
+  sources:
+      - name: raw
+        path: foundry_sources/sources.yml
         
 modelling_architecture: medallion
 connection_profile: dev
