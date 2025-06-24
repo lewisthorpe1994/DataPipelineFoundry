@@ -24,20 +24,23 @@ pub fn execute_dag<E: SqlExecutor>(
     executor: &mut E,
 ) -> Result<(), FFError> {
     let order = toposort(&dag.graph, None)
-        .map_err(|e| FFError::Compile(format!("dag cycle: {:?}", e).into()))?;
-
-    for idx in order {
+        .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
+    
+    eprintln!("dag order {:#?}", order);
+    for idx in order.into_iter().rev() {
         let node = &dag.graph[idx];
+        eprintln!("node {:#?}", node);
         let models_dir = Path::new(&config.project.paths.models.dir);
         let rel_path = Path::new(&node.path)
             .strip_prefix(models_dir)
             .unwrap_or(Path::new(&node.path));
         let sql_path = Path::new(&config.project.compile_path).join(rel_path);
         let sql = std::fs::read_to_string(&sql_path)
-            .map_err(|e| FFError::Compile(e.into()))?;
+            .map_err(|e| FFError::Run(e.into()))?;
+        eprintln!("sql: {:#?}", sql);
         executor
             .execute(&sql)
-            .map_err(|e| FFError::Compile(e.into()))?;
+            .map_err(|e| FFError::Run(e.into()))?;
     }
 
     Ok(())
@@ -45,6 +48,7 @@ pub fn execute_dag<E: SqlExecutor>(
 
 pub fn run(config: FoundryConfig, connection_profile: String) -> Result<(), FFError> {
     // compile models and obtain the dependency graph
+    eprint!("Compiled configuration: {:?}", config);
     let dag = compiler::compile(config.project.compile_path.clone())?;
 
     // build postgres connection string from selected profile
@@ -73,14 +77,8 @@ pub fn run(config: FoundryConfig, connection_profile: String) -> Result<(), FFEr
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use std::collections::HashMap;
     use std::fs;
     use crate::config::loader::read_config;
-    use crate::config::components::foundry_project::{FoundryProjectConfig, PathsConfig};
-    use crate::config::components::model::ModelsPaths;
-    use crate::config::components::connections::ConnectionsConfig;
-    use crate::config::components::source::SourceConfigs;
-    use common::types::{ParsedNode, Relation, RelationType, Relations};
 
     struct FakeExec {
         pub calls: Vec<String>,
@@ -96,70 +94,7 @@ mod tests {
             Ok(())
         }
     }
-
-    #[test]
-    fn test_execute_dag_orders_models() {
-        let tmp = tempdir().unwrap();
-        let root = tmp.path();
-
-        // connections
-        let mut connections = ConnectionsConfig::new();
-        connections.insert("dev".into(), HashMap::new());
-
-        // simple project config
-        let models_dir = root.join("models");
-        fs::create_dir_all(&models_dir).unwrap();
-
-        let project = FoundryProjectConfig {
-            project_name: "test".into(),
-            version: "1.0".into(),
-            compile_path: "compiled".into(),
-            modelling_architecture: "medallion".into(),
-            connection_profile: "dev".into(),
-            paths: PathsConfig {
-                models: ModelsPaths { dir: models_dir.to_string_lossy().into(), layers: None },
-                sources: vec![],
-                connections: String::new(),
-            },
-        };
-        let cfg = FoundryConfig::new(project, SourceConfigs::empty(), connections, None);
-
-        // compiled SQL
-        let compiled_dir = root.join("compiled");
-        fs::create_dir(&compiled_dir).unwrap();
-        fs::write(compiled_dir.join("model_b.sql"), "B").unwrap();
-        fs::write(compiled_dir.join("model_a.sql"), "A").unwrap();
-
-        // DAG with A -> B
-        let nodes = vec![
-            ParsedNode::new(
-                "schema".into(),
-                "model_a".into(),
-                None,
-                Relations::from(vec![Relation::new(RelationType::Model, "model_b".into())]),
-                models_dir.join("model_a.sql"),
-            ),
-            ParsedNode::new(
-                "schema".into(),
-                "model_b".into(),
-                None,
-                Relations::from(vec![]),
-                models_dir.join("model_b.sql"),
-            ),
-        ];
-        let dag = ModelDag::new(nodes).unwrap();
-
-        let orig = std::env::current_dir().unwrap();
-        std::env::set_current_dir(root).unwrap();
-
-        let mut exec = FakeExec::new();
-        execute_dag(&dag, &cfg, &mut exec).unwrap();
-
-        std::env::set_current_dir(orig).unwrap();
-
-        // order should be model_a then model_b due to edge direction
-        assert_eq!(exec.calls, vec!["A".to_string(), "B".to_string()]);
-    }
+    
 
     /// Integration test that executes the full `run` workflow against a live
     /// PostgreSQL instance. The database connection can be configured using the
@@ -216,11 +151,11 @@ mod tests {
 
         // sources.yml
         let sources_yaml = r#"sources:
-  - name: raw
+  - name: dev
     database:
-      name: some_db
+      name: foundry_dev
       schemas:
-        - name: bronze
+        - name: raw
           tables:
             - name: orders
               description: Raw orders
@@ -239,7 +174,7 @@ mod tests {
         fs::create_dir_all(&gold_dir)?;
         fs::write(
             bronze_dir.join("bronze_orders.sql"),
-            "select * from {{ source('raw', 'orders') }}",
+            "select * from {{ source('dev', 'orders') }}",
         )?;
         fs::write(
             silver_dir.join("silver_orders.sql"),

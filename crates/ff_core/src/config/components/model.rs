@@ -114,7 +114,6 @@ impl TryFrom<&ModelLayers> for ModelsConfig {
                 .filter_map(|c| c.ok())
                 .flat_map(|c| c.0.into_iter())
         }).collect::<ModelsConfig>();
-        dbg!(&config);   // see how many models you got back
         Ok(config)
     }
 }

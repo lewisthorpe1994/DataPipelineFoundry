@@ -20,7 +20,7 @@ pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ParsedNode>, Error> {
 
                 let node = ParsedNode::new(
                     name.to_string(),
-                    path.display().to_string(),
+                    path.file_stem().unwrap().to_str().unwrap().to_string(),
                     None, // TODO: handle materialisation 
                     Relations::from(contents),
                     path

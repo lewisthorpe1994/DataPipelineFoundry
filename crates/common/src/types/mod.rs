@@ -17,8 +17,8 @@ pub enum Materialize {
 impl Materialize {
     pub fn to_sql(&self) -> String {
         let materialised = match self { 
-            Self::View => "View",
-            Self::Table => "Table",
+            Self::View => "VIEW",
+            Self::Table => "TABLE",
             Self::MaterializedView => "MATERIALISED VIEW",
         };
         

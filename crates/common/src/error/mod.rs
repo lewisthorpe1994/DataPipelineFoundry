@@ -7,6 +7,7 @@ use std::{
 pub enum FFError {
     Init(Box<dyn Error + Send + Sync>), // carries *why* init failed
     Compile(Box<dyn Error + Send + Sync>),
+    Run(Box<dyn Error + Send + Sync>),
     
 }
 
@@ -15,6 +16,7 @@ impl Display for FFError {
         match self {
             FFError::Init(e)     => write!(f, "initialisation failed: {e}"),
             FFError::Compile(e)  => write!(f, "compile failed: {e}"),
+            FFError::Run(e)      => write!(f, "Run failed: {e}"),
         }
     }
 }
@@ -24,6 +26,7 @@ impl Error for FFError {
         match self {
             FFError::Init(e)    => Some(&**e),
             FFError::Compile(e) => Some(&**e),
+            FFError::Run(e)      => Some(&**e),
         }
     }
 }

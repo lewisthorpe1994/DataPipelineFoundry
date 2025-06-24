@@ -108,7 +108,7 @@ impl SourceConfigs {
             .find(|(_, t)| t == table);
 
         match resolved {
-            Some((schema, table)) => Ok(format!("{}.{}.{}", config.name, schema.name, table)),
+            Some((schema, table)) => Ok(format!("{}.{}", schema.name, table)),
             None => Err(SourceConfigError::TableNotFound(table.to_string())),
         }
     }
