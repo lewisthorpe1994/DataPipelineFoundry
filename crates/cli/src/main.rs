@@ -3,6 +3,11 @@ mod commands;
 use clap::{Parser, Subcommand};
 use commands::{handle_init, handle_compile, handle_run};
 use crate::commands::init::InitArgs;
+use tracing_subscriber::{fmt};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
+use time::format_description::FormatItem;
+use time::macros::format_description;
 
 #[derive(Parser)]
 #[command(name = "forgery")]
@@ -30,6 +35,25 @@ pub enum Cmd {
 
 
 fn main() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new("info") // fallback log level
+    });
+    let time_format = format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]");
+    
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_timer(fmt::time::LocalTime::new(time_format))
+                .with_target(false)
+                .with_level(true)
+                .with_thread_names(false)
+                .with_line_number(false)
+                .with_file(false)
+                .with_span_events(fmt::format::FmtSpan::NONE) // 👈 Disable span name output
+                .compact() // 👈 Fancy pre-built output
+        )
+        .with(filter)
+        .init();
     let cli = Cli::parse();
     
     match cli.command {
