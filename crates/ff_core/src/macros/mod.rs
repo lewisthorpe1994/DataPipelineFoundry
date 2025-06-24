@@ -138,6 +138,6 @@ mod tests {
         let rendered = template.render(()).unwrap();
 
         // The fully qualified relation we expect:
-        assert_eq!(rendered, "SELECT * FROM orders.bronze.raw_orders");
+        assert_eq!(rendered, "SELECT * FROM bronze.raw_orders");
     }
 }

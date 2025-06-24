@@ -130,9 +130,11 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::tempdir;
+    use crate::test_utils::TEST_MUTEX;
 
     #[test]
     fn test_compile_creates_artifacts() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let tmp = tempdir().unwrap();
         let root = tmp.path();
 
