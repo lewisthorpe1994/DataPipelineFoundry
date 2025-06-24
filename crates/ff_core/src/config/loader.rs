@@ -3,7 +3,7 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use crate::config::components::connections::{ConnectionProfile};
+use crate::config::components::connections::DatabaseConnection;
 use crate::config::components::foundry_project::{FoundryProjectConfig, ModelLayers};
 use crate::config::components::global::FoundryConfig;
 use crate::config::components::model::ModelsConfig;
@@ -35,7 +35,7 @@ pub fn read_config(project_config_path: Option<&Path>) -> Result<FoundryConfig, 
         ));
     }
     let conn_file = fs::File::open(connections_path)?;
-    let connections: HashMap<String, ConnectionProfile> = serde_yaml::from_reader(conn_file)?;
+    let connections: HashMap<String, DatabaseConnection> = serde_yaml::from_reader(conn_file)?;
 
     let source_config = SourceConfigs::from(proj_config.paths.sources.clone());
     let models_config = proj_config.paths.models.layers
@@ -131,7 +131,7 @@ connection_profile: dev
         assert_eq!(layers["silver"], "foundry_models/silver");
         assert_eq!(layers["gold"], "foundry_models/gold");
 
-        assert_eq!(cfg.connections["dev"]["adapter"], "postgres");
+        assert_eq!(cfg.connections["dev"].adapter, "postgres");
     }
 
     #[test]

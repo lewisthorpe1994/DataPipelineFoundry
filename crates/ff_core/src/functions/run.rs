@@ -53,16 +53,7 @@ pub fn run(config: FoundryConfig, connection_profile: String) -> Result<(), FFEr
         .get(&connection_profile)
         .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
 
-    let conn_str = format!(
-        "host={} port={} user={} password={} dbname={}",
-        profile.get("host").unwrap_or(&"localhost".to_string()),
-        profile.get("port").unwrap_or(&"5432".to_string()),
-        profile.get("user").unwrap_or(&"postgres".to_string()),
-        profile.get("password").unwrap_or(&"".to_string()),
-        profile.get("database").unwrap_or(&"postgres".to_string())
-    );
-
-    let mut client = Client::connect(&conn_str, NoTls)
+    let mut client = Client::connect(&profile.to_conn_str(), NoTls)
         .map_err(|e| FFError::Compile(e.into()))?;
 
     execute_dag(&dag, &config, &mut client)
@@ -77,7 +68,7 @@ mod tests {
     use std::fs;
     use crate::config::components::foundry_project::{FoundryProjectConfig, PathsConfig};
     use crate::config::components::model::ModelsPaths;
-    use crate::config::components::connections::ConnectionsConfig;
+    use crate::config::components::connections::{ConnectionsConfig, DatabaseConnection};
     use crate::config::components::source::SourceConfigs;
     use common::types::{ParsedNode, Relation, RelationType, Relations};
 
@@ -95,6 +86,17 @@ mod tests {
             Ok(())
         }
     }
+    
+    fn build_con() -> DatabaseConnection {
+        DatabaseConnection {
+            adapter: "postgres".to_string(),
+            host: "localhost".to_string(),
+            port: "5432".to_string(),
+            user: "postgres".to_string(),
+            password: "postgres".to_string(),
+            database: "foundry_dev".to_string(),
+        }
+    }
 
     #[test]
     fn test_execute_dag_orders_models() {
@@ -103,7 +105,7 @@ mod tests {
 
         // connections
         let mut connections = ConnectionsConfig::new();
-        connections.insert("dev".into(), HashMap::new());
+        connections.insert("dev".into(), build_con());
 
         // simple project config
         let models_dir = root.join("models");
