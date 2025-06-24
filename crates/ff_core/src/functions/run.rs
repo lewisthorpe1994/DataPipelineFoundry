@@ -53,6 +53,7 @@ pub fn run(config: FoundryConfig, connection_profile: String) -> Result<(), FFEr
         .get(&connection_profile)
         .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
 
+    use crate::config::loader::read_config;
     let mut client = Client::connect(&profile.to_conn_str(), NoTls)
         .map_err(|e| FFError::Compile(e.into()))?;
 
@@ -135,6 +136,125 @@ mod tests {
         let nodes = vec![
             ParsedNode::new(
                 "schema".into(),
+
+    /// Integration test that executes the full `run` workflow against a live
+    /// PostgreSQL instance. The database connection can be configured using the
+    /// environment variables `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASS` and
+    /// `PG_DB`. When not set, the defaults from the repository's
+    /// `docker-compose.yml` are used.
+    #[test]
+    #[ignore]
+    fn test_run_live_postgres() -> Result<(), Box<dyn std::error::Error>> {
+        // ----- database connection -------------------------------------------------
+        let host = std::env::var("PG_HOST").unwrap_or_else(|_| "localhost".into());
+        let port = std::env::var("PG_PORT").unwrap_or_else(|_| "5432".into());
+        let user = std::env::var("PG_USER").unwrap_or_else(|_| "postgres".into());
+        let pass = std::env::var("PG_PASS").unwrap_or_else(|_| "password".into());
+        let db = std::env::var("PG_DB").unwrap_or_else(|_| "foundry_dev".into());
+
+        let conn_str = format!(
+            "host={} port={} user={} password={} dbname={}",
+            host, port, user, pass, db
+        );
+        let mut client = Client::connect(&conn_str, NoTls)?;
+
+        // Reset schemas and seed source data
+        client.batch_execute(
+            "DROP SCHEMA IF EXISTS raw CASCADE;
+             DROP SCHEMA IF EXISTS bronze CASCADE;
+             DROP SCHEMA IF EXISTS silver CASCADE;
+             DROP SCHEMA IF EXISTS gold CASCADE;
+             CREATE SCHEMA raw;
+             CREATE SCHEMA bronze;
+             CREATE SCHEMA silver;
+             CREATE SCHEMA gold;
+             CREATE TABLE raw.orders(
+                 id INT,
+                 customer_id INT,
+                 order_total INT,
+                 order_date DATE
+             );
+             INSERT INTO raw.orders VALUES (1, 1, 100, CURRENT_DATE);
+             INSERT INTO raw.orders VALUES (2, 1, 200, CURRENT_DATE);
+            "
+        )?;
+
+        // ----- project setup -------------------------------------------------------
+        let tmp = tempdir()?;
+        let root = tmp.path();
+
+        // connections.yml
+        let connections = format!(
+            "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
+            host, port, user, pass, db
+        );
+        fs::write(root.join("connections.yml"), connections)?;
+
+        // sources.yml
+        let sources_yaml = r#"sources:
+  - name: raw
+    database:
+      name: some_db
+      schemas:
+        - name: bronze
+          tables:
+            - name: orders
+              description: Raw orders
+"#;
+        let sources_dir = root.join("foundry_sources");
+        fs::create_dir(&sources_dir)?;
+        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
+
+        // model SQL files
+        let models_dir = root.join("foundry_models");
+        let bronze_dir = models_dir.join("bronze");
+        let silver_dir = models_dir.join("silver");
+        let gold_dir = models_dir.join("gold");
+        fs::create_dir_all(&bronze_dir)?;
+        fs::create_dir_all(&silver_dir)?;
+        fs::create_dir_all(&gold_dir)?;
+        fs::write(
+            bronze_dir.join("bronze_orders.sql"),
+            "select * from {{ source('raw', 'orders') }}",
+        )?;
+        fs::write(
+            silver_dir.join("silver_orders.sql"),
+            "select * from {{ ref('bronze_orders') }}",
+        )?;
+        fs::write(
+            gold_dir.join("revenue.sql"),
+            "select customer_id, sum(order_total) as total_revenue from {{ ref('silver_orders') }} group by customer_id",
+        )?;
+
+        // foundry-project.yml
+        let project_yaml = format!(
+            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      bronze: {bronze}\n      silver: {silver}\n      gold: {gold}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: medallion\nconnection_profile: dev\n",
+            models = models_dir.display(),
+            bronze = bronze_dir.display(),
+            silver = silver_dir.display(),
+            gold = gold_dir.display(),
+            conn = root.join("connections.yml").display(),
+            source = sources_dir.join("sources.yml").display()
+        );
+        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+
+        // ----- run ---------------------------------------------------------------
+        let orig = std::env::current_dir()?;
+        std::env::set_current_dir(root)?;
+        let cfg = read_config(None)?;
+        run(cfg, "dev".to_string())?;
+        std::env::set_current_dir(orig)?;
+
+        // ----- verify -----------------------------------------------------------
+        let row = client.query_one(
+            "SELECT total_revenue FROM gold.revenue WHERE customer_id = 1",
+            &[],
+        )?;
+        let total: i64 = row.get(0);
+        assert_eq!(total, 300);
+
+        Ok(())
+    }
                 "model_a".into(),
                 None,
                 Relations::from(vec![Relation::new(RelationType::Model, "model_b".into())]),
