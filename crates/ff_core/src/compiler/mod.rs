@@ -46,7 +46,7 @@ struct Manifest {
     models: Vec<ManifestModel>,
 }
 
-pub fn compile(compile_path: String) -> Result<(), FFError> {
+pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelDag>, FFError> {
     let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
 
     // ---------------------------------------------------------------------
@@ -122,7 +122,7 @@ pub fn compile(compile_path: String) -> Result<(), FFError> {
     let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
     serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
 
-    Ok(())
+    Ok(dag_arc)
 }
 
 #[cfg(test)]
@@ -199,7 +199,7 @@ connection_profile: dev
         // run compile
         let orig = std::env::current_dir().unwrap();
         std::env::set_current_dir(root).unwrap();
-        compile("compiled".into()).unwrap();
+        let _ = compile("compiled".into()).unwrap();
         std::env::set_current_dir(orig).unwrap();
 
         // assert outputs
