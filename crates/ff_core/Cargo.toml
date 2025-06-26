@@ -9,10 +9,12 @@ serde_yaml = { workspace = true}
 serde = {workspace = true}
 minijinja = { workspace = true }
 serde_json = { workspace = true }
+logging = { workspace = true }
 petgraph = "0.8.2"
 common = { workspace = true}
 walkdir = "2.5.0"
 postgres = "0.19"
+log = "0.4.27"
 
 [dev-dependencies]
 tempfile = "3"

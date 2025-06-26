@@ -1,5 +1,5 @@
 use common::types::{Materialize, ModelRef, ParsedNode, Relations, RelationType, Relation, Identifier};
-use petgraph::algo::kosaraju_scc;
+use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
@@ -180,11 +180,11 @@ pub type DagResult<T> = Result<T, DagError>;
 /// // Add nodes and edges to `dag`
 /// ```
 #[derive(Debug)]
-pub struct ModelDag {
+pub struct ModelsDag {
     pub graph: DiGraph<DagNode, EmtpyEdge>,
     pub ref_to_index: HashMap<String, NodeIndex>,
 }
-impl ModelDag {
+impl ModelsDag {
     /// Constructs a new directed acyclic graph (DAG) from the provided input nodes.
     ///
     /// # Parameters
@@ -232,14 +232,12 @@ impl ModelDag {
     ///
     /// let dag = ModelDag::new(nodes)?;
     /// ```
-    /// Build a [`ModelDag`] from parsed model nodes.
+    /// Build a [`ModelsDag`] from parsed model nodes.
     pub fn new(input_nodes: Vec<ParsedNode>) -> DagResult<Self> {
         let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
         let mut ref_to_index: HashMap<String, NodeIndex> =
             HashMap::with_capacity(input_nodes.len());
         
-        eprintln!("{:#?}", input_nodes);
-
         for ParsedNode { schema, model, materialization, relations, path } in &input_nodes {
             if ref_to_index.contains_key(model) {
                 return Err(DagError::DuplicateModel(ModelRef::new(schema.clone(), model.clone())));
@@ -256,8 +254,6 @@ impl ModelDag {
             ref_to_index.insert(model.clone(), from_idx);
         }
         
-        eprintln!("ref to index {:#?}", ref_to_index);
-
         for ParsedNode { schema: pschema, model, relations, .. } in &input_nodes {
             let to_idx = ref_to_index[model];
 
@@ -271,7 +267,7 @@ impl ModelDag {
                             return Err(DagError::MissingDependency(missing, model.clone()));
                         }
                     };
-                    graph.add_edge(to_idx, from_idx, EmtpyEdge);
+                    graph.add_edge(from_idx, to_idx, EmtpyEdge);
                 }
             }
         }
@@ -356,6 +352,63 @@ impl ModelDag {
     pub fn get_index(&self, model_ref: &str) -> Option<NodeIndex> {
         self.ref_to_index.get(model_ref).copied()
     }
+    
+    pub fn get_node_ref(&self, model_ref: &str) -> Option<&DagNode> {
+        let idx = self.get_index(model_ref)?;
+        Some(&self.graph[idx])
+    }
+    
+    pub fn toposort(&self) -> Result<Vec<NodeIndex>, DagError> {
+        let order = toposort(&self.graph, None).map_err(|_| {
+            // Attempt to extract cycle from SCC (strongly connected components)
+            let cyclic_refs = kosaraju_scc(&self.graph)
+                .into_iter()
+                .find(|scc| scc.len() > 1)
+                .unwrap_or_default();
+
+            let cycle = cyclic_refs
+                .into_iter()
+                .map(|idx| self.graph[idx].reference.clone())
+                .collect();
+
+            DagError::CycleDetected(cycle)
+        })?;
+        
+        Ok(order)
+    }
+
+    fn filter_toposort(
+        &self,
+        included: &HashSet<NodeIndex>,
+    ) -> Result<Vec<&DagNode>, DagError> {
+        let order = self.toposort()?;
+        Ok(order
+            .into_iter()
+            .filter(|idx| included.contains(idx))
+            .map(|idx| &self.graph[idx])
+            .collect())
+    }
+
+
+    pub fn traverse(&self, start: NodeIndex, direction: Direction) -> HashSet<NodeIndex> {
+        let mut visited = HashSet::new();
+        let mut stack = VecDeque::new();
+        stack.push_back(start);
+
+        while let Some(current_idx) = stack.pop_back() {
+            for dep_idx in self
+                .graph
+                .neighbors_directed(current_idx, direction)
+            {
+                if visited.insert(dep_idx) {
+                    // result.push(&self.graph[dep_idx]);
+                    stack.push_back(dep_idx);
+                }
+            }
+        }
+        
+        visited
+    }
 
     /// Finds all transitive dependencies for a given `ModelRef` in the Directed Acyclic Graph (DAG).
     ///
@@ -380,7 +433,7 @@ impl ModelDag {
     /// # Example
     ///
     /// ```ignore
-    /// let dependencies = dag.transitive_deps(&model_ref);
+    /// let dependencies = dag.transitive_closure(&model_ref);
     /// for dep in dependencies {
     ///     println!("Dependency: {:?}", dep);
     /// }
@@ -404,30 +457,34 @@ impl ModelDag {
     /// # See Also
     ///
     /// - `Dag`
-    pub fn transitive_deps(&self, model_ref: &str) -> Vec<&DagNode> {
+    pub fn transitive_closure(&self, model_ref: &str, direction: Direction) -> Result<Vec<&DagNode>, DagError> {
         let start_idx = match self.ref_to_index.get(model_ref) {
             Some(idx) => *idx,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
 
-        let mut visited = HashSet::new();
-        let mut stack = VecDeque::new();
-        let mut result = Vec::new();
+        let visited = self.traverse(start_idx, direction);
+        
+        let deps = self.filter_toposort(&visited)?;
+        
+        Ok(deps)
+    }
+    
+    pub fn get_model_execution_order(&self, model_ref: &str) -> Result<Vec<&DagNode>, DagError> {
+        let Some(start_idx) = self.ref_to_index.get(model_ref) else {
+            return Ok(Vec::new());
+        };
+        
+        let upstream = self.traverse(*start_idx, Direction::Incoming);
+        let downstream = self.traverse(*start_idx, Direction::Outgoing);
+        
+        let mut included_nodes = upstream;
+        included_nodes.insert(*start_idx);
+        included_nodes.extend(downstream);
 
-        stack.push_back(start_idx);
+        let plan = self.filter_toposort(&included_nodes)?;
 
-        while let Some(current_idx) = stack.pop_back() {
-            for dep_idx in self
-                .graph
-                .neighbors_directed(current_idx, Direction::Outgoing)
-            {
-                if visited.insert(dep_idx) {
-                    result.push(&self.graph[dep_idx]);
-                    stack.push_back(dep_idx);
-                }
-            }
-        }
-        result
+        Ok(plan)
     }
     
     /// Resolve a model reference to its fully-qualified name.
@@ -561,7 +618,7 @@ mod tests {
     #[test]
     fn test_graph() -> Result<(), DagError> {
         let models = build_models();
-        let dag = ModelDag::new(models)?;
+        let dag = ModelsDag::new(models)?;
 
         assert!(!petgraph::algo::is_cyclic_directed(&dag.graph));
 
@@ -573,7 +630,7 @@ mod tests {
         use petgraph::Direction;
         let deps: Vec<&DagNode> = dag
             .graph
-            .neighbors_directed(slvr_orders_idx, Direction::Outgoing)
+            .neighbors_directed(slvr_orders_idx, Direction::Incoming)
             .map(|idx| &dag.graph[idx])
             .collect();
 
@@ -597,13 +654,14 @@ mod tests {
     #[test]
     fn test_transitive_deps() -> Result<(), DagError> {
         let models = build_models();
-        let dag = ModelDag::new(models)?;
+        let dag = ModelsDag::new(models)?;
 
-        let deps = dag.transitive_deps("slvr_orders");
+        let deps = dag.transitive_closure("slvr_orders", Direction::Incoming)?;
 
         let dep_refs: Vec<_> = deps.iter().map(|node| &node.reference).collect();
-        println!("Dependencies of slvr_orders: {:?}", dep_refs);
 
+        println!("Transitive deps: {:?}", dep_refs);
+        
         assert!(dep_refs.contains(&&ModelRef {
             table: "slvr_customers".into(),
             schema: "silver".into()
@@ -613,14 +671,14 @@ mod tests {
             table: "raw_customer".into(),
             schema: "bronze".into()
         }));
-
+        
         Ok(())
     }
 
     #[test]
     fn test_resolve_ref() -> Result<(), DagError> {
         let models = build_models();
-        let dag = ModelDag::new(models)?;
+        let dag = ModelsDag::new(models)?;
 
         let fq = dag.resolve_ref("slvr_orders")?;
         assert_eq!(fq, "silver.slvr_orders");
@@ -634,7 +692,7 @@ mod tests {
     #[test]
     fn build_viz() -> Result<(), DagError> {
         let models = build_models();
-        let dag = ModelDag::new(models)?;
+        let dag = ModelsDag::new(models)?;
 
         dag.export_dot();
 
@@ -665,7 +723,7 @@ mod tests {
             ),
         ];
 
-        match ModelDag::new(models) {
+        match ModelsDag::new(models) {
             Ok(_) => panic!("Expected cycle detection error, but got Ok"),
             Err(DagError::CycleDetected(ref cycle)) => {
                 assert!(cycle.contains(&model_ref_a));

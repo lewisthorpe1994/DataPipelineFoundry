@@ -2,7 +2,7 @@ use common::traits::IsFileExtension;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use crate::config::components::connections::{ConnectionProfile};
 use crate::config::components::foundry_project::{FoundryProjectConfig, ModelLayers};
 use crate::config::components::global::FoundryConfig;
@@ -22,8 +22,8 @@ where
     Ok(Wrapper::from_config_list(config.vec()))
 }
 
-pub fn read_config(project_config_path: Option<&Path>) -> Result<FoundryConfig, ConfigError> {
-    let proj_config_path = project_config_path.unwrap_or(Path::new("foundry-project.yml"));
+pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig, ConfigError> {
+    let proj_config_path = project_config_path.unwrap_or_else(|| "foundry-project.yml".into());
 
     let project_file = fs::File::open(proj_config_path)?;
     let proj_config: FoundryProjectConfig = serde_yaml::from_reader(project_file)?;
@@ -42,8 +42,9 @@ pub fn read_config(project_config_path: Option<&Path>) -> Result<FoundryConfig, 
         .as_ref()
         .map(ModelsConfig::try_from)
         .transpose()?;
+    let conn_profile = proj_config.connection_profile.clone();
     
-    let config = FoundryConfig::new(proj_config, source_config, connections, models_config);
+    let config = FoundryConfig::new(proj_config, source_config, connections, models_config, conn_profile);
 
     Ok(config)
 }
@@ -117,7 +118,7 @@ connection_profile: dev
         write!(project_file, "{}", project_yaml).unwrap();
 
         // 5️⃣  ── load and assert ────────────────────────────────────────────────
-        let cfg = read_config(Some(project_file.path())).expect("Failed to read config");
+        let cfg = read_config(Some(PathBuf::from(project_file.path()))).expect("Failed to read config");
 
         assert_eq!(cfg.project.project_name, "test_project");
         assert_eq!(cfg.project.version, "1.0.0");
@@ -256,7 +257,7 @@ connection_profile: dev
         write!(project_file, "{}", project_yaml).unwrap();
 
         // Load and assert
-        let cfg = read_config(Some(project_file.path())).expect("Failed to read config");
+        let cfg = read_config(Some(PathBuf::from(project_file.path()))).expect("Failed to read config");
 
         // Verify models config is loaded
         assert!(cfg.models.is_some(), "Models config should be loaded");
