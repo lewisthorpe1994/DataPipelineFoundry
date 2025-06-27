@@ -66,7 +66,7 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
     // 2️⃣  Prepare Jinja environment for template rendering
     // ---------------------------------------------------------------------
     let dag_arc = Arc::new(dag);
-    let env = build_jinja_env(dag_arc.clone(), Arc::new(config.source));
+    let env = build_jinja_env(dag_arc.clone(), Arc::new(config.warehouse_source));
 
     // hold manifest data
     let mut manifest_models = Vec::new();

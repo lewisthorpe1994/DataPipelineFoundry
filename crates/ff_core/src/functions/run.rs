@@ -135,6 +135,8 @@ mod tests {
     use common::types::Identifier;
     use std::fs;
     use tempfile::tempdir;
+    use crate::config::components::sources::SourcePaths;
+
     struct FakeExec {
         pub calls: Vec<String>,
     }
@@ -653,8 +655,7 @@ mod tests {
         use crate::config::components::connections::ConnectionsConfig;
         use crate::config::components::foundry_project::{FoundryProjectConfig, PathsConfig};
         use crate::config::components::model::ModelsPaths;
-        use crate::config::components::source::SourceConfigs;
-        use crate::config::components::source::SourcesPath;
+        use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
 
         let project = FoundryProjectConfig {
             project_name: "test".into(),
@@ -667,17 +668,18 @@ mod tests {
                     dir: "models".into(),
                     layers: None,
                 },
-                sources: Vec::<SourcesPath>::new(),
-                connections: String::new(),
+            sources: Vec::<SourcePaths>::new(),
+            connections: String::new(),
             },
         };
 
         FoundryConfig::new(
             project,
-            SourceConfigs::empty(),
+            WarehouseSourceConfigs::empty(),
             ConnectionsConfig::new(),
             None,
             "dev".into(),
+            None
         )
     }
 

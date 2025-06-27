@@ -1,4 +1,5 @@
 pub mod schema;
+pub mod sources;
 
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
