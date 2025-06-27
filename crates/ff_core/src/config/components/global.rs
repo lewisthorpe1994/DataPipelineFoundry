@@ -10,6 +10,7 @@ pub struct FoundryConfig {
     pub source: SourceConfigs,
     pub connections: ConnectionsConfig,
     pub models: Option<ModelsConfig>,
+    pub connection_profile: String,
 }
 impl FoundryConfig {
     pub fn new(
@@ -17,12 +18,14 @@ impl FoundryConfig {
         source: SourceConfigs,
         connections: ConnectionsConfig,
         models: Option<ModelsConfig>,
+        connection_profile: String,
     ) -> Self {
         Self {
             project,
             source,
             connections,
             models,
+            connection_profile,
         }
     }
 }

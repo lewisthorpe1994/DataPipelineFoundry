@@ -6,7 +6,8 @@ members = [
     "crates/adapter_postgres",
     "crates/engine_df",
     "crates/common",
-    "crates/sqlparser"
+    "crates/sqlparser",
+    "crates/logging"
 ]
 
 [workspace.package]
@@ -27,3 +28,4 @@ common = { path = "crates/common"}
 ff_core = { path = "crates/ff_core"}
 sqlparser = {path = "crates/sqlparser"}
 postgres = "0.19"
+logging = { path = "crates/logging"}

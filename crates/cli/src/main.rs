@@ -1,5 +1,6 @@
 mod commands;
 
+use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use commands::{handle_init, handle_compile, handle_run};
 use crate::commands::init::InitArgs;
@@ -8,12 +9,20 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 use time::format_description::FormatItem;
 use time::macros::format_description;
+use crate::commands::run::RunArgs;
 
 #[derive(Parser)]
-#[command(name = "forgery")]
+#[command(name = "foundry")]
 pub struct Cli {
+    #[arg(
+        long = "config-path",
+        short = 'c',
+        help = "path to config file",
+        global = true,
+    )]
+    pub config_path: Option<PathBuf>,
     #[command(subcommand)]
-    pub command: Cmd,
+    pub command: Cmd
 }
 
 #[derive(Subcommand)]
@@ -22,11 +31,8 @@ pub enum Cmd {
     Init(InitArgs),
     /// Compile the DAG and emit SQL
     Compile,
-    /// Run the model DAG using the chosen target (postgres or datafusion)
-    Run {
-        #[arg(short, long, default_value = "postgres", help = "Execution backend")]
-        target: String,
-    },
+    /// Run the model DAG using the chosen target
+    Run(RunArgs),
     /// Print the model dependency graph
     Graph,
     /// Clean generated files
@@ -69,8 +75,8 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Cmd::Run { target } => {
-            if let Err(e) = handle_run(target) {
+        Cmd::Run(args) => {
+            if let Err(e) = handle_run(args.model, cli.config_path) {
                 eprintln!("Run failed: {}", e);
                 std::process::exit(1);
             }
