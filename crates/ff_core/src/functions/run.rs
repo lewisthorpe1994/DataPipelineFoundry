@@ -1,10 +1,10 @@
-use crate::config::components::global::FoundryConfig;
 use crate::compiler;
-use crate::dag::{ModelsDag};
-use postgres::{Client, NoTls};
+use crate::config::components::global::FoundryConfig;
+use crate::dag::ModelsDag;
+use crate::executor::sql::SqlExecutor;
 use common::error::FFError;
 use petgraph::Direction;
-use crate::executor::sql::SqlExecutor;
+use postgres::{Client, NoTls};
 
 /// Execute the compiled SQL in dependency order using the provided executor.
 pub fn execute_dag<E: SqlExecutor>(
@@ -12,53 +12,93 @@ pub fn execute_dag<E: SqlExecutor>(
     config: &FoundryConfig,
     executor: &mut E,
 ) -> Result<(), FFError> {
-    
-    let order = dag.get_included_dag_nodes(None).map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
-    executor.execute_dag_models(order, &config.project.compile_path, &config.project.paths.models.dir)
+    let order = dag
+        .get_included_dag_nodes(None)
+        .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
+    executor
+        .execute_dag_models(
+            order,
+            &config.project.compile_path,
+            &config.project.paths.models.dir,
+        )
         .map_err(|e| FFError::Run(e.into()))?;
-    
+
     Ok(())
 }
 
+/// Execute a single model or a slice of the DAG depending on the provided
+/// selector syntax.
+///
+/// A model name can be prefixed and/or suffixed with `<` / `>` to select
+/// additional nodes:
+///
+/// * `"<model"` - execute all upstream dependencies of `model`.
+/// * `"model>"` - execute all downstream dependents of `model`.
+/// * `"<model>"` - execute both upstream and downstream nodes as well as the
+///   model itself.
 fn execute_model<E: SqlExecutor>(
     dag: &ModelsDag,
     model: String,
     config: &FoundryConfig,
     executor: &mut E,
 ) -> Result<(), FFError> {
-    let exec_order = if model.starts_with("<") && model.ends_with(">") {
-        Some(dag.get_model_execution_order(&model)
-            .map_err(|e| FFError::Run(e.into()))?)
-    }
-    else if model.starts_with("<") {
-        Some(dag.transitive_closure(&model, Direction::Incoming)
-            .map_err(|e| FFError::Run(e.into()))?)
-        
-    } else if model.ends_with(">") {
-        Some(dag.transitive_closure(&model, Direction::Outgoing)
-                 .map_err(|e| FFError::Run(e.into()))?)
+    let exec_order = if model.starts_with('<') && model.ends_with('>') {
+        let name = model.trim_start_matches('<').trim_end_matches('>');
+        Some(
+            dag.get_model_execution_order(name)
+                .map_err(|e| FFError::Run(e.into()))?,
+        )
+    } else if model.starts_with('<') {
+        let name = model.trim_start_matches('<');
+        Some(
+            dag.transitive_closure(name, Direction::Incoming)
+                .map_err(|e| FFError::Run(e.into()))?,
+        )
+    } else if model.ends_with('>') {
+        let name = model.trim_end_matches('>');
+        Some(
+            dag.transitive_closure(name, Direction::Outgoing)
+                .map_err(|e| FFError::Run(e.into()))?,
+        )
     } else {
         None
     };
-    
+
     if let Some(exec_order) = exec_order {
-        executor.execute_dag_models(
-            exec_order, &config.project.compile_path, &config.project.paths.models.dir
-        ).map_err(|e| FFError::Run(e.into()))?;
+        executor
+            .execute_dag_models(
+                exec_order,
+                &config.project.compile_path,
+                &config.project.paths.models.dir,
+            )
+            .map_err(|e| FFError::Run(e.into()))?;
     } else {
         let node = match dag.get_node_ref(&model) {
             Some(idx) => idx,
-            None => return Err(FFError::Compile(format!("model {} not found", model).into())),
+            None => {
+                return Err(FFError::Compile(
+                    format!("model {} not found", model).into(),
+                ))
+            }
         };
-        
-        executor.execute_dag_models(
-            node, &config.project.compile_path, &config.project.paths.models.dir
-        ).map_err(|e| FFError::Run(e.into()))?;
+
+        executor
+            .execute_dag_models(
+                node,
+                &config.project.compile_path,
+                &config.project.paths.models.dir,
+            )
+            .map_err(|e| FFError::Run(e.into()))?;
     }
-    
+
     Ok(())
 }
 
+/// Compile models and execute them against the configured target database.
+///
+/// When `model` is `None` the entire DAG is executed. If a model name is
+/// supplied, the selection syntax from [`execute_model`] can be used to run a
+/// specific slice of the DAG.
 pub fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
     // compile models and obtain the dependency graph
     let dag = compiler::compile(config.project.compile_path.clone())?;
@@ -78,31 +118,31 @@ pub fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> 
         profile.get("database").unwrap_or(&"postgres".to_string())
     );
 
-    let mut client = Client::connect(&conn_str, NoTls)
-        .map_err(|e| FFError::Compile(e.into()))?;
+    let mut client = Client::connect(&conn_str, NoTls).map_err(|e| FFError::Compile(e.into()))?;
     match model {
-        Some(model) => {
-            execute_model(&dag, model, &config, &mut client)
-        },
-        None => execute_dag(&dag, &config, &mut client)
+        Some(model) => execute_model(&dag, model, &config, &mut client),
+        None => execute_dag(&dag, &config, &mut client),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use std::fs;
     use crate::config::loader::read_config;
+    use crate::dag::IntoDagNodes;
     use crate::executor::ExecutorError;
     use crate::test_utils::TEST_MUTEX;
+    use common::types::Identifier;
+    use std::fs;
+    use tempfile::tempdir;
     struct FakeExec {
         pub calls: Vec<String>,
     }
 
     impl FakeExec {
-        fn new() -> Self { Self { calls: Vec::new() } }
+        fn new() -> Self {
+            Self { calls: Vec::new() }
+        }
     }
 
     impl SqlExecutor for FakeExec {
@@ -110,8 +150,22 @@ mod tests {
             self.calls.push(sql.to_string());
             Ok(())
         }
+
+        fn execute_dag_models<'a, T>(
+            &mut self,
+            nodes: T,
+            _compile_path: &str,
+            _models_dir: &str,
+        ) -> Result<(), ExecutorError>
+        where
+            T: IntoDagNodes<'a>,
+        {
+            for node in nodes.into_vec() {
+                self.calls.push(node.identifier());
+            }
+            Ok(())
+        }
     }
-    
 
     /// Integration test that executes the full `run` workflow against a live
     /// PostgreSQL instance. The database connection can be configured using the
@@ -153,7 +207,7 @@ mod tests {
              );
              INSERT INTO raw.orders VALUES (1, 1, 100, CURRENT_DATE);
              INSERT INTO raw.orders VALUES (2, 1, 200, CURRENT_DATE);
-            "
+            ",
         )?;
 
         // ----- project setup -------------------------------------------------------
@@ -448,7 +502,7 @@ mod tests {
         assert!(matches!(result, Err(FFError::Compile(_))));
         Ok(())
     }
-    
+
     #[test]
     fn test_run_single_model() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
@@ -482,7 +536,7 @@ mod tests {
              );
              INSERT INTO raw.orders VALUES (1, 1, 100, CURRENT_DATE);
              INSERT INTO raw.orders VALUES (2, 1, 200, CURRENT_DATE);
-            "
+            ",
         )?;
 
         // ----- project setup -------------------------------------------------------
@@ -562,5 +616,104 @@ mod tests {
 
         Ok(())
     }
-}
 
+    // ----- helpers ---------------------------------------------------------
+    fn build_dag() -> ModelsDag {
+        use common::types::{ParsedNode, Relation, RelationType, Relations};
+        use std::path::PathBuf;
+
+        let nodes = vec![
+            ParsedNode::new(
+                "s".to_string(),
+                "A".to_string(),
+                None,
+                Relations::from(vec![]),
+                PathBuf::from("A.sql"),
+            ),
+            ParsedNode::new(
+                "s".to_string(),
+                "B".to_string(),
+                None,
+                Relations::from(vec![Relation::new(RelationType::Model, "A".into())]),
+                PathBuf::from("B.sql"),
+            ),
+            ParsedNode::new(
+                "s".to_string(),
+                "C".to_string(),
+                None,
+                Relations::from(vec![Relation::new(RelationType::Model, "B".into())]),
+                PathBuf::from("C.sql"),
+            ),
+        ];
+
+        ModelsDag::new(nodes).expect("valid dag")
+    }
+
+    fn dummy_config() -> FoundryConfig {
+        use crate::config::components::connections::ConnectionsConfig;
+        use crate::config::components::foundry_project::{FoundryProjectConfig, PathsConfig};
+        use crate::config::components::model::ModelsPaths;
+        use crate::config::components::source::SourceConfigs;
+        use crate::config::components::source::SourcesPath;
+
+        let project = FoundryProjectConfig {
+            project_name: "test".into(),
+            version: "1".into(),
+            compile_path: "compiled".into(),
+            modelling_architecture: "custom".into(),
+            connection_profile: "dev".into(),
+            paths: PathsConfig {
+                models: ModelsPaths {
+                    dir: "models".into(),
+                    layers: None,
+                },
+                sources: Vec::<SourcesPath>::new(),
+                connections: String::new(),
+            },
+        };
+
+        FoundryConfig::new(
+            project,
+            SourceConfigs::empty(),
+            ConnectionsConfig::new(),
+            None,
+            "dev".into(),
+        )
+    }
+
+    #[test]
+    fn test_execute_model_upstream() -> Result<(), Box<dyn std::error::Error>> {
+        let dag = build_dag();
+        let mut exec = FakeExec::new();
+        let cfg = dummy_config();
+
+        execute_model(&dag, "<B".to_string(), &cfg, &mut exec)?;
+
+        assert_eq!(exec.calls, vec!["s.A"]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_execute_model_downstream() -> Result<(), Box<dyn std::error::Error>> {
+        let dag = build_dag();
+        let mut exec = FakeExec::new();
+        let cfg = dummy_config();
+
+        execute_model(&dag, "B>".to_string(), &cfg, &mut exec)?;
+
+        assert_eq!(exec.calls, vec!["s.C"]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_execute_model_full_slice() -> Result<(), Box<dyn std::error::Error>> {
+        let dag = build_dag();
+        let mut exec = FakeExec::new();
+        let cfg = dummy_config();
+
+        execute_model(&dag, "<B>".to_string(), &cfg, &mut exec)?;
+
+        assert_eq!(exec.calls, vec!["s.A", "s.B", "s.C"]);
+        Ok(())
+    }
+}
