@@ -1,5 +1,5 @@
 use crate::config::components::source::SourceConfigs;
-use crate::dag::ModelDag;
+use crate::dag::ModelsDag;
 use minijinja::{Environment, Error, ErrorKind, Value};
 use std::sync::Arc;
 use common::types::{Materialize, Relation};
@@ -13,7 +13,7 @@ use common::types::{Materialize, Relation};
 /// # Arguments
 /// * `env` - The Jinja environment to register the macro with.
 /// * `dag` - Shared [`ModelDag`] used to resolve model references.
-pub fn register_ref(env: &mut Environment<'_>, dag: Arc<ModelDag>) {
+pub fn register_ref(env: &mut Environment<'_>, dag: Arc<ModelsDag>) {
     let func_graph = dag.clone();
     env.add_function("ref", move |model: String| -> Result<Value, Error> {
         let resolved = func_graph.resolve_ref(&model)?;
@@ -42,14 +42,14 @@ pub fn register_source(env: &mut Environment<'_>, source_config: Arc<SourceConfi
 /// * `dag` - A shared [`ModelDag`] used for dependency resolution.
 pub fn register_macros(
     env: &mut Environment<'_>,
-    dag: Arc<ModelDag>,
+    dag: Arc<ModelsDag>,
     source_config: Arc<SourceConfigs>,
 ) {
     register_ref(env, dag);
     register_source(env, source_config);
 }
 
-pub fn build_jinja_env(dag: Arc<ModelDag>, source_config: Arc<SourceConfigs>) -> Environment<'static> {
+pub fn build_jinja_env(dag: Arc<ModelsDag>, source_config: Arc<SourceConfigs>) -> Environment<'static> {
     let mut env = Environment::new();
     register_macros(&mut env, dag, source_config);
     env
@@ -69,7 +69,7 @@ mod tests {
     fn ref_resolves_known_model() {
         let mut env = Environment::new();
         let dag = Arc::new(
-            ModelDag::new(vec![ParsedNode::new(
+            ModelsDag::new(vec![ParsedNode::new(
                 "schema".to_string(),
                 "model_a".to_string(),
                 None,
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn ref_returns_input_for_unknown_model() {
         let mut env = Environment::new();
-        let dag = Arc::new(ModelDag::new(vec![]).unwrap());
+        let dag = Arc::new(ModelsDag::new(vec![]).unwrap());
         register_ref(&mut env, dag);
 
         let rendered = env.render_str("{{ ref('model_a') }}", ());

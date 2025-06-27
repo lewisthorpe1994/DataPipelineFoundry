@@ -1,59 +1,21 @@
 use crate::config::components::global::FoundryConfig;
 use crate::compiler;
 use crate::dag::{ModelsDag};
-use petgraph::algo::toposort;
 use postgres::{Client, NoTls};
-use std::path::{Path, PathBuf};
-use std::time;
 use common::error::FFError;
-use log::info;
 use petgraph::Direction;
-use common::types::Identifier;
-use logging::timeit;
+use crate::executor::sql::SqlExecutor;
 
-/// Simple trait for executing SQL statements. Implemented for `postgres::Client`.
-pub trait SqlExecutor {
-    fn execute(&mut self, sql: &str) -> Result<(), postgres::Error>;
-}
-
-impl SqlExecutor for Client {
-    fn execute(&mut self, sql: &str) -> Result<(), postgres::Error> {
-        self.batch_execute(sql)
-    }
-}
-
-fn read_model_sql(models_dir: &str, node_path: &PathBuf, compile_path: &str) -> Result<String, FFError> {
-    let rel_path = Path::new(&node_path)
-        .strip_prefix(models_dir)
-        .unwrap_or(Path::new(&node_path));
-    let sql_path = Path::new(compile_path).join(rel_path);
-    let sql = std::fs::read_to_string(&sql_path)
-        .map_err(|e| FFError::Run(e.into()))?;
-
-    Ok(sql)
-}
 /// Execute the compiled SQL in dependency order using the provided executor.
 pub fn execute_dag<E: SqlExecutor>(
     dag: &ModelsDag,
     config: &FoundryConfig,
     executor: &mut E,
 ) -> Result<(), FFError> {
-
-    let order = toposort(&dag.graph, None)
-        .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
-    timeit!("Executed all models", {
-        for idx in order.into_iter().rev() {
-            let node = &dag.graph[idx];
-            timeit!(format!("Executed model {}", &node.path.display()), {
-                let sql = read_model_sql(
-                    &config.project.paths.models.dir, &node.path, &config.project.compile_path
-                )?;
-                executor
-                    .execute(&sql)
-                    .map_err(|e| FFError::Run(e.into()))?;
-            })
-        }
-    });
+    
+    let order = dag.get_included_dag_nodes(None).map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
+    executor.execute_dag_models(order, &config.project.compile_path, &config.project.paths.models.dir)
+        .map_err(|e| FFError::Run(e.into()))?;
     
     Ok(())
 }
@@ -64,32 +26,36 @@ fn execute_model<E: SqlExecutor>(
     config: &FoundryConfig,
     executor: &mut E,
 ) -> Result<(), FFError> {
-    if model.starts_with("<") {
-        let deps = dag.transitive_closure(&model, Direction::Incoming).map_err(|e| FFError::Run(e.into()))?;
-        for dep in deps {
-            let sql = read_model_sql(
-                &config.project.paths.models.dir, &dep.path, &config.project.compile_path
-            )?;
-            
-            timeit!(format!("Executed model {}", &dep.path.display()), {
-                executor.execute(&sql).map_err(|e| FFError::Run(e.into()))?;
-            })
+    let exec_order = if model.starts_with("<") && model.ends_with(">") {
+        Some(dag.get_model_execution_order(&model)
+            .map_err(|e| FFError::Run(e.into()))?)
+    }
+    else if model.starts_with("<") {
+        Some(dag.transitive_closure(&model, Direction::Incoming)
+            .map_err(|e| FFError::Run(e.into()))?)
+        
+    } else if model.ends_with(">") {
+        Some(dag.transitive_closure(&model, Direction::Outgoing)
+                 .map_err(|e| FFError::Run(e.into()))?)
+    } else {
+        None
+    };
+    
+    if let Some(exec_order) = exec_order {
+        executor.execute_dag_models(
+            exec_order, &config.project.compile_path, &config.project.paths.models.dir
+        ).map_err(|e| FFError::Run(e.into()))?;
+    } else {
+        let node = match dag.get_node_ref(&model) {
+            Some(idx) => idx,
+            None => return Err(FFError::Compile(format!("model {} not found", model).into())),
         };
-        return Ok(())
+        
+        executor.execute_dag_models(
+            node, &config.project.compile_path, &config.project.paths.models.dir
+        ).map_err(|e| FFError::Run(e.into()))?;
     }
     
-    let node = match dag.get_node_ref(&model) {
-        Some(idx) => idx,
-        None => return Err(FFError::Compile(format!("model {} not found", model).into())),
-    };
-
-    let sql = read_model_sql(
-        &config.project.paths.models.dir, &node.path, &config.project.compile_path
-    )?;
-    timeit!(format!("Executed model {}", &node.path.display()), {
-        executor.execute(&sql).map_err(|e| FFError::Run(e.into()))? 
-    });
-
     Ok(())
 }
 
@@ -129,6 +95,7 @@ mod tests {
     use tempfile::tempdir;
     use std::fs;
     use crate::config::loader::read_config;
+    use crate::executor::ExecutorError;
     use crate::test_utils::TEST_MUTEX;
     struct FakeExec {
         pub calls: Vec<String>,
@@ -139,7 +106,7 @@ mod tests {
     }
 
     impl SqlExecutor for FakeExec {
-        fn execute(&mut self, sql: &str) -> Result<(), postgres::Error> {
+        fn execute(&mut self, sql: &str) -> Result<(), ExecutorError> {
             self.calls.push(sql.to_string());
             Ok(())
         }
@@ -152,7 +119,7 @@ mod tests {
     /// `PG_DB`. When not set, the defaults from the repository's
     /// `docker-compose.yml` are used.
     #[test]
-    #[ignore]
+    // #[ignore]
     fn test_run_live_postgres() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
         // ----- database connection -------------------------------------------------

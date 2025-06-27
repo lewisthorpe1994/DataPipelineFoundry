@@ -15,6 +15,7 @@ common = { workspace = true}
 walkdir = "2.5.0"
 postgres = "0.19"
 log = "0.4.27"
+tracing = "0.1.41"
 
 [dev-dependencies]
 tempfile = "3"

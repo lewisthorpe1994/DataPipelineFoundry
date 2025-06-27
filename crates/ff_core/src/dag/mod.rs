@@ -101,6 +101,22 @@ impl Display for DagNode {
     }
 }
 
+pub trait IntoDagNodes<'a> {
+    fn into_vec(self) -> Vec<&'a DagNode>;
+}
+
+impl<'a> IntoDagNodes<'a> for Vec<&'a DagNode> {
+    fn into_vec(self) -> Vec<&'a DagNode> {
+        self
+    }
+}
+
+impl<'a> IntoDagNodes<'a> for &'a DagNode {
+    fn into_vec(self) -> Vec<&'a DagNode> {
+        vec![self]
+    }
+}
+
 #[derive(Debug)]
 pub enum DagError {
     DuplicateModel(ModelRef),
@@ -377,16 +393,23 @@ impl ModelsDag {
         Ok(order)
     }
 
-    fn filter_toposort(
+    pub fn get_included_dag_nodes(
         &self,
-        included: &HashSet<NodeIndex>,
+        included: Option<&HashSet<NodeIndex>>, // uses all nodes if no indexes are passed
     ) -> Result<Vec<&DagNode>, DagError> {
         let order = self.toposort()?;
-        Ok(order
-            .into_iter()
-            .filter(|idx| included.contains(idx))
-            .map(|idx| &self.graph[idx])
-            .collect())
+        match included {
+            Some(included) => {
+                Ok(order
+                    .into_iter()
+                    .filter(|idx| included.contains(idx))
+                    .map(|idx| &self.graph[idx])
+                    .collect())
+            }
+            None => {
+                Ok(order.into_iter().map(|idx| &self.graph[idx]).collect())
+            }
+        }
     }
 
 
@@ -465,7 +488,7 @@ impl ModelsDag {
 
         let visited = self.traverse(start_idx, direction);
         
-        let deps = self.filter_toposort(&visited)?;
+        let deps = self.get_included_dag_nodes(Some(&visited))?;
         
         Ok(deps)
     }
@@ -482,7 +505,7 @@ impl ModelsDag {
         included_nodes.insert(*start_idx);
         included_nodes.extend(downstream);
 
-        let plan = self.filter_toposort(&included_nodes)?;
+        let plan = self.get_included_dag_nodes(Some(&included_nodes))?;
 
         Ok(plan)
     }

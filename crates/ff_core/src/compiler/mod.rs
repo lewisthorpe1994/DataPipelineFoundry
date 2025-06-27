@@ -9,7 +9,7 @@ use common::error::FFError;
 use common::types::{Identifier, RelationType};
 
 use crate::config::loader::read_config;
-use crate::dag::ModelDag;
+use crate::dag::ModelsDag;
 use crate::macros::build_jinja_env;
 use crate::parser::parse_models;
 
@@ -46,7 +46,7 @@ struct Manifest {
     models: Vec<ManifestModel>,
 }
 
-pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelDag>, FFError> {
+pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFError> {
     let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
 
     // ---------------------------------------------------------------------
@@ -57,7 +57,7 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelDag>, FFError
         None => return Err(FFError::Compile("No models found to compile".into())),
     };
 
-    let dag = ModelDag::new(nodes).map_err(|e| FFError::Compile(e.into()))?;
+    let dag = ModelsDag::new(nodes).map_err(|e| FFError::Compile(e.into()))?;
 
     // ensure compile directory exists
     fs::create_dir_all(&compile_path).map_err(|e| FFError::Compile(e.into()))?;
