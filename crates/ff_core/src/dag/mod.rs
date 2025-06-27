@@ -1,15 +1,16 @@
-use common::types::{Materialize, ModelRef, ParsedNode, Relations, RelationType, Relation, Identifier};
+use common::types::{
+    Identifier, Materialize, ModelRef, ParsedNode, Relation, RelationType, Relations,
+};
+use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
-use std::path::Path;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{format, Display, Formatter};
-use std::{fmt, io};
+use std::path::Path;
 use std::path::PathBuf;
-use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
-
+use std::{fmt, io};
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -50,7 +51,7 @@ impl Display for EmtpyEdge {
 /// use common::types::Materialize;
 ///
 /// let model_reference = ModelRef{
-///     table: "SomeTable".to_string(), 
+///     table: "SomeTable".to_string(),
 ///     schema: "SomeSchema".to_string()
 /// }; // Hypothetical function to create a `ModelRef`
 /// let materialized_state = Materialize::default(); // Hypothetical default state
@@ -85,7 +86,7 @@ impl DagNode {
             reference,
             materialized: materialize.unwrap_or_default(),
             relations,
-            path
+            path,
         }
     }
 }
@@ -123,7 +124,7 @@ pub enum DagError {
     MissingDependency(ModelRef, String),
     CycleDetected(Vec<ModelRef>),
     Io(io::Error),
-    RefNotFound(String)
+    RefNotFound(String),
 }
 impl Display for DagError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -140,7 +141,7 @@ impl Display for DagError {
                 write!(f, "Found duplicated declaration of model: {r:?}")
             }
             DagError::MissingDependency(d, r) => write!(f, "Dependency {d:?} not found for {r:?}"),
-            DagError::RefNotFound(r) => write!(f, "Ref {r} not found!")
+            DagError::RefNotFound(r) => write!(f, "Ref {r} not found!"),
         }
     }
 }
@@ -227,7 +228,7 @@ impl ModelsDag {
     /// 3. Verifies graph is acyclic using Kosaraju's algorithm
     ///
     /// # Example
-/// ```ignore
+    /// ```ignore
     /// use ff_core::dag::ModelDag;
     /// use common::types::{ParsedNode, Relations, Relation, RelationType};
     ///
@@ -253,24 +254,38 @@ impl ModelsDag {
         let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
         let mut ref_to_index: HashMap<String, NodeIndex> =
             HashMap::with_capacity(input_nodes.len());
-        
-        for ParsedNode { schema, model, materialization, relations, path } in &input_nodes {
+
+        for ParsedNode {
+            schema,
+            model,
+            materialization,
+            relations,
+            path,
+        } in &input_nodes
+        {
             if ref_to_index.contains_key(model) {
-                return Err(DagError::DuplicateModel(ModelRef::new(schema.clone(), model.clone())));
+                return Err(DagError::DuplicateModel(ModelRef::new(
+                    schema.clone(),
+                    model.clone(),
+                )));
             }
             let model_ref = ModelRef::new(schema.clone(), model.clone());
-            let from_idx = graph.add_node(
-                DagNode::new(
-                    model_ref.clone(),
-                    materialization.clone(),
-                    relations.clone(),
-                    path.clone(),
-                )
-            );
+            let from_idx = graph.add_node(DagNode::new(
+                model_ref.clone(),
+                materialization.clone(),
+                relations.clone(),
+                path.clone(),
+            ));
             ref_to_index.insert(model.clone(), from_idx);
         }
-        
-        for ParsedNode { schema: pschema, model, relations, .. } in &input_nodes {
+
+        for ParsedNode {
+            schema: pschema,
+            model,
+            relations,
+            ..
+        } in &input_nodes
+        {
             let to_idx = ref_to_index[model];
 
             for rel in relations.iter() {
@@ -368,12 +383,12 @@ impl ModelsDag {
     pub fn get_index(&self, model_ref: &str) -> Option<NodeIndex> {
         self.ref_to_index.get(model_ref).copied()
     }
-    
+
     pub fn get_node_ref(&self, model_ref: &str) -> Option<&DagNode> {
         let idx = self.get_index(model_ref)?;
         Some(&self.graph[idx])
     }
-    
+
     pub fn toposort(&self) -> Result<Vec<NodeIndex>, DagError> {
         let order = toposort(&self.graph, None).map_err(|_| {
             // Attempt to extract cycle from SCC (strongly connected components)
@@ -389,29 +404,30 @@ impl ModelsDag {
 
             DagError::CycleDetected(cycle)
         })?;
-        
+
         Ok(order)
     }
 
+    /// Return the nodes of the DAG in topological order, optionally filtering
+    /// the result to a provided set of indices.
+    ///
+    /// When `included` is `None` the entire graph is returned in execution
+    /// order. If a set of indices is provided only those nodes will be
+    /// returned while preserving the global ordering.
     pub fn get_included_dag_nodes(
         &self,
         included: Option<&HashSet<NodeIndex>>, // uses all nodes if no indexes are passed
     ) -> Result<Vec<&DagNode>, DagError> {
         let order = self.toposort()?;
         match included {
-            Some(included) => {
-                Ok(order
-                    .into_iter()
-                    .filter(|idx| included.contains(idx))
-                    .map(|idx| &self.graph[idx])
-                    .collect())
-            }
-            None => {
-                Ok(order.into_iter().map(|idx| &self.graph[idx]).collect())
-            }
+            Some(included) => Ok(order
+                .into_iter()
+                .filter(|idx| included.contains(idx))
+                .map(|idx| &self.graph[idx])
+                .collect()),
+            None => Ok(order.into_iter().map(|idx| &self.graph[idx]).collect()),
         }
     }
-
 
     pub fn traverse(&self, start: NodeIndex, direction: Direction) -> HashSet<NodeIndex> {
         let mut visited = HashSet::new();
@@ -419,17 +435,14 @@ impl ModelsDag {
         stack.push_back(start);
 
         while let Some(current_idx) = stack.pop_back() {
-            for dep_idx in self
-                .graph
-                .neighbors_directed(current_idx, direction)
-            {
+            for dep_idx in self.graph.neighbors_directed(current_idx, direction) {
                 if visited.insert(dep_idx) {
                     // result.push(&self.graph[dep_idx]);
                     stack.push_back(dep_idx);
                 }
             }
         }
-        
+
         visited
     }
 
@@ -480,27 +493,36 @@ impl ModelsDag {
     /// # See Also
     ///
     /// - `Dag`
-    pub fn transitive_closure(&self, model_ref: &str, direction: Direction) -> Result<Vec<&DagNode>, DagError> {
+    pub fn transitive_closure(
+        &self,
+        model_ref: &str,
+        direction: Direction,
+    ) -> Result<Vec<&DagNode>, DagError> {
         let start_idx = match self.ref_to_index.get(model_ref) {
             Some(idx) => *idx,
             None => return Ok(Vec::new()),
         };
 
         let visited = self.traverse(start_idx, direction);
-        
+
         let deps = self.get_included_dag_nodes(Some(&visited))?;
-        
+
         Ok(deps)
     }
-    
+
+    /// Compute an execution plan containing a model and all of its
+    /// transitive dependencies and dependents.
+    ///
+    /// The returned nodes are ordered according to a global topological sort so
+    /// they can be executed sequentially.
     pub fn get_model_execution_order(&self, model_ref: &str) -> Result<Vec<&DagNode>, DagError> {
         let Some(start_idx) = self.ref_to_index.get(model_ref) else {
             return Ok(Vec::new());
         };
-        
+
         let upstream = self.traverse(*start_idx, Direction::Incoming);
         let downstream = self.traverse(*start_idx, Direction::Outgoing);
-        
+
         let mut included_nodes = upstream;
         included_nodes.insert(*start_idx);
         included_nodes.extend(downstream);
@@ -509,7 +531,7 @@ impl ModelsDag {
 
         Ok(plan)
     }
-    
+
     /// Resolve a model reference to its fully-qualified name.
     ///
     /// # Arguments
@@ -522,8 +544,8 @@ impl ModelsDag {
             Some(idx) => {
                 let node = &self.graph[idx.clone()];
                 Ok(node.reference.to_string())
-            },
-            None => Err(DagError::RefNotFound(model_name.to_string()))
+            }
+            None => Err(DagError::RefNotFound(model_name.to_string())),
         }
     }
 
@@ -582,7 +604,8 @@ impl ModelsDag {
                 "    {} -> {};",
                 edge.target().index(), // flip direction!
                 edge.source().index()
-            ).unwrap();
+            )
+            .unwrap();
         }
         writeln!(dot, "}}").unwrap();
         std::fs::write(path, dot)
@@ -592,8 +615,8 @@ impl ModelsDag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use common::types::ModelRef as MR;
+    use std::fs;
 
     fn build_models() -> Vec<ParsedNode> {
         vec![
@@ -601,7 +624,10 @@ mod tests {
                 "gold".to_string(),
                 "final_orders".to_string(),
                 None,
-                Relations::from(vec![Relation::new(RelationType::Model, "slvr_orders".into())]),
+                Relations::from(vec![Relation::new(
+                    RelationType::Model,
+                    "slvr_orders".into(),
+                )]),
                 PathBuf::from("final_orders"),
             ),
             ParsedNode::new(
@@ -618,7 +644,10 @@ mod tests {
                 "silver".to_string(),
                 "slvr_customers".to_string(),
                 None,
-                Relations::from(vec![Relation::new(RelationType::Model, "raw_customer".into())]),
+                Relations::from(vec![Relation::new(
+                    RelationType::Model,
+                    "raw_customer".into(),
+                )]),
                 PathBuf::from("slvr_customers"),
             ),
             ParsedNode::new(
@@ -684,7 +713,7 @@ mod tests {
         let dep_refs: Vec<_> = deps.iter().map(|node| &node.reference).collect();
 
         println!("Transitive deps: {:?}", dep_refs);
-        
+
         assert!(dep_refs.contains(&&ModelRef {
             table: "slvr_customers".into(),
             schema: "silver".into()
@@ -694,7 +723,7 @@ mod tests {
             table: "raw_customer".into(),
             schema: "bronze".into()
         }));
-        
+
         Ok(())
     }
 
@@ -742,7 +771,7 @@ mod tests {
                 "TestB".to_string(),
                 None,
                 Relations::from(vec![Relation::new(RelationType::Model, "TestA".into())]),
-                PathBuf::from("test")
+                PathBuf::from("test"),
             ),
         ];
 
@@ -755,6 +784,45 @@ mod tests {
             Err(err) => panic!("Unexpected error: {:?}", err),
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_included_dag_nodes_subset() -> Result<(), DagError> {
+        use std::collections::HashSet;
+        let models = build_models();
+        let dag = ModelsDag::new(models)?;
+
+        let mut set = HashSet::new();
+        let idx_a = dag.get_index("raw_orders").unwrap();
+        let idx_b = dag.get_index("slvr_orders").unwrap();
+        set.insert(idx_a);
+        set.insert(idx_b);
+
+        let order = dag.get_included_dag_nodes(Some(&set))?;
+        let names: Vec<_> = order.iter().map(|n| n.reference.table.as_str()).collect();
+        assert_eq!(names, vec!["raw_orders", "slvr_orders"]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_model_execution_order() -> Result<(), DagError> {
+        let models = build_models();
+        let dag = ModelsDag::new(models)?;
+
+        let order = dag.get_model_execution_order("slvr_orders")?;
+        let names: Vec<_> = order.iter().map(|n| n.reference.table.as_str()).collect();
+
+        let pos_raw_orders = names.iter().position(|&n| n == "raw_orders").unwrap();
+        let pos_slvr_customers = names.iter().position(|&n| n == "slvr_customers").unwrap();
+        let pos_raw_customer = names.iter().position(|&n| n == "raw_customer").unwrap();
+        let pos_slvr_orders = names.iter().position(|&n| n == "slvr_orders").unwrap();
+        let pos_final = names.iter().position(|&n| n == "final_orders").unwrap();
+
+        assert!(pos_raw_orders < pos_slvr_orders);
+        assert!(pos_slvr_customers < pos_slvr_orders);
+        assert!(pos_raw_customer < pos_slvr_customers);
+        assert!(pos_slvr_orders < pos_final);
         Ok(())
     }
 }
