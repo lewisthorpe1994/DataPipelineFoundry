@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
+#[derive(Debug)]
 pub enum ConfigError {
     IncorrectPath(String),
     MissingConnection(String),
@@ -17,11 +18,6 @@ impl Display for ConfigError {
             Self::MissingConnection(path) => write!(f, "Missing connection: {}", path),
             Self::PathError(err) => write!(f, "Path error: {}", err),
         }
-    }
-}
-impl Debug for ConfigError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 impl From<std::io::Error> for ConfigError {

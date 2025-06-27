@@ -88,7 +88,7 @@ dev:
 
         // 2️⃣  ── create the sources YAML file ───────────────────────────────────
         let sources_yaml = r#"
-sources:
+warehouse_sources:
   - name: test_source
     database:
       name: some_database
@@ -117,6 +117,7 @@ paths:
   connections: {}
   sources:
     - name: test_source
+      kind: Warehouse
       path: {}
 modelling_architecture: medallion
 connection_profile: dev
@@ -224,7 +225,7 @@ dev:
 
         // Create sources YAML file
         let sources_yaml = r#"
-sources:
+warehouse_sources:
   - name: test_source
     database:
       name: some_database
@@ -253,6 +254,7 @@ paths:
   connections: {}
   sources:
     - name: test_source
+      kind: Warehouse
       path: {}
 modelling_architecture: medallion
 connection_profile: dev

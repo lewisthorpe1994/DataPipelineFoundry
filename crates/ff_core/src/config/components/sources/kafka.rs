@@ -107,6 +107,7 @@ impl KafkaSourceConfigs {
     }
 }
 
+#[derive(Debug)]
 pub enum KafkaSourceConfigError {
     SourceNotFound(String),
     NoSources,
@@ -117,11 +118,6 @@ impl Display for KafkaSourceConfigError {
             Self::SourceNotFound(name) => write!(f, "KafkaSource not found: {}", name),
             Self::NoSources => write!(f, "No sources found"),
         }
-    }
-}
-impl Debug for KafkaSourceConfigError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 impl From<KafkaSourceConfigError> for JinjaError {

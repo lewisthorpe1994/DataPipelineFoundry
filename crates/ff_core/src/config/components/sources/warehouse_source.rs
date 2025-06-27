@@ -110,6 +110,7 @@ impl WarehouseSourceConfigs {
     }
 }
 
+#[derive(Debug)]
 pub enum WarehouseSourceConfigError {
     SourceNotFound(String),
     TableNotFound(String),
@@ -120,11 +121,6 @@ impl Display for WarehouseSourceConfigError {
             Self::SourceNotFound(name) => write!(f, "WarehouseSource not found: {}", name),
             Self::TableNotFound(name) => write!(f, "Table not found: {}", name),
         }
-    }
-}
-impl Debug for WarehouseSourceConfigError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 impl From<WarehouseSourceConfigError> for JinjaError {
