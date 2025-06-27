@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use serde::Deserialize;
-use common::types::sources::SourceType;
 use crate::config::components::sources::SourcePaths;
 use crate::config::loader::load_config;
 use crate::config::traits::{ConfigName, IntoConfigVec};
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
-
+use common::types::sources::SourceType;
 
 // ---------------- KafkaSource Config ----------------
 #[derive(Deserialize, Debug)]

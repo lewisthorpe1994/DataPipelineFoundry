@@ -2,7 +2,7 @@ pub mod schema;
 pub mod sources;
 
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use serde::{Deserialize, Serialize};
 use regex::Regex;
 
