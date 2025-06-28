@@ -7,6 +7,7 @@ use crate::config::components::connections::{ConnectionProfile};
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::global::FoundryConfig;
 use crate::config::components::model::ModelsConfig;
+use crate::config::components::sources::kafka::KafkaSourceConfigs;
 use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
 use crate::config::error::ConfigError;
 use crate::config::traits::{ConfigName, FromFileConfigList, IntoConfigVec};
@@ -38,16 +39,16 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
     let connections: HashMap<String, ConnectionProfile> = serde_yaml::from_reader(conn_file)?;
 
     let warehouse_config = WarehouseSourceConfigs::from(proj_config.paths.sources.clone());
-    // let kafka_config = KafkaSourceConfigs::try_from(
-    //     proj_config.paths.sources.clone()
-    // );
-    // let kafka_config = match kafka_config { 
-    //     Ok(config) => Some(config),
-    //     Err(err) => {
-    //         log::warn!("Failed to load Kafka sources: {}", err);
-    //         None
-    //     }
-    // };
+    let kafka_config = KafkaSourceConfigs::try_from(
+        proj_config.paths.sources.clone()
+    );
+    let kafka_config = match kafka_config { 
+        Ok(config) => Some(config),
+        Err(err) => {
+            log::warn!("Failed to load Kafka sources: {}", err);
+            None
+        }
+    };
     let models_config = proj_config.paths.models.layers
         .as_ref()
         .map(ModelsConfig::try_from)
@@ -55,7 +56,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
     let conn_profile = proj_config.connection_profile.clone();
     
     let config = FoundryConfig::new(
-        proj_config, warehouse_config, connections, models_config, conn_profile, None
+        proj_config, warehouse_config, connections, models_config, conn_profile, kafka_config
     );
 
     Ok(config)
@@ -100,6 +101,14 @@ warehouse_sources:
 "#;
         let mut src_file = NamedTempFile::new().unwrap();
         write!(src_file, "{}", sources_yaml).unwrap();
+        let kafka_sources_yaml = r#"
+kafka_sources:
+- name: kafka_test_source
+  bootstrap:
+    servers: localhost:9092
+"#;
+        let mut kafka_src_file = NamedTempFile::new().unwrap();
+        write!(kafka_src_file, "{}", kafka_sources_yaml).unwrap();
 
         // 3️⃣  ── build the *project* YAML with the real paths inserted ──────────
         let project_yaml = format!(
@@ -119,11 +128,15 @@ paths:
     - name: test_source
       kind: Warehouse
       path: {}
+    - name: kafka_test_source
+      kind: Kafka
+      path: {}
 modelling_architecture: medallion
 connection_profile: dev
 "#,
             conn_file.path().display(),
-            src_file.path().display()
+            src_file.path().display(),
+            kafka_src_file.path().display()
         );
 
         // 4️⃣  ── write the project YAML                                             ─
@@ -132,7 +145,8 @@ connection_profile: dev
 
         // 5️⃣  ── load and assert ────────────────────────────────────────────────
         let cfg = read_config(Some(PathBuf::from(project_file.path()))).expect("Failed to read config");
-
+      
+        println!("{:?}", cfg.kafka_source);
         assert_eq!(cfg.project.project_name, "test_project");
         assert_eq!(cfg.project.version, "1.0.0");
         assert_eq!(cfg.project.compile_path, "compiled");
@@ -140,12 +154,22 @@ connection_profile: dev
         assert_eq!(cfg.project.modelling_architecture, "medallion");
         assert_eq!(cfg.project.connection_profile, "dev");
 
+        let kafka_cfg = cfg.kafka_source.as_ref().unwrap();
+        assert_eq!(kafka_cfg["kafka_test_source"].bootstrap.servers, "localhost:9092");
+        assert_eq!(kafka_cfg["kafka_test_source"].name, "kafka_test_source");
+        
+        let warehouse_cfg = &cfg.warehouse_source;
+        assert_eq!(warehouse_cfg.len(), 1);
+        assert_eq!(warehouse_cfg["test_source"].name, "test_source");
+        assert_eq!(warehouse_cfg["test_source"].database.name, "some_database");
+        
+
         let layers = cfg.project.paths.models.layers.as_ref().unwrap();
         assert_eq!(layers["bronze"], "foundry_models/bronze");
         assert_eq!(layers["silver"], "foundry_models/silver");
         assert_eq!(layers["gold"], "foundry_models/gold");
 
-        // assert_eq!(cfg.connections["dev"]["adapter"], "postgres");
+        assert_eq!(cfg.connections["dev"]["adapter"], "postgres");
     }
 
     #[test]

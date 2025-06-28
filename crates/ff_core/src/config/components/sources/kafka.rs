@@ -51,12 +51,12 @@ impl IntoIterator for KafkaSourceConfigs {
 
 #[derive(Deserialize, Debug)]
 pub struct KafkaSourceFileConfigs {
-    sources: Vec<KafkaSourceConfig>,
+    kafka_sources: Vec<KafkaSourceConfig>,
 }
 
 impl IntoConfigVec<KafkaSourceConfig> for KafkaSourceFileConfigs {
     fn vec(self) -> Vec<KafkaSourceConfig> {
-        self.sources
+        self.kafka_sources
     }
 }
 
@@ -71,6 +71,7 @@ impl TryFrom<Vec<SourcePaths>> for KafkaSourceConfigs {
 
     fn try_from(value: Vec<SourcePaths>) -> Result<Self, KafkaSourceConfigError> {
         let mut configs: KafkaSourceConfigs = KafkaSourceConfigs::empty();
+        eprintln!("{:?}", value);
         value.into_iter().filter(|t| t.kind == SourceType::Kafka).for_each(|p| {
             let c: KafkaSourceConfigs =
                 load_config::<KafkaSourceConfig, KafkaSourceFileConfigs, KafkaSourceConfigs>((&p.path).as_ref())
