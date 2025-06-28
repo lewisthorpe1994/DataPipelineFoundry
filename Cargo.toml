@@ -7,7 +7,8 @@ members = [
     "crates/engine_df",
     "crates/common",
     "crates/sqlparser",
-    "crates/logging"
+    "crates/logging",
+    "crates/test_utils"
 ]
 
 [workspace.package]
@@ -29,3 +30,6 @@ ff_core = { path = "crates/ff_core"}
 sqlparser = {path = "crates/sqlparser"}
 postgres = "0.19"
 logging = { path = "crates/logging"}
+test_utils = { path = "crates/test_utils" }
+once_cell = "1"
+tempfile = "3"

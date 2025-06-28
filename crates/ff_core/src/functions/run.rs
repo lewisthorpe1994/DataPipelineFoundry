@@ -131,7 +131,7 @@ mod tests {
     use crate::config::loader::read_config;
     use crate::dag::IntoDagNodes;
     use crate::executor::ExecutorError;
-    use crate::test_utils::TEST_MUTEX;
+    use crate::test_utils::{TEST_MUTEX, create_medallion_project, DbConnection};
     use common::types::Identifier;
     use std::fs;
     use tempfile::tempdir;
@@ -213,63 +213,9 @@ mod tests {
         )?;
 
         // ----- project setup -------------------------------------------------------
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        // connections.yml
-        let connections = format!(
-            "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
-            host, port, user, pass, db
-        );
-        fs::write(root.join("connections.yml"), connections)?;
-
-        // sources.yml
-        let sources_yaml = r#"sources:
-  - name: dev
-    database:
-      name: foundry_dev
-      schemas:
-        - name: raw
-          tables:
-            - name: orders
-              description: Raw orders
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
-
-        // model SQL files
-        let models_dir = root.join("foundry_models");
-        let bronze_dir = models_dir.join("bronze");
-        let silver_dir = models_dir.join("silver");
-        let gold_dir = models_dir.join("gold");
-        fs::create_dir_all(&bronze_dir)?;
-        fs::create_dir_all(&silver_dir)?;
-        fs::create_dir_all(&gold_dir)?;
-        fs::write(
-            bronze_dir.join("bronze_orders.sql"),
-            "select * from {{ source('dev', 'orders') }}",
-        )?;
-        fs::write(
-            silver_dir.join("silver_orders.sql"),
-            "select * from {{ ref('bronze_orders') }}",
-        )?;
-        fs::write(
-            gold_dir.join("revenue.sql"),
-            "select customer_id, sum(order_total) as total_revenue from {{ ref('silver_orders') }} group by customer_id",
-        )?;
-
-        // foundry-project.yml
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      bronze: {bronze}\n      silver: {silver}\n      gold: {gold}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: medallion\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            bronze = bronze_dir.display(),
-            silver = silver_dir.display(),
-            gold = gold_dir.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display()
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        let conn_info = DbConnection { host, port, user, password: pass, database: db };
+        let project = create_medallion_project(&conn_info, "test", "1.0")?;
+        let root = project.root();
 
         // ----- run ---------------------------------------------------------------
         let orig = std::env::current_dir()?;
@@ -542,63 +488,9 @@ mod tests {
         )?;
 
         // ----- project setup -------------------------------------------------------
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        // connections.yml
-        let connections = format!(
-            "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
-            host, port, user, pass, db
-        );
-        fs::write(root.join("connections.yml"), connections)?;
-
-        // sources.yml
-        let sources_yaml = r#"sources:
-  - name: dev
-    database:
-      name: foundry_dev
-      schemas:
-        - name: raw
-          tables:
-            - name: orders
-              description: Raw orders
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
-
-        // model SQL files
-        let models_dir = root.join("foundry_models");
-        let bronze_dir = models_dir.join("bronze");
-        let silver_dir = models_dir.join("silver");
-        let gold_dir = models_dir.join("gold");
-        fs::create_dir_all(&bronze_dir)?;
-        fs::create_dir_all(&silver_dir)?;
-        fs::create_dir_all(&gold_dir)?;
-        fs::write(
-            bronze_dir.join("bronze_orders.sql"),
-            "select * from {{ source('dev', 'orders') }}",
-        )?;
-        fs::write(
-            silver_dir.join("silver_orders.sql"),
-            "select * from {{ ref('bronze_orders') }}",
-        )?;
-        fs::write(
-            gold_dir.join("revenue.sql"),
-            "select customer_id, sum(order_total) as total_revenue from {{ ref('silver_orders') }} group by customer_id",
-        )?;
-
-        // foundry-project.yml
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      bronze: {bronze}\n      silver: {silver}\n      gold: {gold}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: medallion\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            bronze = bronze_dir.display(),
-            silver = silver_dir.display(),
-            gold = gold_dir.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display()
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        let conn_info = DbConnection { host, port, user, password: pass, database: db };
+        let project = create_medallion_project(&conn_info, "test", "1.0")?;
+        let root = project.root();
 
         // ----- run ---------------------------------------------------------------
         let orig = std::env::current_dir()?;

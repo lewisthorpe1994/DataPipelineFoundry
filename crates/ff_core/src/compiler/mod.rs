@@ -128,75 +128,13 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::tempdir;
-    use crate::test_utils::TEST_MUTEX;
+    use crate::test_utils::{TEST_MUTEX, create_medallion_project, DbConnection};
 
     #[test]
     fn test_compile_creates_artifacts() {
         let _lock = TEST_MUTEX.lock().unwrap();
-        let tmp = tempdir().unwrap();
-        let root = tmp.path();
-
-        // ----- setup connections -----
-        let connections = r#"dev:
-  adapter: postgres
-  host: localhost
-  port: 5432
-  user: postgres
-  password: postgres
-  database: test
-"#;
-        fs::write(root.join("connections.yml"), connections).unwrap();
-
-        // ----- setup source config -----
-        let sources_yaml = r#"sources:
-  - name: orders
-    database:
-      name: some_db
-      schemas:
-        - name: bronze
-          tables:
-            - name: orders
-              description: Raw orders
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir).unwrap();
-        fs::write(sources_dir.join("sources.yml"), sources_yaml).unwrap();
-
-        // ----- models -----
-        let models_dir = root.join("models");
-        let bronze_dir = models_dir.join("bronze");
-        fs::create_dir_all(&bronze_dir).unwrap();
-        fs::write(
-            bronze_dir.join("bronze_orders.sql"),
-            "select * from {{ source('orders', 'orders') }}",
-        )
-        .unwrap();
-
-        // project config
-        let project_yaml = format!(
-            r#"project_name: test
-version: '1.0'
-compile_path: compiled
-paths:
-  models:
-    dir: {}
-    layers:
-      bronze: {}
-  connections: {}
-  sources:
-    - name: orders
-      path: {}
-modelling_architecture: medallion
-connection_profile: dev
-"#,
-            models_dir.display(),
-            bronze_dir.display(),
-            root.join("connections.yml").display(),
-            sources_dir.join("sources.yml").display(),
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml).unwrap();
+        let project = create_medallion_project(&DbConnection::default(), "test", "1.0").unwrap();
+        let root = project.root();
 
         // run compile
         let orig = std::env::current_dir().unwrap();
