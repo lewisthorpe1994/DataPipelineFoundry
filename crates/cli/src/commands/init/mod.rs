@@ -376,7 +376,7 @@ mod tests {
         for file in [
             "foundry-project.yml",
             "connections.yml",
-            "foundry-sources/sources.yml",
+            FOUNDRY_WAREHOUSE_SOURCE_PATH,
         ] {
             assert!(
                 proj_path.join(file).exists(),

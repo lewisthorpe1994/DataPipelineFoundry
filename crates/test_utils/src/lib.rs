@@ -73,6 +73,8 @@ pub fn create_medallion_project(
           tables:
             - name: orders
               description: Raw orders
+            - name: customers
+              description: Raw customers
 "#;
     let sources_dir = root.join("foundry_sources");
     fs::create_dir_all(&sources_dir)?;
@@ -116,5 +118,69 @@ pub fn create_medallion_project(
     fs::write(&project_path, project_yaml)?;
 
     Ok(TestProject { tmp: tmp, project_path })
+}
+
+/// Creates an empty project with the given architecture and layer names. Only
+/// the folder structure and basic configuration files are generated. Callers
+/// can populate the model SQL files as needed for the individual test.
+pub fn create_project_with_layers(
+    conn: &DbConnection,
+    project_name: &str,
+    version: &str,
+    architecture: &str,
+    layers: &[&str],
+) -> std::io::Result<TestProject> {
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    // connections.yml
+    let connections = format!(
+        "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
+        conn.host, conn.port, conn.user, conn.password, conn.database
+    );
+    fs::write(root.join("connections.yml"), connections)?;
+
+    // minimal warehouse source config
+    let sources_yaml = r#"warehouse_sources:
+  - name: dev
+    database:
+      name: foundry_dev
+      schemas:
+        - name: raw
+          tables:
+            - name: orders
+              description: Raw orders
+            - name: customers
+              description: Raw customers
+"#;
+    let sources_dir = root.join("foundry_sources");
+    fs::create_dir_all(&sources_dir)?;
+    fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
+
+    // model directories
+    let models_dir = root.join("foundry_models");
+    fs::create_dir_all(&models_dir)?;
+    let mut layers_yaml = String::new();
+    for layer in layers {
+        let layer_dir = models_dir.join(layer);
+        fs::create_dir_all(&layer_dir)?;
+        layers_yaml.push_str(&format!("      {}: {}\n", layer, layer_dir.display()));
+    }
+
+    // project YAML
+    let project_yaml = format!(
+        "project_name: {name}\nversion: '{ver}'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n{layers}  connections: {conn}\n  sources:\n    - name: dev\n      kind: Warehouse\n      path: {source}\nmodelling_architecture: {arch}\nconnection_profile: dev\n",
+        name = project_name,
+        ver = version,
+        models = models_dir.display(),
+        layers = layers_yaml,
+        conn = root.join("connections.yml").display(),
+        source = sources_dir.join("sources.yml").display(),
+        arch = architecture,
+    );
+    let project_path = root.join("foundry-project.yml");
+    fs::write(&project_path, project_yaml)?;
+
+    Ok(TestProject { tmp, project_path })
 }
 
