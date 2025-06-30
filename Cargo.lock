@@ -376,7 +376,9 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sqlparser",
  "tempfile",
+ "test_utils",
  "tracing",
  "walkdir",
 ]
@@ -1275,6 +1277,14 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "test_utils"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "tempfile",
 ]
 
 [[package]]

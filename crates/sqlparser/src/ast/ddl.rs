@@ -20,7 +20,7 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::fmt::{self, Write};
+use core::fmt::{self, Display, Write};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -2344,24 +2344,74 @@ pub struct CreateKafkaConnector {
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
     pub with_properties: Vec<(Ident, ValueWithSpan)>,
+    pub with_pipelines: Vec<Ident>
 }
 
 impl fmt::Display for CreateKafkaConnector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // 1️⃣  pre-compute the optional bits
+        let if_not_exists = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+
+        let pipelines_clause = if self.with_pipelines.is_empty() {
+            String::new()
+        } else {
+            let list = self.with_pipelines
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" WITH PIPELINES({})", list)
+        };
+
+        let props = self.with_properties
+            .iter()
+            .map(|(k, v)| format!("{} = {}", k, v))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // 2️⃣  emit the final statement
         write!(
             f,
-            "CREATE KAFKA CONNECTOR {if_not_exists}{name} {con_type} ({props})",
-            if_not_exists = if self.if_not_exists {
-                "IF NOT EXISTS "
-            } else {
-                ""
-            },
-            name = self.name,
-            con_type = self.connector_type,
-            props = self.with_properties
-                .iter()
-                .map(|(k, v)| 
-                    format!("{} = {}", k, v)).collect::<Vec<_>>().join(", ")
+            "CREATE SOURCE KAFKA CONNECTOR KIND {con_type} {if_not_exists}{name} ({props}){pipelines}",
+            if_not_exists = if_not_exists,
+            name          = self.name,
+            con_type      = self.connector_type,
+            props         = props,
+            pipelines     = pipelines_clause,
         )
     }
 }
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct CreateSimpleMessageTransformPipeline {
+    pub name: Ident,
+    pub if_not_exists: bool,
+    pub connector_type: KafkaConnectorType,
+    pub with_transforms: Vec<(Ident, ValueWithSpan)>,
+}
+
+impl fmt::Display for CreateSimpleMessageTransformPipeline {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let if_not_exists = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+
+        let transforms = self
+            .with_transforms
+            .iter()
+            .map(|(k, v)| format!("{} = {}", k, v))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(
+            f,
+            "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {if_not_exists}{name} {con_type} ({transforms})",
+            if_not_exists = if_not_exists,
+            name          = self.name,
+            con_type      = self.connector_type,
+            transforms    = transforms,
+        )
+    }
+}
+
+

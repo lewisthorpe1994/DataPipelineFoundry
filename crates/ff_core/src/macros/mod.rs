@@ -1,4 +1,4 @@
-use crate::config::components::source::SourceConfigs;
+use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
 use crate::dag::ModelsDag;
 use minijinja::{Environment, Error, ErrorKind, Value};
 use std::sync::Arc;
@@ -21,7 +21,7 @@ pub fn register_ref(env: &mut Environment<'_>, dag: Arc<ModelsDag>) {
     });
 }
 
-pub fn register_source(env: &mut Environment<'_>, source_config: Arc<SourceConfigs>) {
+pub fn register_source(env: &mut Environment<'_>, source_config: Arc<WarehouseSourceConfigs>) {
     let config = source_config.clone();
     env.add_function(
         "source",
@@ -43,13 +43,13 @@ pub fn register_source(env: &mut Environment<'_>, source_config: Arc<SourceConfi
 pub fn register_macros(
     env: &mut Environment<'_>,
     dag: Arc<ModelsDag>,
-    source_config: Arc<SourceConfigs>,
+    source_config: Arc<WarehouseSourceConfigs>,
 ) {
     register_ref(env, dag);
     register_source(env, source_config);
 }
 
-pub fn build_jinja_env(dag: Arc<ModelsDag>, source_config: Arc<SourceConfigs>) -> Environment<'static> {
+pub fn build_jinja_env(dag: Arc<ModelsDag>, source_config: Arc<WarehouseSourceConfigs>) -> Environment<'static> {
     let mut env = Environment::new();
     register_macros(&mut env, dag, source_config);
     env
@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     use common::types::{ParsedNode, Relations, Relation, RelationType};
     use common::types::schema::{Database, Schema, Table};
-    use crate::config::components::source::SourceConfig;
+    use crate::config::components::sources::warehouse_source::WarehouseSourceConfig;
 
     #[test]
     fn ref_resolves_known_model() {
@@ -116,7 +116,7 @@ mod tests {
             schemas: vec![schema],
         };
 
-        let source_config = SourceConfig {
+        let source_config = WarehouseSourceConfig {
             name: "orders".to_string(),
             database,
         };
@@ -124,7 +124,7 @@ mod tests {
         // Build SourceConfigs wrapper
         let mut configs = HashMap::new();
         configs.insert("some_orders".to_string(), source_config);
-        let source_configs = SourceConfigs::new(configs);
+        let source_configs = WarehouseSourceConfigs::new(configs);
 
         // Create Jinja Environment
         let mut env = Environment::new();

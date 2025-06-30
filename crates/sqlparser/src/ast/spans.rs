@@ -20,25 +20,7 @@ use core::iter;
 
 use crate::tokenizer::Span;
 
-use super::{
-    dcl::SecondaryRoles, value::ValueWithSpan, AccessExpr, AlterColumnOperation,
-    AlterIndexOperation, AlterTableOperation, Array, Assignment, AssignmentTarget, AttachedToken,
-    BeginEndStatements, CaseStatement, CloseCursor, ClusteredIndex, ColumnDef, ColumnOption,
-    ColumnOptionDef, ConditionalStatementBlock, ConditionalStatements, ConflictTarget, ConnectBy,
-    ConstraintCharacteristics, CopySource, CreateIndex, CreateTable, CreateTableOptions, Cte,
-    Delete, DoUpdate, ExceptSelectItem, ExcludeSelectItem, Expr, ExprWithAlias, Fetch, FromTable,
-    Function, FunctionArg, FunctionArgExpr, FunctionArgumentClause, FunctionArgumentList,
-    FunctionArguments, GroupByExpr, HavingBound, IfStatement, IlikeSelectItem, Insert, Interpolate,
-    InterpolateExpr, Join, JoinConstraint, JoinOperator, JsonPath, JsonPathElem, LateralView,
-    LimitClause, MatchRecognizePattern, Measure, NamedWindowDefinition, ObjectName, ObjectNamePart,
-    Offset, OnConflict, OnConflictAction, OnInsert, OrderBy, OrderByExpr, OrderByKind, Partition,
-    PivotValueSource, ProjectionSelect, Query, RaiseStatement, RaiseStatementValue,
-    ReferentialAction, RenameSelectItem, ReplaceSelectElement, ReplaceSelectItem, Select,
-    SelectInto, SelectItem, SetExpr, SqlOption, Statement, Subscript, SymbolDefinition, TableAlias,
-    TableAliasColumnDef, TableConstraint, TableFactor, TableObject, TableOptionsClustered,
-    TableWithJoins, UpdateTableFromKind, Use, Value, Values, ViewColumnDef,
-    WildcardAdditionalOptions, With, WithFill,
-};
+use super::{dcl::SecondaryRoles, value::ValueWithSpan, AccessExpr, AlterColumnOperation, AlterIndexOperation, AlterTableOperation, Array, Assignment, AssignmentTarget, AttachedToken, BeginEndStatements, CaseStatement, CloseCursor, ClusteredIndex, ColumnDef, ColumnOption, ColumnOptionDef, ConditionalStatementBlock, ConditionalStatements, ConflictTarget, ConnectBy, ConstraintCharacteristics, CopySource, CreateIndex, CreateKafkaConnector, CreateSimpleMessageTransformPipeline, CreateTable, CreateTableOptions, Cte, Delete, DoUpdate, ExceptSelectItem, ExcludeSelectItem, Expr, ExprWithAlias, Fetch, FromTable, Function, FunctionArg, FunctionArgExpr, FunctionArgumentClause, FunctionArgumentList, FunctionArguments, GroupByExpr, HavingBound, IfStatement, IlikeSelectItem, Insert, Interpolate, InterpolateExpr, Join, JoinConstraint, JoinOperator, JsonPath, JsonPathElem, LateralView, LimitClause, MatchRecognizePattern, Measure, NamedWindowDefinition, ObjectName, ObjectNamePart, Offset, OnConflict, OnConflictAction, OnInsert, OrderBy, OrderByExpr, OrderByKind, Partition, PivotValueSource, ProjectionSelect, Query, RaiseStatement, RaiseStatementValue, ReferentialAction, RenameSelectItem, ReplaceSelectElement, ReplaceSelectItem, Select, SelectInto, SelectItem, SetExpr, SqlOption, Statement, Subscript, SymbolDefinition, TableAlias, TableAliasColumnDef, TableConstraint, TableFactor, TableObject, TableOptionsClustered, TableWithJoins, UpdateTableFromKind, Use, Value, Values, ViewColumnDef, WildcardAdditionalOptions, With, WithFill};
 
 /// Given an iterator of spans, return the [Span::union] of all spans.
 fn union_spans<I: Iterator<Item = Span>>(iter: I) -> Span {
@@ -422,6 +404,7 @@ impl Spanned for Statement {
             Statement::CreateSecret { .. } => Span::empty(),
             Statement::CreateConnector { .. } => Span::empty(),
             Statement::CreateKafkaConnector { .. } => Span::empty(),
+            Statement::CreateSMTPipeline(create_smtpipeline) => create_smtpipeline.span(),
             Statement::AlterTable {
                 name,
                 if_exists: _,
@@ -2292,6 +2275,39 @@ impl Spanned for BeginEndStatements {
             core::iter::once(begin_token.0.span)
                 .chain(statements.iter().map(|i| i.span()))
                 .chain(core::iter::once(end_token.0.span)),
+        )
+    }
+}
+
+impl Spanned for CreateKafkaConnector {
+    fn span(&self) -> Span {
+        let base = self.name.span;
+        
+        union_spans(
+            core::iter::once(base)
+                .chain(
+                    self.with_properties
+                        .iter()
+                        .flat_map(|(k, v)| [k.span, v.span()])
+                )
+                .chain(
+                    self.with_pipelines.iter().map(|k| k.span)
+                )
+        )
+    }
+}
+
+impl Spanned for CreateSimpleMessageTransformPipeline {
+    fn span(&self) -> Span {
+        let base = self.name.span;
+        
+        union_spans(
+            core::iter::once(base)
+                .chain(
+                    self.with_transforms
+                        .iter()
+                        .flat_map(|(k, v)| [k.span, v.span()])
+                )
         )
     }
 }

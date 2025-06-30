@@ -4589,8 +4589,8 @@ impl<'a> Parser<'a> {
             self.parse_create_procedure(or_alter)
         } else if self.parse_keyword(Keyword::CONNECTOR) {
             self.parse_create_connector()
-        } else if self.parse_keyword(Keyword::KAFKA) {
-            self.parse_kafka()
+        } else if self.parse_keyword(Keyword::SOURCE) {
+            self.parse_source()
         }
         else {
             self.expected("an object type after CREATE", self.peek_token())
@@ -6017,50 +6017,6 @@ impl<'a> Parser<'a> {
             url,
             comment,
             with_dcproperties,
-        }))
-    }
-
-    pub fn parse_kafka(&mut self) -> Result<Statement, ParserError> {
-        println!("parse_kafka");
-        println!("next token: {:?}", self.peek_token());
-        if self.parse_keyword(Keyword::CONNECTOR) {
-            self.parse_create_kafka_connector()
-        } else {
-            Err(ParserError::ParserError("Expected CONNECTOR".to_string()))
-        }
-    }
-
-    pub fn parse_create_kafka_connector(&mut self) -> Result<Statement, ParserError> {
-        let connector_type = if self.parse_keyword(Keyword::SOURCE) {
-            KafkaConnectorType::Source
-        } else if self.parse_keyword(Keyword::SINK) {
-            KafkaConnectorType::Sink
-        } else {
-            Err(ParserError::ParserError("Expected SOURCE or SINK".to_string()))?
-        };
-        
-        let if_not_exists = self.parse_keywords(&[Keyword::IF, Keyword::NOT, Keyword::EXISTS]);
-
-        let name = self.parse_identifier()?;
-
-        let mut properties = vec![];
-        if self.consume_token(&Token::LParen) {
-            loop {
-                let key = self.parse_identifier()?;
-                self.expect_token(&Token::Eq)?;
-                let val = self.parse_value()?;
-                properties.push((key, val));
-                if self.consume_token(&Token::RParen) {
-                    break;
-                }
-                self.expect_token(&Token::Comma)?;
-            }
-        }
-        Ok(Statement::CreateKafkaConnector(CreateKafkaConnector {
-            name,
-            if_not_exists,
-            connector_type,
-            with_properties: properties,
         }))
     }
 
@@ -15299,6 +15255,73 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_source(&mut self) -> Result<Statement, ParserError> {
+        if self.parse_keyword(Keyword::KAFKA) {
+            self.parse_kafka()
+        } else {
+            Err(ParserError::ParserError("Only Kafka sources are supported at the moment".to_string()))
+        }
+    }
+    pub fn parse_kafka(&mut self) -> Result<Statement, ParserError> {
+        if self.parse_keyword(Keyword::CONNECTOR) {
+            self.parse_create_kafka_connector()
+        } else {
+            Err(ParserError::ParserError("Expected CONNECTOR".to_string()))
+        }
+    }
+
+    pub fn parse_create_kafka_connector(&mut self) -> Result<Statement, ParserError> {
+        if !self.parse_keyword(Keyword::KIND) {
+            return Err(ParserError::ParserError("Expected KIND".to_string()));
+        };
+
+        let connector_type = if self.parse_keyword(Keyword::SOURCE) {
+            KafkaConnectorType::Source
+        } else if self.parse_keyword(Keyword::SINK) {
+            KafkaConnectorType::Sink
+        } else {
+            Err(ParserError::ParserError("Expected SOURCE or SINK".to_string()))?
+        };
+
+        let if_not_exists = self.parse_keywords(&[Keyword::IF, Keyword::NOT, Keyword::EXISTS]);
+
+        let name = self.parse_identifier()?;
+
+        let mut properties = vec![];
+        if self.consume_token(&Token::LParen) {
+            loop {
+                let key = self.parse_identifier()?;
+                self.expect_token(&Token::Eq)?;
+                let val = self.parse_value()?;
+                properties.push((key, val));
+                if self.consume_token(&Token::RParen) {
+                    break;
+                }
+                self.expect_token(&Token::Comma)?;
+            }
+        }
+        let mut pipeline_idents = vec![];
+        if self.parse_keywords(&[Keyword::WITH, Keyword::PIPELINES]) {
+            if self.consume_token(&Token::LParen) {
+                loop {
+                    let ident = self.parse_identifier()?;
+                    pipeline_idents.push(ident);
+                    if self.consume_token(&Token::RParen) {
+                        break;
+                    }
+                    self.expect_token(&Token::Comma)?;
+                }
+            }
+        }
+        Ok(Statement::CreateKafkaConnector(CreateKafkaConnector {
+            name,
+            if_not_exists,
+            connector_type,
+            with_properties: properties,
+            with_pipelines: pipeline_idents,
+        }))
+    }
+
     /// Consume the parser and return its underlying token buffer
     pub fn into_tokens(self) -> Vec<TokenWithSpan> {
         self.tokens
@@ -16158,8 +16181,22 @@ mod tests {
     }
 
     #[test]
-    fn test_create_kafka_connector_source() {
-        let sql = r#"CREATE KAFKA CONNECTOR SOURCE IF NOT EXISTS test (
+    fn test_create_kafka_connector_source_no_pipeline() {
+        let sql = r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
+            "connector.class" = "io.confluent.connect.kafka.KafkaSourceConnector",
+            "key.converter" = "org.apache.kafka.connect.json.JsonConverter",
+            "value.converter" = "org.apache.kafka.connect.json.JsonConverter",
+            "topics" = "topic1",
+            "kafka.bootstrap.servers" = "localhost:9092"
+        );"#;
+
+        let ast = Parser::parse_sql(&GenericDialect {}, sql).unwrap();
+        println!("{:?}", ast);
+    }
+
+    #[test]
+    fn test_create_kafka_connector_source_with_pipeline() {
+        let sql = r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
             "connector.class" = "io.confluent.connect.kafka.KafkaSourceConnector",
             "key.converter" = "org.apache.kafka.connect.json.JsonConverter",
             "value.converter" = "org.apache.kafka.connect.json.JsonConverter",
@@ -16169,5 +16206,102 @@ mod tests {
 
         let ast = Parser::parse_sql(&PostgreSqlDialect {}, sql).unwrap();
         println!("{:?}", ast);
+    }
+
+    #[test]
+    fn test_create_kafka_connector_source_with_pipelines() {
+        use sqlparser::dialect::PostgreSqlDialect;
+        use sqlparser::parser::Parser;
+        use sqlparser::ast::Statement;
+
+        // --- SQL under test ----------------------------------------------------
+        let sql = r#"
+        CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
+            "connector.class"        = "io.confluent.connect.kafka.KafkaSourceConnector",
+            "key.converter"          = "org.apache.kafka.connect.json.JsonConverter",
+            "value.converter"        = "org.apache.kafka.connect.json.JsonConverter",
+            "topics"                 = "topic1",
+            "kafka.bootstrap.servers"= "localhost:9092"
+        ) WITH PIPELINES(hash_email, drop_pii);
+    "#;
+
+        // --- parse -------------------------------------------------------------
+        let dialect  = PostgreSqlDialect {};
+        let stmts    = Parser::parse_sql(&dialect, sql).expect("parse failed");
+        println!("{:?}", stmts);
+        assert_eq!(stmts.len(), 1);
+
+        // --- validate AST contents --------------------------------------------
+        match &stmts[0] {
+            Statement::CreateKafkaConnector(ref c) => {
+                // down-cast if you have a CreateKafkaConnector variant
+                assert_eq!(c.connector_type, KafkaConnectorType::Source);
+                assert!(c.if_not_exists);
+                assert_eq!(c.name.value, "test");
+
+                // ✔ the important bit: pipelines parsed as two idents
+                assert_eq!(
+                    c.with_pipelines.iter().map(|id| id.value.clone()).collect::<Vec<_>>(),
+                    vec!["hash_email".to_string(), "drop_pii".to_string()]
+                );
+
+                // (optional) check one of the props
+                let topics_prop = c.with_properties
+                    .iter()
+                    .find(|(k, _)| k.value == "topics")
+                    .expect("missing topics prop");
+                assert_eq!(topics_prop.1.to_string(), "\"topic1\"");
+            }
+            _ => panic!("expected CreateConnector"),
+        }
+    }
+
+    #[test]
+    fn test_parse_simple_message_transform_pipeline() {
+        use sqlparser::dialect::PostgreSqlDialect;
+        use sqlparser::parser::Parser;
+        use sqlparser::ast::Statement;
+
+        // ── SQL under test ──────────────────────────────────────────────────
+        let sql = r#"
+        CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS clean_pii SOURCE (
+            hash_email = 'sha256',
+            drop_pii   = 'ssn,ccn'
+        );
+    "#;
+
+        // ── parse ───────────────────────────────────────────────────────────
+        let dialect = PostgreSqlDialect {};
+        let stmts   = Parser::parse_sql(&dialect, sql).expect("parse failed");
+        assert_eq!(stmts.len(), 1, "expected exactly one statement");
+
+        // ── validate AST variant & fields ───────────────────────────────────
+        match &stmts[0] {
+            // adjust this pattern to your real enum/variant names
+            Statement::CreateSMTPipeline(pipe) => {
+                // down-cast if you have several pipeline kinds
+
+                // basic field checks
+                assert!(pipe.if_not_exists);
+                assert_eq!(pipe.name.value, "clean_pii");
+                assert_eq!(pipe.connector_type, KafkaConnectorType::Source);
+
+                // transforms parsed as k=v pairs, order preserved
+                let kv: Vec<(String, String)> = pipe
+                    .with_transforms
+                    .iter()
+                    .map(|(k, v)| (k.value.clone(), v.to_string()))
+                    .collect();
+
+                assert_eq!(
+                    kv,
+                    vec![
+                        ("hash_email".into(), "'sha256'".into()),
+                        ("drop_pii".into(),   "'ssn,ccn'".into()),
+                    ]
+                );
+            }
+            _ => panic!("expected CreatePipeline statement"),
+        }
     }
 }

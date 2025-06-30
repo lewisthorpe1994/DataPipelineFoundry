@@ -131,10 +131,13 @@ mod tests {
     use crate::config::loader::read_config;
     use crate::dag::IntoDagNodes;
     use crate::executor::ExecutorError;
-    use crate::test_utils::TEST_MUTEX;
+    use crate::test_utils::{
+        TEST_MUTEX, create_medallion_project, create_project_with_layers, DbConnection,
+    };
     use common::types::Identifier;
     use std::fs;
-    use tempfile::tempdir;
+    use crate::config::components::sources::SourcePaths;
+
     struct FakeExec {
         pub calls: Vec<String>,
     }
@@ -173,7 +176,7 @@ mod tests {
     /// `PG_DB`. When not set, the defaults from the repository's
     /// `docker-compose.yml` are used.
     #[test]
-    // #[ignore]
+    #[ignore]
     fn test_run_live_postgres() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
         // ----- database connection -------------------------------------------------
@@ -211,63 +214,9 @@ mod tests {
         )?;
 
         // ----- project setup -------------------------------------------------------
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        // connections.yml
-        let connections = format!(
-            "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
-            host, port, user, pass, db
-        );
-        fs::write(root.join("connections.yml"), connections)?;
-
-        // sources.yml
-        let sources_yaml = r#"sources:
-  - name: dev
-    database:
-      name: foundry_dev
-      schemas:
-        - name: raw
-          tables:
-            - name: orders
-              description: Raw orders
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
-
-        // model SQL files
-        let models_dir = root.join("foundry_models");
-        let bronze_dir = models_dir.join("bronze");
-        let silver_dir = models_dir.join("silver");
-        let gold_dir = models_dir.join("gold");
-        fs::create_dir_all(&bronze_dir)?;
-        fs::create_dir_all(&silver_dir)?;
-        fs::create_dir_all(&gold_dir)?;
-        fs::write(
-            bronze_dir.join("bronze_orders.sql"),
-            "select * from {{ source('dev', 'orders') }}",
-        )?;
-        fs::write(
-            silver_dir.join("silver_orders.sql"),
-            "select * from {{ ref('bronze_orders') }}",
-        )?;
-        fs::write(
-            gold_dir.join("revenue.sql"),
-            "select customer_id, sum(order_total) as total_revenue from {{ ref('silver_orders') }} group by customer_id",
-        )?;
-
-        // foundry-project.yml
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      bronze: {bronze}\n      silver: {silver}\n      gold: {gold}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: medallion\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            bronze = bronze_dir.display(),
-            silver = silver_dir.display(),
-            gold = gold_dir.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display()
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        let conn_info = DbConnection { host, port, user, password: pass, database: db };
+        let project = create_medallion_project(&conn_info, "test", "1.0")?;
+        let root = project.root();
 
         // ----- run ---------------------------------------------------------------
         let orig = std::env::current_dir()?;
@@ -290,50 +239,26 @@ mod tests {
     #[test]
     fn test_execute_dag_custom_architecture() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        // ----- connections -----
-        let connections = r#"dev:
-  adapter: postgres
-  host: localhost
-  port: 5432
-  user: postgres
-  password: postgres
-  database: test
-"#;
-        fs::write(root.join("connections.yml"), connections)?;
-
-        // ----- sources -----
-        let sources_yaml = r#"sources:
-  - name: raw
-    database:
-      name: some_db
-      schemas:
-        - name: staging
-          tables:
-            - name: orders
-              description: Raw orders
-            - name: customers
-              description: Raw customers
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
+        let project = create_project_with_layers(
+            &DbConnection::default(),
+            "test",
+            "1.0",
+            "custom",
+            &["staging", "analytics"],
+        )?;
+        let root = project.root();
 
         // ----- models -----
         let models_dir = root.join("foundry_models");
         let staging_dir = models_dir.join("staging");
         let analytics_dir = models_dir.join("analytics");
-        fs::create_dir_all(&staging_dir)?;
-        fs::create_dir_all(&analytics_dir)?;
         fs::write(
             staging_dir.join("stage_orders.sql"),
-            "select * from {{ source('raw', 'orders') }}",
+            "select * from {{ source('dev', 'orders') }}",
         )?;
         fs::write(
             staging_dir.join("stage_customers.sql"),
-            "select * from {{ source('raw', 'customers') }}",
+            "select * from {{ source('dev', 'customers') }}",
         )?;
         fs::write(
             analytics_dir.join("order_details.sql"),
@@ -344,16 +269,7 @@ mod tests {
             "select customer_name, count(*) as order_count from {{ ref('order_details') }} group by customer_name",
         )?;
 
-        // ----- project config -----
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      staging: {staging}\n      analytics: {analytics}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: custom\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            staging = staging_dir.display(),
-            analytics = analytics_dir.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display(),
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        // project YAML already written by helper
 
         // ----- run compile + execute -----
         let orig = std::env::current_dir()?;
@@ -397,47 +313,21 @@ mod tests {
     #[test]
     fn test_run_cycle_errors() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        let connections = r#"dev:
-  adapter: postgres
-  host: localhost
-  port: 5432
-  user: postgres
-  password: postgres
-  database: test
-"#;
-        fs::write(root.join("connections.yml"), connections)?;
-
-        let sources_yaml = r#"sources:
-  - name: raw
-    database:
-      name: some_db
-      schemas:
-        - name: staging
-          tables:
-            - name: dummy
-              description: Dummy table
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
+        let project = create_project_with_layers(
+            &DbConnection::default(),
+            "test",
+            "1.0",
+            "custom",
+            &["staging"],
+        )?;
+        let root = project.root();
 
         let models_dir = root.join("foundry_models");
         let layer = models_dir.join("staging");
-        fs::create_dir_all(&layer)?;
         fs::write(layer.join("a.sql"), "select * from {{ ref('b') }}")?;
         fs::write(layer.join("b.sql"), "select * from {{ ref('a') }}")?;
 
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      staging: {layer}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: custom\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            layer = layer.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display(),
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        // project YAML already written by helper
 
         let orig = std::env::current_dir()?;
         std::env::set_current_dir(root)?;
@@ -452,46 +342,20 @@ mod tests {
     #[test]
     fn test_run_missing_profile() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        let connections = r#"dev:
-  adapter: postgres
-  host: localhost
-  port: 5432
-  user: postgres
-  password: postgres
-  database: test
-"#;
-        fs::write(root.join("connections.yml"), connections)?;
-
-        let sources_yaml = r#"sources:
-  - name: raw
-    database:
-      name: some_db
-      schemas:
-        - name: staging
-          tables:
-            - name: dummy
-              description: Dummy table
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
+        let project = create_project_with_layers(
+            &DbConnection::default(),
+            "test",
+            "1.0",
+            "custom",
+            &["staging"],
+        )?;
+        let root = project.root();
 
         let models_dir = root.join("foundry_models");
         let layer = models_dir.join("staging");
-        fs::create_dir_all(&layer)?;
         fs::write(layer.join("model.sql"), "select 1")?;
 
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      staging: {layer}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: custom\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            layer = layer.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display(),
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        // project YAML already written by helper
 
         let orig = std::env::current_dir()?;
         std::env::set_current_dir(root)?;
@@ -504,6 +368,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_run_single_model() -> Result<(), Box<dyn std::error::Error>> {
         let _lock = TEST_MUTEX.lock().unwrap();
         let host = std::env::var("PG_HOST").unwrap_or_else(|_| "localhost".into());
@@ -540,63 +405,9 @@ mod tests {
         )?;
 
         // ----- project setup -------------------------------------------------------
-        let tmp = tempdir()?;
-        let root = tmp.path();
-
-        // connections.yml
-        let connections = format!(
-            "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
-            host, port, user, pass, db
-        );
-        fs::write(root.join("connections.yml"), connections)?;
-
-        // sources.yml
-        let sources_yaml = r#"sources:
-  - name: dev
-    database:
-      name: foundry_dev
-      schemas:
-        - name: raw
-          tables:
-            - name: orders
-              description: Raw orders
-"#;
-        let sources_dir = root.join("foundry_sources");
-        fs::create_dir(&sources_dir)?;
-        fs::write(sources_dir.join("sources.yml"), sources_yaml)?;
-
-        // model SQL files
-        let models_dir = root.join("foundry_models");
-        let bronze_dir = models_dir.join("bronze");
-        let silver_dir = models_dir.join("silver");
-        let gold_dir = models_dir.join("gold");
-        fs::create_dir_all(&bronze_dir)?;
-        fs::create_dir_all(&silver_dir)?;
-        fs::create_dir_all(&gold_dir)?;
-        fs::write(
-            bronze_dir.join("bronze_orders.sql"),
-            "select * from {{ source('dev', 'orders') }}",
-        )?;
-        fs::write(
-            silver_dir.join("silver_orders.sql"),
-            "select * from {{ ref('bronze_orders') }}",
-        )?;
-        fs::write(
-            gold_dir.join("revenue.sql"),
-            "select customer_id, sum(order_total) as total_revenue from {{ ref('silver_orders') }} group by customer_id",
-        )?;
-
-        // foundry-project.yml
-        let project_yaml = format!(
-            "project_name: test\nversion: '1.0'\ncompile_path: compiled\npaths:\n  models:\n    dir: {models}\n    layers:\n      bronze: {bronze}\n      silver: {silver}\n      gold: {gold}\n  connections: {conn}\n  sources:\n    - name: raw\n      path: {source}\nmodelling_architecture: medallion\nconnection_profile: dev\n",
-            models = models_dir.display(),
-            bronze = bronze_dir.display(),
-            silver = silver_dir.display(),
-            gold = gold_dir.display(),
-            conn = root.join("connections.yml").display(),
-            source = sources_dir.join("sources.yml").display()
-        );
-        fs::write(root.join("foundry-project.yml"), project_yaml)?;
+        let conn_info = DbConnection { host, port, user, password: pass, database: db };
+        let project = create_medallion_project(&conn_info, "test", "1.0")?;
+        let root = project.root();
 
         // ----- run ---------------------------------------------------------------
         let orig = std::env::current_dir()?;
@@ -653,8 +464,7 @@ mod tests {
         use crate::config::components::connections::ConnectionsConfig;
         use crate::config::components::foundry_project::{FoundryProjectConfig, PathsConfig};
         use crate::config::components::model::ModelsPaths;
-        use crate::config::components::source::SourceConfigs;
-        use crate::config::components::source::SourcesPath;
+        use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
 
         let project = FoundryProjectConfig {
             project_name: "test".into(),
@@ -667,17 +477,18 @@ mod tests {
                     dir: "models".into(),
                     layers: None,
                 },
-                sources: Vec::<SourcesPath>::new(),
-                connections: String::new(),
+            sources: Vec::<SourcePaths>::new(),
+            connections: String::new(),
             },
         };
 
         FoundryConfig::new(
             project,
-            SourceConfigs::empty(),
+            WarehouseSourceConfigs::empty(),
             ConnectionsConfig::new(),
             None,
             "dev".into(),
+            None
         )
     }
 

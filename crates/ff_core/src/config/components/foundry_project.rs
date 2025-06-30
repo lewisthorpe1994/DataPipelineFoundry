@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use crate::config::components::model::ModelsPaths;
-use crate::config::components::source::SourcesPath;
+use crate::config::components::sources::SourcePaths;
 
 pub type ModelLayerName = String;
 pub type ModelLayerDir = String;
@@ -20,6 +20,6 @@ pub struct FoundryProjectConfig {
 #[derive(Debug, Deserialize)]
 pub struct PathsConfig {
     pub models: ModelsPaths,
-    pub sources: Vec<SourcesPath>,
+    pub sources: Vec<SourcePaths>,
     pub connections: String,
 }

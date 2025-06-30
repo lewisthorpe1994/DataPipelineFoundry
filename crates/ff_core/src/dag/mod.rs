@@ -617,6 +617,7 @@ mod tests {
     use super::*;
     use common::types::ModelRef as MR;
     use std::fs;
+    use tempfile::tempdir;
 
     fn build_models() -> Vec<ParsedNode> {
         vec![
@@ -743,13 +744,15 @@ mod tests {
 
     #[test]
     fn build_viz() -> Result<(), DagError> {
+        let _lock = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let models = build_models();
         let dag = ModelsDag::new(models)?;
 
-        dag.export_dot();
+        let tmp = tempfile::tempdir()?;
+        let dot_path = tmp.path().join("dag.dot");
+        dag.export_dot_to(&dot_path)?;
 
-        let current_dir = std::env::current_dir()?.display().to_string();
-        assert!(fs::exists(format!("{}/dag.dot", current_dir)).expect("cannot find dag.dot"));
+        assert!(dot_path.exists());
 
         Ok(())
     }
