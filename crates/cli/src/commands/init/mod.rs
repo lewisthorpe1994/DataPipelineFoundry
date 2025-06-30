@@ -4,6 +4,7 @@ use minijinja::{context, Environment};
 use serde::Serialize;
 use std::fmt::Display;
 use std::fs;
+use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use common::types::sources::SourceType;
@@ -173,6 +174,12 @@ where
     Ok(())
 }
 
+fn create_dir_with_placeholder<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+    fs::create_dir(&path)?;
+    File::create(path.as_ref().join(".gitkeep"))?;
+    Ok(())
+}
+
 
 pub fn handle_init(
     path: &Path,
@@ -216,7 +223,13 @@ pub fn handle_init(
     };
 
     // create macro folder
-    fs::create_dir(proj_path.join("macros"))?;
+    let macros_path = proj_path.join("macros");
+    fs::create_dir(&macros_path)?;
+    
+    // create sub folders for different macros
+    create_dir_with_placeholder(&macros_path.join("kafka"))?;
+    create_dir_with_placeholder(&macros_path.join("warehouse"))?;
+    create_dir_with_placeholder(&macros_path.join("api"))?;
 
     // create flow layer dirs
     let mut modelling_layers: Vec<FlowLayer> = Vec::new();

@@ -3,7 +3,10 @@ use std::io::{BufReader, Error, Read};
 use crate::config::components::foundry_project::ModelLayers;
 use walkdir::WalkDir;
 use common::{types::{ParsedNode, Relations}, traits::IsFileExtension};
-
+use sqlparser::parser::Parser as SqlParser;
+pub struct Parser<'a> {
+    sql_parser: SqlParser<'a>
+}
 
 pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ParsedNode>, Error> {
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
