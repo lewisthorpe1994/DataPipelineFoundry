@@ -32,7 +32,11 @@ use recursion::RecursionCounter;
 use IsLateral::*;
 use IsOptional::*;
 
-use crate::ast::helpers::stmt_create_table::{CreateTableBuilder, CreateTableConfiguration};
+use crate::ast::helpers::{
+    stmt_create_table::{CreateTableBuilder, CreateTableConfiguration},
+    foundry_helpers::{KafkaParse, ParseUtils}
+};
+
 use crate::ast::Statement::CreatePolicy;
 use crate::ast::*;
 use crate::dialect::*;
@@ -4591,6 +4595,8 @@ impl<'a> Parser<'a> {
             self.parse_create_connector()
         } else if self.parse_keyword(Keyword::SOURCE) {
             self.parse_source()
+        } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM, Keyword::PIPELINE]) {
+            self.parse_smt()
         }
         else {
             self.expected("an object type after CREATE", self.peek_token())
@@ -15275,15 +15281,9 @@ impl<'a> Parser<'a> {
             return Err(ParserError::ParserError("Expected KIND".to_string()));
         };
 
-        let connector_type = if self.parse_keyword(Keyword::SOURCE) {
-            KafkaConnectorType::Source
-        } else if self.parse_keyword(Keyword::SINK) {
-            KafkaConnectorType::Sink
-        } else {
-            Err(ParserError::ParserError("Expected SOURCE or SINK".to_string()))?
-        };
+        let connector_type = self.parse_connector_type()?;
 
-        let if_not_exists = self.parse_keywords(&[Keyword::IF, Keyword::NOT, Keyword::EXISTS]);
+        let if_not_exists = self.parse_if_not_exists();
 
         let name = self.parse_identifier()?;
 
@@ -15320,6 +15320,35 @@ impl<'a> Parser<'a> {
             with_properties: properties,
             with_pipelines: pipeline_idents,
         }))
+    }
+    
+    pub fn parse_smt(&mut self) -> Result<Statement, ParserError> {
+        let if_not_exists = self.parse_if_not_exists();
+        let name = self.parse_identifier()?;
+        
+        let connector_type = self.parse_connector_type()?;
+        let mut with_transforms = vec![];
+
+        if self.consume_token(&Token::LParen) {
+            loop {
+                let ident = self.parse_identifier()?;
+                self.expect_token(&Token::Eq)?;
+                let val = self.parse_value()?;
+                with_transforms.push((ident, val));
+                if self.consume_token(&Token::RParen) {
+                    break;
+                }
+                self.expect_token(&Token::Comma)?;
+            }
+        };
+        Ok(
+            Statement::CreateSMTPipeline(CreateSimpleMessageTransformPipeline {
+                name,
+                if_not_exists,
+                connector_type,
+                with_transforms,
+            })
+        )
     }
 
     /// Consume the parser and return its underlying token buffer
