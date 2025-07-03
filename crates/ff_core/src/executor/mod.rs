@@ -1,9 +1,11 @@
 pub mod sql;
+pub mod database;
 
 use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
 use postgres::error::Error as PostgresError;
+use sqlparser::ast::Statement;
 
 #[derive(Debug)]
 pub enum ExecutorError {
@@ -28,4 +30,8 @@ impl From<PostgresError> for ExecutorError {
     fn from(e: PostgresError) -> ExecutorError {
         ExecutorError::FailedToExecute(e.to_string())
     }
+}
+
+trait Executor {
+    fn execute(&self, ast: Statement) -> Result<(), ExecutorError>; // TODO - create enum result type
 }

@@ -1,32 +1,20 @@
-use crate::dag::IntoDagNodes;
+use registry::{Catalog, MemoryCatalog};
+use sqlparser::ast::{CreateSimpleMessageTransformPipeline, Statement};
 use crate::executor::ExecutorError;
-use common::utils::read_sql_file;
-use logging::timeit;
-use tracing::info;
 
-pub mod postgres;
+pub struct SqlExecutor;
 
-pub trait SqlExecutor {
-    fn execute(&mut self, sql: &str) -> Result<(), ExecutorError>;
-    fn execute_dag_models<'a, T>(
-        &mut self,
-        nodes: T,
-        compile_path: &str,
-        models_dir: &str,
-    ) -> Result<(), ExecutorError>
-    where
-        T: IntoDagNodes<'a>,
-    {
-        timeit!("Executed all models", {
-            for node in nodes.into_vec() {
-                timeit!(format!("Executed model {}", &node.path.display()), {
-                    let sql = read_sql_file(models_dir, &node.path, compile_path)
-                        .map_err(|e| ExecutorError::InvalidFilePath(e.to_string()))?;
-                    self.execute(&sql)?
-                });
-            }
-        });
-
-        Ok(())
+impl SqlExecutor {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    pub fn execute_create_simple_message_transform_if_not_exists(
+        smt_pipe: CreateSimpleMessageTransformPipeline,
+        registry: MemoryCatalog
+    ) -> Result<(), ExecutorError> {
+        let name = smt_pipe.name;
+        match registry.get_transform(&name.value) {  }
+            
     }
 }

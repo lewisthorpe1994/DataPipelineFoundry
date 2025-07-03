@@ -1,13 +1,13 @@
 use crate::compiler;
 use crate::config::components::global::FoundryConfig;
 use crate::dag::ModelsDag;
-use crate::executor::sql::SqlExecutor;
+use crate::executor::database::DatabaseExecutor;
 use common::error::FFError;
 use petgraph::Direction;
 use postgres::{Client, NoTls};
 
 /// Execute the compiled SQL in dependency order using the provided executor.
-pub fn execute_dag<E: SqlExecutor>(
+pub fn execute_dag<E: DatabaseExecutor>(
     dag: &ModelsDag,
     config: &FoundryConfig,
     executor: &mut E,
@@ -36,7 +36,7 @@ pub fn execute_dag<E: SqlExecutor>(
 /// * `"model>"` - execute all downstream dependents of `model`.
 /// * `"<model>"` - execute both upstream and downstream nodes as well as the
 ///   model itself.
-fn execute_model<E: SqlExecutor>(
+fn execute_model<E: DatabaseExecutor>(
     dag: &ModelsDag,
     model: String,
     config: &FoundryConfig,
@@ -148,7 +148,7 @@ mod tests {
         }
     }
 
-    impl SqlExecutor for FakeExec {
+    impl DatabaseExecutor for FakeExec {
         fn execute(&mut self, sql: &str) -> Result<(), ExecutorError> {
             self.calls.push(sql.to_string());
             Ok(())

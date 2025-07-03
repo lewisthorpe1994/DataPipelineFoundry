@@ -17,6 +17,7 @@ postgres = "0.19"
 log = "0.4.27"
 tracing = "0.1.41"
 sqlparser = { workspace = true}
+registry = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
