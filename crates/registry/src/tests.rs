@@ -4,33 +4,39 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
     use serde_json::json;
-    use crate::{Catalog, MemoryCatalog, PipelineVersion, TransformMeta};
+    use crate::{Catalog, CatalogError, MemoryCatalog, PipelineMeta, TransformMeta};
 
     #[test]
-    fn roundtrip_pipeline() {
+    fn roundtrip_single_pipeline() {
         let cat = MemoryCatalog::new();
 
-        // 1. add transform
+        // 1️⃣  create and insert one transform
         let tr = TransformMeta {
-            id: Uuid::new_v4(),
-            name: "hash_email".into(),
-            class: "HashTransform".into(),
-            config: json!({"field": "email"}),
+            id:      Uuid::new_v4(),
+            name:    "hash_email".into(),
+            config:  json!({"field": "email"}),
             created: Utc::now(),
         };
         cat.put_transform(tr.clone()).unwrap();
 
-        // 2. add pipeline v1
-        let v1 = PipelineVersion {
-            ver: 1,
+        // 2️⃣  create pipeline that references that transform
+        let pipe = PipelineMeta {
+            name:       "clean_pii".into(),
             transforms: vec![tr.id],
-            created: Utc::now(),
+            created:    Utc::now(),
         };
-        cat.push_pipeline_version("clean_pii", v1).unwrap();
+        cat.put_pipeline(pipe.clone()).unwrap();
 
-        // 3. fetch latest
-        let got = cat.get_pipeline_latest("clean_pii").unwrap();
-        assert_eq!(got.ver, 1);
+        // 3️⃣  duplicate insert should fail with Duplicate
+        assert!(matches!(
+            cat.put_pipeline(pipe.clone()),
+            Err(CatalogError::Duplicate)
+        ));
+
+        // 4️⃣  fetch and assert equality
+        let got = cat.get_pipeline("clean_pii").unwrap();
+        assert_eq!(got.name, "clean_pii");
         assert_eq!(got.transforms, vec![tr.id]);
     }
 }
+

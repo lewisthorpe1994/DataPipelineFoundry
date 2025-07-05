@@ -6,25 +6,23 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformMeta {
     pub id:      Uuid,
+    // pub order:   i32,
     pub name:    String,
-    pub class:   String,
     pub config:  serde_json::Value,
     pub created: DateTime<Utc>,
 }
 
-/// Immutable snapshot of a pipeline
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PipelineVersion {
-    pub ver:        i32,
-    pub transforms: Vec<Uuid>,         // ordered list of Transform IDs
-    pub created:    DateTime<Utc>,
-}
+// impl From<>
 
+
+// src/model.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineMeta {
-    pub name:    String,
-    pub history: Vec<PipelineVersion>, // append-only
+    pub name:        String,
+    pub transforms:  Vec<Uuid>,         // ordered IDs
+    pub created:     DateTime<Utc>,
 }
+
 
 /// Connector definition (Kafka, Airbyte, …)
 #[derive(Debug, Clone, Serialize, Deserialize)]

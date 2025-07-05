@@ -1,10 +1,11 @@
+pub mod postgres;
+
 use crate::dag::IntoDagNodes;
 use crate::executor::ExecutorError;
 use common::utils::read_sql_file;
 use logging::timeit;
 use tracing::info;
 
-pub mod postgres;
 
 pub trait DatabaseExecutor {
     fn execute(&mut self, sql: &str) -> Result<(), ExecutorError>;

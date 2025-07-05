@@ -40,21 +40,19 @@ impl MemoryCatalog {
 }
 
 /* ---------- trait ----------- */
+// src/mem.rs
 pub trait Catalog: Send + Sync + 'static {
     /* transforms */
     fn put_transform(&self, t: TransformMeta) -> Result<(), CatalogError>;
     fn get_transform(&self, name: &str) -> Result<TransformMeta, CatalogError>;
 
-    /* pipelines */
-    fn push_pipeline_version(
-        &self,
-        name: &str,
-        v: PipelineVersion,
-    ) -> Result<(), CatalogError>;
-    fn get_pipeline_latest(&self, name: &str) -> Result<PipelineVersion, CatalogError>;
+    /* pipelines  (strict, no versions) */
+    fn put_pipeline(&self, p: PipelineMeta) -> Result<(), CatalogError>;
+    fn get_pipeline(&self, name: &str) -> Result<PipelineMeta, CatalogError>;
 
-    /* connectors / tables — add when needed */
+    /* connectors / tables … */
 }
+
 
 impl Catalog for MemoryCatalog {
     /* ---- transforms ---- */
@@ -74,21 +72,21 @@ impl Catalog for MemoryCatalog {
     }
 
     /* ---- pipelines ---- */
-    fn push_pipeline_version(
-        &self,
-        name: &str,
-        v: PipelineVersion,
-    ) -> Result<(), CatalogError> {
+    fn put_pipeline(&self, p: PipelineMeta) -> Result<(), CatalogError> {
         let mut g = self.inner.write();
-        let entry = g.pipelines.entry(name.into())
-            .or_insert_with(|| PipelineMeta { name: name.into(), history: Vec::new() });
-        entry.history.push(v);
+        if g.pipelines.contains_key(&p.name) {
+            return Err(CatalogError::Duplicate);   // name already taken
+        }
+        g.pipelines.insert(p.name.clone(), p);
         Ok(())
     }
-    fn get_pipeline_latest(&self, name: &str) -> Result<PipelineVersion, CatalogError> {
-        self.inner.read()
-            .pipelines.get(name)
-            .and_then(|p| p.history.last().cloned())
+
+    fn get_pipeline(&self, name: &str) -> Result<PipelineMeta, CatalogError> {
+        self.inner
+            .read()
+            .pipelines
+            .get(name)
+            .cloned()
             .ok_or(CatalogError::NotFound)
     }
 }

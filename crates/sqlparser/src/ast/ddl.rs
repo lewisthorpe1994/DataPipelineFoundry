@@ -21,7 +21,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::fmt::{self, Display, Write};
-
+use std::collections::HashMap;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -2382,36 +2382,88 @@ impl fmt::Display for CreateKafkaConnector {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
-pub struct CreateSimpleMessageTransformPipeline {
+pub struct CreateSimpleMessageTransform {
     pub name: Ident,
     pub if_not_exists: bool,
-    pub connector_type: KafkaConnectorType,
-    pub with_transforms: Vec<(Ident, ValueWithSpan)>,
+    pub config: Vec<(Ident, ValueWithSpan)>,
 }
 
-impl fmt::Display for CreateSimpleMessageTransformPipeline {
+impl fmt::Display for CreateSimpleMessageTransform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let if_not_exists = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let ine = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
 
-        let transforms = self
-            .with_transforms
+        let cfg = self
+            .config
             .iter()
-            .map(|(k, v)| format!("{} = {}", k, v))
+            .map(|(k, v)| format!("{k} = {v}"))
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(
-            f,
-            "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {if_not_exists}{name} {con_type} ({transforms})",
-            if_not_exists = if_not_exists,
-            name          = self.name,
-            con_type      = self.connector_type,
-            transforms    = transforms,
-        )
+        write!(f, "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name} ({cfg})",
+               ine = ine, name = self.name, cfg = cfg)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct TransformCall {
+    pub name: Ident,
+    pub args: Vec<(Ident, ValueWithSpan)>,   // may be empty
+}
+
+impl fmt::Display for TransformCall {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.args.is_empty() {
+            write!(f, "{}", self.name)
+        } else {
+            let args = self
+                .args
+                .iter()
+                .map(|(k, v)| format!("{k} = {v}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            write!(f, "{}({})", self.name, args)
+        }
     }
 }
 
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CreateSimpleMessageTransformPipeline {
+    pub name: Ident,
+    pub if_not_exists: bool,
+    pub connector_type: KafkaConnectorType,
+    pub steps: Vec<TransformCall>,
+    pub topic_predicate: Option<ValueWithSpan>,
+}
+
+impl fmt::Display for CreateSimpleMessageTransformPipeline {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ine = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+
+        let body = self
+            .steps
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let pred_clause = match &self.topic_predicate {
+            Some(p) => format!(" WITH TOPIC PREDICATE {}", p),
+            None    => String::new(),
+        };
+
+        write!(
+            f,
+            "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {ine}{name} {ctype} ({body}){pred}",
+            ine   = ine,
+            name  = self.name,
+            ctype = self.connector_type,
+            body  = body,
+            pred  = pred_clause
+        )
+    }
+}

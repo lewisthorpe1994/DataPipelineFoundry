@@ -14,7 +14,9 @@ impl SqlExecutor {
         registry: MemoryCatalog
     ) -> Result<(), ExecutorError> {
         let name = smt_pipe.name;
-        match registry.get_transform(&name.value) {  }
+        match registry.put_transform(&name.value) {
+            Ok(_) => Ok(()),
+        }
             
     }
 }

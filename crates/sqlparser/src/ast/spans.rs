@@ -405,6 +405,7 @@ impl Spanned for Statement {
             Statement::CreateConnector { .. } => Span::empty(),
             Statement::CreateKafkaConnector { .. } => Span::empty(),
             Statement::CreateSMTPipeline(create_smtpipeline) => create_smtpipeline.span(),
+            Statement::CreateSMTransform { ..} => Span::empty(),
             Statement::AlterTable {
                 name,
                 if_exists: _,
@@ -2299,18 +2300,27 @@ impl Spanned for CreateKafkaConnector {
 
 impl Spanned for CreateSimpleMessageTransformPipeline {
     fn span(&self) -> Span {
-        let base = self.name.span;
-        
-        union_spans(
-            core::iter::once(base)
-                .chain(
-                    self.with_transforms
-                        .iter()
-                        .flat_map(|(k, v)| [k.span, v.span()])
-                )
-        )
+        // start with the pipeline name
+        let first = self.name.span;
+
+        // collect spans from every transform call + its arg list
+        let step_spans = self.steps.iter().flat_map(|call| {
+            // span of the transform name + spans of each (key,value)
+            std::iter::once(call.name.span)
+                .chain(call.args.iter().flat_map(|(k, v)| [k.span, v.span]))
+        });
+
+        // optional WITH TOPIC PREDICATE expr
+        let pred_span = self
+            .topic_predicate
+            .iter()
+            .map(|v| v.span);
+
+        // union them all
+        union_spans(std::iter::once(first).chain(step_spans).chain(pred_span))
     }
 }
+
 
 #[cfg(test)]
 pub mod tests {
