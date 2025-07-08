@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
 use postgres::error::Error as PostgresError;
+use registry::CatalogError;
 use sqlparser::ast::Statement;
 
 #[derive(Debug)]
@@ -28,6 +29,12 @@ impl Error for ExecutorError {}
 
 impl From<PostgresError> for ExecutorError {
     fn from(e: PostgresError) -> ExecutorError {
+        ExecutorError::FailedToExecute(e.to_string())
+    }
+}
+
+impl From<CatalogError> for ExecutorError { 
+    fn from(e: CatalogError) -> ExecutorError {
         ExecutorError::FailedToExecute(e.to_string())
     }
 }

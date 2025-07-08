@@ -2412,6 +2412,11 @@ pub struct TransformCall {
     pub name: Ident,
     pub args: Vec<(Ident, ValueWithSpan)>,   // may be empty
 }
+impl TransformCall {
+    pub fn new(name: Ident, args: Vec<(Ident, ValueWithSpan)>) -> Self {
+        Self { name, args }
+    }
+}
 
 impl fmt::Display for TransformCall {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -2437,7 +2442,7 @@ pub struct CreateSimpleMessageTransformPipeline {
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
     pub steps: Vec<TransformCall>,
-    pub topic_predicate: Option<ValueWithSpan>,
+    pub pipe_predicate: Option<ValueWithSpan>,
 }
 
 impl fmt::Display for CreateSimpleMessageTransformPipeline {
@@ -2451,8 +2456,8 @@ impl fmt::Display for CreateSimpleMessageTransformPipeline {
             .collect::<Vec<_>>()
             .join(", ");
 
-        let pred_clause = match &self.topic_predicate {
-            Some(p) => format!(" WITH TOPIC PREDICATE {}", p),
+        let pred_clause = match &self.pipe_predicate {
+            Some(p) => format!(" WITH PIPELINE PREDICATE {}", p),
             None    => String::new(),
         };
 

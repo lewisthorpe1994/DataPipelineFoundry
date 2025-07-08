@@ -3,10 +3,6 @@
 version = 4
 
 [[package]]
-name = "adapter_postgres"
-version = "0.1.0"
-
-[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -306,6 +302,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dag"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "minijinja",
+ "petgraph",
+ "tempfile",
+ "test_utils",
+]
+
+[[package]]
 name = "deranged"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -332,10 +339,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine_df"
-version = "0.1.0"
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -349,6 +352,26 @@ checksum = "cea14ef9355e3beab063703aa9dab15afd25f0667c341310c1e5274bb1d0da18"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "executor"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "dag",
+ "log",
+ "logging",
+ "once_cell",
+ "postgres",
+ "registry",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "tempfile",
+ "test_utils",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -368,20 +391,19 @@ name = "ff_core"
 version = "0.1.0"
 dependencies = [
  "common",
+ "dag",
+ "executor",
  "log",
- "logging",
  "minijinja",
  "once_cell",
  "petgraph",
  "postgres",
- "registry",
  "serde",
  "serde_json",
  "serde_yaml",
  "sqlparser",
  "tempfile",
  "test_utils",
- "tracing",
  "walkdir",
 ]
 
@@ -657,9 +679,9 @@ checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
 name = "minijinja"
-version = "2.10.2"
+version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd72e8b4e42274540edabec853f607c015c73436159b06c39c7af85a20433155"
+checksum = "4e60ac08614cc09062820e51d5d94c2fce16b94ea4e5003bb81b99a95f84e876"
 dependencies = [
  "serde",
 ]

@@ -1,10 +1,10 @@
 use crate::compiler;
 use crate::config::components::global::FoundryConfig;
-use crate::dag::ModelsDag;
-use crate::executor::database::DatabaseExecutor;
 use common::error::FFError;
 use petgraph::Direction;
 use postgres::{Client, NoTls};
+use dag::ModelsDag;
+use executor::database::DatabaseExecutor;
 
 /// Execute the compiled SQL in dependency order using the provided executor.
 pub fn execute_dag<E: DatabaseExecutor>(
@@ -129,13 +129,13 @@ pub fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> 
 mod tests {
     use super::*;
     use crate::config::loader::read_config;
-    use crate::dag::IntoDagNodes;
-    use crate::executor::ExecutorError;
     use crate::test_utils::{
         TEST_MUTEX, create_medallion_project, create_project_with_layers, DbConnection,
     };
     use common::types::Identifier;
     use std::fs;
+    use dag::IntoDagNodes;
+    use executor::ExecutorError;
     use crate::config::components::sources::SourcePaths;
 
     struct FakeExec {

@@ -15333,13 +15333,13 @@ impl<'a> Parser<'a> {
     pub fn parse_sm_transform(&mut self) -> Result<Statement, ParserError> {
         let if_not_exists = self.parse_if_not_exists();
         let name = self.parse_identifier()?;
-        let mut cfg = vec![];
+        let mut config = vec![];
         if self.consume_token(&Token::LParen) {
             loop {
                 let ident = self.parse_identifier()?;
                 self.expect_token(&Token::Eq)?;
                 let val = self.parse_value()?;
-                cfg.push((ident, val));
+                config.push((ident, val));
                 if self.consume_token(&Token::RParen) {
                     break;
                 }
@@ -15347,38 +15347,56 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(Statement::CreateSMTransform(
-            
-        ))
+        Ok(Statement::CreateSMTransform(CreateSimpleMessageTransform {
+            name,
+            if_not_exists,
+            config
+        }))
 
 
     }
-
+    /// e.g CREATE SIMPLE MESSAGE TRANSFORM PIPELINE [IF NOT EXISTS] some_connector SOURCE (
+    /// some_smt(some_arg = '123')
+    /// ) WITH PIPELINE PREDICATE 'SOME_TOPIC'"
     pub fn parse_smt_pipeline(&mut self) -> Result<Statement, ParserError> {
         let if_not_exists = self.parse_if_not_exists();
         let name = self.parse_identifier()?;
 
         let connector_type = self.parse_connector_type()?;
-        let mut with_transforms = vec![];
+        let mut steps = vec![];
 
         if self.consume_token(&Token::LParen) {
             loop {
                 let ident = self.parse_identifier()?;
-                with_transforms.push(ident);
+                let mut transform = TransformCall::new(ident, vec![]);
+                if self.consume_token(&Token::LParen) {
+                    let targs = self.parse_parenthesized_kv()?;
+                    transform.args = targs;
+                }
+                steps.push(transform);
                 if self.consume_token(&Token::RParen) {
                     break;
                 }
                 self.expect_token(&Token::Comma)?;
             }
         };
+
+        if steps.is_empty() {
+            return Err(ParserError::ParserError("Expected at least one step in the pipeline".to_string()));
+        }
+
+        let mut pipe_predicate: Option<ValueWithSpan> = None;
+        if self.parse_keywords(&[Keyword::WITH, Keyword::PIPELINE, Keyword::PREDICATE]) {
+            pipe_predicate = Some(self.parse_value()?);
+        }
 
         Ok(
             Statement::CreateSMTPipeline(CreateSimpleMessageTransformPipeline {
                 name,
                 if_not_exists,
                 connector_type,
-                steps: vec![],
-                topic_predicate: None,
+                steps,
+                pipe_predicate,
             })
         )
     }
@@ -16319,60 +16337,54 @@ mod tests {
 
     #[test]
     fn test_parse_smt() {
-        let sql = r#"CREATE TRANSFORM cast_hash_cols_to_int (
+        let sql = r#"CREATE SIMPLE MESSAGE TRANSFORM cast_hash_cols_to_int (
   type      = 'org.apache.kafka.connect.transforms.Cast$Value',
   spec      = '${spec}',
   predicate = '${predicate}'
 );"#;
         let stmts = Parser::parse_sql(&GenericDialect, sql).expect("parse failed");
-
+        println!("{:?}", stmts);
+        match &stmts[0] {
+            Statement::CreateSMTransform(smt) => {
+                assert_eq!(smt.name.value, "cast_hash_cols_to_int");
+                assert_eq!(smt.if_not_exists, false);
+                assert_eq!(smt.config[0].0.value, "type");
+                assert_eq!(smt.config[0].1.to_string(), "'org.apache.kafka.connect.transforms.Cast$Value'");
+                assert_eq!(smt.config[1].0.value, "spec");
+                assert_eq!(smt.config[1].1.to_string(), "'${spec}'");
+                assert_eq!(smt.config[2].0.value, "predicate");
+                assert_eq!(smt.config[2].1.to_string(), "'${predicate}'");
+            }
+            _ => panic!("expected CreateSMTransform")
+        }
     }
 
-    // #[test]
-    // fn test_parse_simple_message_transform_pipeline() {
-    //     use sqlparser::dialect::PostgreSqlDialect;
-    //     use sqlparser::parser::Parser;
-    //     use sqlparser::ast::Statement;
-    //
-    //     // ── SQL under test ──────────────────────────────────────────────────
-    //     let sql = r#"
-    //     CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS clean_pii SOURCE (
-    //         hash_email,
-    //         drop_pii
-    //     );
-    // "#;
-    //
-    //     // ── parse ───────────────────────────────────────────────────────────
-    //     let dialect = PostgreSqlDialect {};
-    //     let stmts   = Parser::parse_sql(&dialect, sql).expect("parse failed");
-    //     assert_eq!(stmts.len(), 1, "expected exactly one statement");
-    //
-    //     // ── validate AST variant & fields ───────────────────────────────────
-    //     match &stmts[0] {
-    //         // adjust this pattern to your real enum/variant names
-    //         Statement::CreateSMTPipeline(pipe) => {
-    //             // down-cast if you have several pipeline kinds
-    //
-    //             // basic field checks
-    //             assert!(pipe.if_not_exists);
-    //             assert_eq!(pipe.name.value, "clean_pii");
-    //             assert_eq!(pipe.connector_type, KafkaConnectorType::Source);
-    //
-    //             // transforms parsed as k=v pairs, order preserved
-    //             let kv: Vec<String> = pipe
-    //                 .with_transforms
-    //                 .iter()
-    //                 .map(|k| k.to_string())
-    //                 .collect();
-    //
-    //             assert_eq!(
-    //                 kv,
-    //                 vec!["hash_email".to_string(),
-    //                     "drop_pii".to_string(),
-    //                 ]
-    //             );
-    //         }
-    //         _ => panic!("expected CreatePipeline statement"),
-    //     }
-    // }
+    #[test]
+    fn test_parse_simple_message_transform_pipeline() {
+        use sqlparser::parser::Parser;
+        use sqlparser::ast::Statement;
+        use sqlparser::tokenizer::{Span, Location};
+
+        let sql = r#"
+        CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
+            hash_email(email_addr_reg = '.*@example.com'),
+            drop_pii(fields = 'email_addr, phone_num')
+        ) WITH PIPELINE PREDICATE 'some_predicate';
+    "#;
+        
+        let dialect = GenericDialect {};
+        let stmts   = Parser::parse_sql(&dialect, sql).expect("parse failed");
+        println!("{:?}", stmts);
+        
+        match &stmts[0] { 
+            Statement::CreateSMTPipeline(pipe) => {
+                assert_eq!(pipe.name.value, "some_pipeline");
+                assert_eq!(pipe.if_not_exists, true);
+                assert_eq!(pipe.steps.len(), 2);
+                assert_eq!(pipe.clone().pipe_predicate.unwrap().to_string(), "'some_predicate'");
+            }
+            _ => panic!("expected CreateSMTPipeline")
+        }
+
+    }
 }

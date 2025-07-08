@@ -24,6 +24,7 @@ mod tests {
             name:       "clean_pii".into(),
             transforms: vec![tr.id],
             created:    Utc::now(),
+            predicate: None,
         };
         cat.put_pipeline(pipe.clone()).unwrap();
 

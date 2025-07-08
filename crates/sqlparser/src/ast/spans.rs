@@ -2312,7 +2312,7 @@ impl Spanned for CreateSimpleMessageTransformPipeline {
 
         // optional WITH TOPIC PREDICATE expr
         let pred_span = self
-            .topic_predicate
+            .pipe_predicate
             .iter()
             .map(|v| v.span);
 

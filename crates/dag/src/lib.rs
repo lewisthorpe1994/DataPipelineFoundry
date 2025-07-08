@@ -605,7 +605,7 @@ impl ModelsDag {
                 edge.target().index(), // flip direction!
                 edge.source().index()
             )
-            .unwrap();
+                .unwrap();
         }
         writeln!(dot, "}}").unwrap();
         std::fs::write(path, dot)
@@ -744,7 +744,9 @@ mod tests {
 
     #[test]
     fn build_viz() -> Result<(), DagError> {
-        let _lock = crate::test_utils::TEST_MUTEX.lock().unwrap();
+        use test_utils::TEST_MUTEX;
+        
+        let _lock = TEST_MUTEX.lock().unwrap();
         let models = build_models();
         let dag = ModelsDag::new(models)?;
 

@@ -1,22 +1,21 @@
 [package]
-name = "ff_core"
+name = "executor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-serde_yaml = { workspace = true}
 serde = {workspace = true}
-minijinja = { workspace = true }
 serde_json = { workspace = true }
-petgraph = "0.8.2"
-common = { workspace = true}
-walkdir = "2.5.0"
+logging = { workspace = true }
 postgres = "0.19"
 log = "0.4.27"
-sqlparser = { workspace = true}
-executor = { workspace = true }
-dag = { workspace = true}
+tracing = "0.1.41"
+registry = { workspace = true }
+sqlparser = { workspace = true }
+dag = { workspace = true }
+common = { workspace = true }
+uuid = { version = "1.17.0", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -56,7 +56,7 @@ pub use self::ddl::{
     AlterTypeAddValuePosition, AlterTypeOperation, AlterTypeRename, AlterTypeRenameValue,
     ClusteredBy, ColumnDef, ColumnOption, ColumnOptionDef, ColumnPolicy, ColumnPolicyProperty,
     ConstraintCharacteristics, CreateConnector, CreateKafkaConnector, CreateSimpleMessageTransformPipeline,
-    TransformCall, CreateFunction, Deduplicate, DeferrableInitial,
+    TransformCall, CreateSimpleMessageTransform, CreateFunction, Deduplicate, DeferrableInitial,
     DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters, IdentityProperty,
     IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder, IndexOption,
     IndexType, KeyOrIndexDisplay, NullsDistinctOption, Owner, Partition, ProcedureParam,
@@ -113,7 +113,6 @@ mod operator;
 mod query;
 mod spans;
 pub use spans::Spanned;
-use crate::ast::ddl::CreateSimpleMessageTransform;
 
 mod trigger;
 mod value;

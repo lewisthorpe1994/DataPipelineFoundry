@@ -1,0 +1,14 @@
+[package]
+name = "dag"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+petgraph = "0.8.2"
+minijinja = "2.11.0"
+common = { workspace = true}
+
+[dev-dependencies]
+test_utils = { workspace = true }
+tempfile = "3.20.0"

@@ -5,4 +5,4 @@ mod tests;
 
 pub use model::*;
 pub use error::CatalogError;
-pub use mem::{MemoryCatalog, Catalog};
+pub use mem::{MemoryCatalog, Catalog, CatalogHelpers};
