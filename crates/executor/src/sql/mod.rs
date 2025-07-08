@@ -1,7 +1,13 @@
 use crate::ExecutorError;
-use registry::{Catalog, CatalogError, CatalogHelpers, MemoryCatalog, PipelineMeta, TransformMeta};
+use registry::{
+    Catalog, CatalogError, CatalogHelpers, ConnectorMeta, ConnectorType, MemoryCatalog,
+    PipelineMeta, TransformMeta,
+};
 use serde_json::Value as Json;
-use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, ValueWithSpan};
+use sqlparser::ast::{
+    CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
+    Ident, ValueWithSpan,
+};
 
 trait AstValueFormatter {
     fn formatted_string(&self) -> String;
@@ -9,10 +15,10 @@ trait AstValueFormatter {
 impl AstValueFormatter for ValueWithSpan {
     fn formatted_string(&self) -> String {
         if self.value.to_string().starts_with("'") && self.value.to_string().ends_with("'") {
-            return self.value.to_string().trim_matches('\'').to_string()
+            return self.value.to_string().trim_matches('\'').to_string();
         };
         if self.value.to_string().starts_with('"') && self.value.to_string().ends_with('"') {
-            return self.value.to_string().trim_matches('"').to_string()       
+            return self.value.to_string().trim_matches('"').to_string();
         }
         self.value.to_string()
     }
@@ -72,44 +78,68 @@ impl SqlExecutor {
         let pipe = PipelineMeta::new(smt_pipe.name.value, t_ids, pred);
         handle_put_op(registry.put_pipeline(pipe))
     }
-    
+
     pub fn execute_create_kafka_connector_if_not_exists(
         connector_config: CreateKafkaConnector,
         registry: MemoryCatalog,
     ) -> Result<(), ExecutorError> {
         let conn_name = connector_config.name.to_string();
-        let conn_type = connector_config.connector_type;
+        let _conn_type = connector_config.connector_type; // currently unused
         let props: Json = KvPairs(connector_config.with_properties).into();
-        let mut global_transforms_list_str = String::new();
-        // fetch all transforms in the pipeline
-        for name in connector_config.with_pipelines {
-            let pipe = registry.get_pipeline(name.to_string().as_ref())?;
-            let mut transforms: Vec<TransformMeta> = Vec::new();
+
+        use serde_json::{Map, Value};
+        let mut obj = match props {
+            Value::Object(map) => map,
+            _ => Map::new(),
+        };
+
+        let mut transform_names = Vec::new();
+
+        for pipe_ident in connector_config.with_pipelines {
+            let pipe = registry.get_pipeline(pipe_ident.value.as_str())?;
+            let pipe_name = pipe.name.clone();
             for t_id in pipe.transforms {
-                let mut t = registry.get_transform(t_id)?;
-                t.name = format!("{}_{}", pipe.name, t.name);
-                t.config
-                transforms.push(t);
+                let t = registry.get_transform(t_id)?;
+                let tname = format!("{}_{}", pipe_name, t.name);
+                transform_names.push(tname.clone());
+
+                if let Value::Object(cfg) = t.config {
+                    for (k, v) in cfg {
+                        obj.insert(format!("transforms.{tname}.{k}"), v);
+                    }
+                }
+                if let Some(pred) = &pipe.predicate {
+                    obj.insert(
+                        format!("transforms.{tname}.predicate"),
+                        Value::String(pred.clone()),
+                    );
+                }
             }
-            // create part of the transform list 
-            let transform_list_str = transforms.iter()
-                .map(|t| format!("{}_{}", pipe.name, t.name.to_string()))
-                .collect::<Vec<String>>().join(",");
-            
-            global_transforms_list_str.push_str(&transform_list_str);
-            global_transforms_list_str.push(',');
         }
-        
-        
-        Ok(())
+
+        if !transform_names.is_empty() {
+            obj.insert(
+                "transforms".to_string(),
+                Value::String(transform_names.join(",")),
+            );
+        }
+
+        let meta = ConnectorMeta {
+            name: conn_name,
+            plugin: ConnectorType::Kafka,
+            config: Value::Object(obj),
+        };
+
+        handle_put_op(registry.put_connector(meta))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use registry::ConnectorType;
     use sqlparser::ast::KafkaConnectorType::Source;
     use sqlparser::ast::TransformCall;
-    use super::*;
     use sqlparser::ast::Value::SingleQuotedString;
     use sqlparser::tokenizer::{Location, Span};
     use uuid::Uuid;
@@ -193,12 +223,12 @@ mod tests {
         // helper: create + insert transform, return its UUID
         let make_t = |name: &str| -> Uuid {
             let meta = TransformMeta::new(name.to_string(), json!({}));
-            let id   = meta.id;
+            let id = meta.id;
             registry.put_transform(meta).unwrap();
             id
         };
         let id_hash_email = make_t("hash_email");
-        let id_drop_pii   = make_t("drop_pii");
+        let id_drop_pii = make_t("drop_pii");
 
         // ── 2. build pipeline AST (from your snippet) ───────────────────────
         use sqlparser::ast::{Ident, TransformCall, Value::SingleQuotedString};
@@ -261,7 +291,7 @@ mod tests {
             pipe_ast,
             registry.clone(),
         )
-            .unwrap();
+        .unwrap();
         assert_eq!(res, ());
 
         // ── 4. verify catalog contents ──────────────────────────────────────
@@ -271,10 +301,70 @@ mod tests {
         // depending on your struct: `transform_ids` or `steps`
         assert_eq!(cat_pipe.transforms, vec![id_hash_email, id_drop_pii]);
 
-        assert_eq!(
-            cat_pipe.predicate.as_deref(),
-            Some("some_predicate")
-        );
+        assert_eq!(cat_pipe.predicate.as_deref(), Some("some_predicate"));
     }
 
+    #[test]
+    fn test_create_kafka_connector() {
+        use serde_json::json;
+
+        let registry = MemoryCatalog::new();
+
+        // two transforms used in two distinct pipelines
+        let mask = TransformMeta::new("mask".into(), json!({"field": "a"}));
+        let drop = TransformMeta::new("drop".into(), json!({"field": "b"}));
+        registry.put_transform(mask.clone()).unwrap();
+        registry.put_transform(drop.clone()).unwrap();
+
+        let pipe1 = PipelineMeta::new("pipe1".into(), vec![mask.id], Some("pred1".into()));
+        let pipe2 = PipelineMeta::new("pipe2".into(), vec![drop.id], Some("pred2".into()));
+        registry.put_pipeline(pipe1).unwrap();
+        registry.put_pipeline(pipe2).unwrap();
+
+        let span = Span::new(Location::new(0, 0), Location::new(0, 0));
+        let ast = CreateKafkaConnector {
+            name: Ident {
+                value: "conn".into(),
+                quote_style: None,
+                span,
+            },
+            if_not_exists: true,
+            connector_type: Source,
+            with_properties: vec![(
+                Ident {
+                    value: "a".into(),
+                    quote_style: None,
+                    span,
+                },
+                ValueWithSpan {
+                    value: SingleQuotedString("1".into()),
+                    span,
+                },
+            )],
+            with_pipelines: vec![
+                Ident {
+                    value: "pipe1".into(),
+                    quote_style: None,
+                    span,
+                },
+                Ident {
+                    value: "pipe2".into(),
+                    quote_style: None,
+                    span,
+                },
+            ],
+        };
+
+        SqlExecutor::execute_create_kafka_connector_if_not_exists(ast, registry.clone()).unwrap();
+
+        let c = registry.get_connector("conn").unwrap();
+        assert_eq!(c.name, "conn");
+        assert_eq!(c.plugin, ConnectorType::Kafka);
+        assert_eq!(c.config["a"], "1");
+        assert_eq!(c.config["transforms"], "pipe1_mask,pipe2_drop");
+        assert_eq!(c.config["transforms.pipe1_mask.field"], "a");
+        assert_eq!(c.config["transforms.pipe1_mask.predicate"], "pred1");
+        assert_eq!(c.config["transforms.pipe2_drop.field"], "b");
+        assert_eq!(c.config["transforms.pipe2_drop.predicate"], "pred2");
+    }
 }
