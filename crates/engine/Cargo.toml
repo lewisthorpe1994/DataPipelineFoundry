@@ -8,6 +8,7 @@ license.workspace = true
 tempfile = { workspace = true }
 once_cell = { workspace = true }
 test_utils = { workspace = true }
+wiremock = { version = "0.6.4" }
 
 [dependencies]
 thiserror = "2.0.12"
@@ -16,3 +17,8 @@ chrono = { version = "0.4.41", features = ["serde"] }
 serde = { workspace = true }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 parking_lot = "0.12.4"
+sqlparser = { workspace = true }
+reqwest = { version = "0.12.22", features = ["json"] }
+tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+tokio-postgres = { version = "0.7", features = ["runtime"] }
+async-trait = "0.1.88"

@@ -1,0 +1,90 @@
+pub mod sql;
+mod kafka;
+
+use std::error::Error;
+use std::fmt;
+use sqlparser::ast::Statement;
+use sqlparser::dialect::GenericDialect;
+use sqlparser::parser::{Parser, ParserError};
+use crate::CatalogError;
+use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
+use crate::registry::MemoryCatalog;
+
+#[derive(Debug)]
+pub enum ExecutorError {
+    FailedToConnect(String),
+    FailedToExecute(String),
+    InvalidFilePath(String),
+    ConfigError(String),
+    ParseError(String),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ExecutorResponse {
+    Ok
+}
+
+impl From<KafkaExecutorResponse> for ExecutorResponse {
+    fn from(resp: KafkaExecutorResponse) -> Self {
+        match resp {
+            KafkaExecutorResponse::Ok => ExecutorResponse::Ok,
+        }
+    }
+}
+
+impl fmt::Display for ExecutorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExecutorError::FailedToConnect(msg) => write!(f, "Connection failed: {}", msg),
+            ExecutorError::FailedToExecute(msg) => write!(f, "Execution failed: {}", msg),
+            ExecutorError::InvalidFilePath(msg) => write!(f, "Invalid file path: {}", msg),
+            ExecutorError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
+            ExecutorError::ParseError(msg) => write!(f, "Parse error: {}", msg),
+        }
+    }
+}
+
+impl Error for ExecutorError {}
+
+
+impl From<CatalogError> for ExecutorError { 
+    fn from(e: CatalogError) -> ExecutorError {
+        ExecutorError::FailedToExecute(e.to_string())
+    }
+}
+impl From<KafkaExecutorError> for ExecutorError {
+    fn from(e: KafkaExecutorError) -> ExecutorError {
+        match e {
+            KafkaExecutorError::ConnectionError(e) => ExecutorError::FailedToConnect(e.to_string()),
+            KafkaExecutorError::IncorrectConfig(e) => ExecutorError::FailedToExecute(e.to_string()),
+            KafkaExecutorError::IoError(e) => ExecutorError::FailedToExecute(e.to_string()),
+            KafkaExecutorError::UnexpectedError(e) => ExecutorError::FailedToExecute(e.to_string()),
+        }
+    }
+}
+impl From<ParserError> for ExecutorError {
+    fn from(value: ParserError) -> Self {
+        ExecutorError::ParseError(value.to_string())
+    }
+}
+
+pub struct Executor {}
+impl Executor {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+impl Executor {
+    pub fn execute(&self, sql: &str, catalog: MemoryCatalog) -> Result<ExecutorResponse, ExecutorError> {
+        let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
+        
+        for ast in ast_vec {
+            match ast { 
+                Statement::CreateKafkaConnector(stmt) => {
+                    
+                }
+            }
+        }
+        Ok(ExecutorResponse::Ok)
+    }
+}

@@ -1,4 +1,3 @@
-pub mod sql;
 pub mod database;
 
 use std::error::Error;

@@ -1,11 +1,9 @@
-use crate::error::CatalogError;
-use crate::mem::Key::Id;
-use crate::model::*;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::{CatalogError, ConnectorMeta, PipelineMeta, TransformMeta};
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -182,6 +180,7 @@ mod tests {
     use chrono::Utc;
     use serde_json::json;
     use uuid::Uuid;
+    use crate::ConnectorType;
 
     // helper to create a minimal TransformMeta
     fn make_transform(id: Uuid, name: &str) -> TransformMeta {

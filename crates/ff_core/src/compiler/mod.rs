@@ -1,15 +1,12 @@
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-
-use minijinja::Environment;
 use serde::Serialize;
 
 use common::error::FFError;
 use common::types::{Identifier, RelationType};
-
+use dag::ModelsDag;
 use crate::config::loader::read_config;
-use crate::dag::ModelsDag;
 use crate::macros::build_jinja_env;
 use crate::parser::parse_models;
 

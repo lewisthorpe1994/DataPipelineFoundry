@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # ------------------------------------------------------------
+  # existing database (unchanged)
+  # ------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    container_name: postgres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: foundry_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+#      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - postgres-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ------------------------------------------------------------
+  # single-node Kafka broker & controller (KRaft mode)
+  # ------------------------------------------------------------
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka-broker
+    hostname: kafka-broker                 # <-- use this in other services
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+
+    networks:
+      - kafka-network
+  # ------------------------------------------------------------
+  # Kafka Connect (REST API on :8083)
+  # ------------------------------------------------------------
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.7.1
+    container_name: kafka-connect
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8083:8083"                   # REST endpoint
+    volumes:
+      - ./connect_plugins:/opt/kafka/plugins
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-broker:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: compose-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/opt/kafka/plugins"
+      CONFLUENT_PLUGINS_INSTALL: "confluentinc/kafka-connect-jdbc:latest"
+    networks:
+      - kafka-network     # talks to Kafka
+      - postgres-network  # optional – lets JDBC/Debezium see Postgres later
+
+# ------------------------------------------------------------
+# persist data between restarts
+# ------------------------------------------------------------
+volumes:
+  postgres_data:
+  pgadmin_data:
+  kafka_data:
+  connect_plugins:
+
+# ------------------------------------------------------------
+# networks
+# ------------------------------------------------------------
+networks:
+  postgres-network:
+    driver: bridge
+  kafka-network:
+    driver: bridge

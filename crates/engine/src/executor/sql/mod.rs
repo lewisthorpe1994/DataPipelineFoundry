@@ -1,13 +1,9 @@
-use crate::ExecutorError;
-use registry::{
-    Catalog, CatalogError, CatalogHelpers, ConnectorMeta, ConnectorType, MemoryCatalog,
-    PipelineMeta, TransformMeta,
-};
 use serde_json::Value as Json;
-use sqlparser::ast::{
-    CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
-    Ident, ValueWithSpan,
-};
+use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
+use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineMeta, TransformMeta};
+use crate::executor::{ExecutorError, ExecutorResponse};
+use crate::executor::kafka::{KafkaConnectorConfig, KafkaDeploy, KafkaExecutor};
+use crate::registry::{Catalog, CatalogHelpers, MemoryCatalog};
 
 trait AstValueFormatter {
     fn formatted_string(&self) -> String;
@@ -25,6 +21,8 @@ impl AstValueFormatter for ValueWithSpan {
 }
 
 pub struct SqlExecutor;
+
+
 
 pub struct KvPairs(pub Vec<(Ident, ValueWithSpan)>);
 impl From<KvPairs> for Json {
@@ -47,9 +45,18 @@ fn handle_put_op(res: Result<(), CatalogError>) -> Result<(), ExecutorError> {
         },
     }
 }
+
 impl SqlExecutor {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn execute(ast: Statement, registry: MemoryCatalog) -> Result<ExecutorResponse, ExecutorError> {
+        match ast {
+            Statement::CreateKafkaConnector(stmt) => {
+                Self::execute_create_kafka_connector_if_not_exists(KafkaExecutor, stmt, registry).await
+            }
+        }
     }
 
     pub fn execute_create_simple_message_transform_if_not_exists(
@@ -79,10 +86,14 @@ impl SqlExecutor {
         handle_put_op(registry.put_pipeline(pipe))
     }
 
-    pub fn execute_create_kafka_connector_if_not_exists(
+    pub async fn execute_create_kafka_connector_if_not_exists<K>(
+        kafka_executor: &K,
         connector_config: CreateKafkaConnector,
         registry: MemoryCatalog,
-    ) -> Result<(), ExecutorError> {
+    ) -> Result<ExecutorResponse, ExecutorError>
+    where
+        K: KafkaDeploy
+    {
         let conn_name = connector_config.name.to_string();
         let _conn_type = connector_config.connector_type; // currently unused
         let props: Json = KvPairs(connector_config.with_properties).into();
@@ -130,19 +141,28 @@ impl SqlExecutor {
             config: Value::Object(obj),
         };
 
-        handle_put_op(registry.put_connector(meta))
+        match registry.put_connector(meta.clone()) {
+            Ok(_) => Ok(ExecutorResponse::from(
+                kafka_executor.deploy_connector(
+                    &KafkaConnectorConfig::from(meta)
+                ).await?)),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+    use async_trait::async_trait;
     use super::*;
-    use registry::ConnectorType;
     use sqlparser::ast::KafkaConnectorType::Source;
     use sqlparser::ast::TransformCall;
     use sqlparser::ast::Value::SingleQuotedString;
     use sqlparser::tokenizer::{Location, Span};
     use uuid::Uuid;
+    use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
+    use crate::executor::kafka::utils::connector_exists;
 
     #[test]
     fn test_create_transform() {
@@ -192,6 +212,7 @@ mod tests {
             ],
         };
         let registry = MemoryCatalog::new();
+        let sql_exec = SqlExecutor::new();
         let res = SqlExecutor::execute_create_simple_message_transform_if_not_exists(
             smt,
             registry.clone(),
@@ -304,8 +325,20 @@ mod tests {
         assert_eq!(cat_pipe.predicate.as_deref(), Some("some_predicate"));
     }
 
-    #[test]
-    fn test_create_kafka_connector() {
+    struct MockKafkaExecutor {
+        called: Mutex<Vec<KafkaConnectorConfig>>
+    }
+
+    #[async_trait]
+    impl KafkaDeploy for MockKafkaExecutor {
+        async fn deploy_connector(&self, cfg: &KafkaConnectorConfig) -> Result<KafkaExecutorResponse, KafkaExecutorError> {
+            self.called.lock().unwrap().push(cfg.clone());
+            Ok(KafkaExecutorResponse::Ok)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_kafka_connector() {
         use serde_json::json;
 
         let registry = MemoryCatalog::new();
@@ -322,25 +355,138 @@ mod tests {
         registry.put_pipeline(pipe2).unwrap();
 
         let span = Span::new(Location::new(0, 0), Location::new(0, 0));
+        let conn_name = Uuid::new_v4();
         let ast = CreateKafkaConnector {
             name: Ident {
-                value: "conn".into(),
+                value: conn_name.into(),
                 quote_style: None,
                 span,
             },
             if_not_exists: true,
             connector_type: Source,
-            with_properties: vec![(
-                Ident {
-                    value: "a".into(),
-                    quote_style: None,
-                    span,
-                },
-                ValueWithSpan {
-                    value: SingleQuotedString("1".into()),
-                    span,
-                },
-            )],
+            with_properties: vec![
+                (
+                    Ident {
+                        value: "a".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("1".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "connector.class".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("io.debezium.connector.postgresql.PostgresConnector".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "tasks.max".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("1".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "database.user".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("postgres".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "database.password".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("password".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "database.port".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("5432".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "database.hostname".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("postgres".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "database.dbname".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("foundry_dev".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "table.whitelist".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("public.test_connector_src".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "snapshot.mode".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("initial".into()),
+                        span,
+                    }
+                ),
+                (
+                    Ident {
+                        value: "topic.prefix".into(),
+                        quote_style: None,
+                        span,
+                    },
+                    ValueWithSpan {
+                        value: SingleQuotedString("postgres-".into()),
+                        span,
+                    }
+                ),
+            ],
             with_pipelines: vec![
                 Ident {
                     value: "pipe1".into(),
@@ -355,10 +501,19 @@ mod tests {
             ],
         };
 
-        SqlExecutor::execute_create_kafka_connector_if_not_exists(ast, registry.clone()).unwrap();
+        let connect_host = "http://localhost:8083";
+        let mock_exec = MockKafkaExecutor { called: Mutex::new(vec![]) };
 
-        let c = registry.get_connector("conn").unwrap();
-        assert_eq!(c.name, "conn");
+        let resp = SqlExecutor::execute_create_kafka_connector_if_not_exists(
+            &mock_exec, ast, registry.clone(),
+        ).await.unwrap();
+        assert_eq!(resp, ExecutorResponse::Ok);
+        assert_eq!(mock_exec.called.lock().unwrap().len(), 1);
+
+
+
+        let c = registry.get_connector(&conn_name.to_string()).unwrap();
+        assert_eq!(c.name, conn_name.to_string());
         assert_eq!(c.plugin, ConnectorType::Kafka);
         assert_eq!(c.config["a"], "1");
         assert_eq!(c.config["transforms"], "pipe1_mask,pipe2_drop");

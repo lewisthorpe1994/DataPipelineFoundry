@@ -7,7 +7,7 @@ members = [
     "crates/sqlparser",
     "crates/logging",
     "crates/test_utils",
-    "crates/registry",
+    "crates/engine",
     "crates/executor",
     "crates/dag"
 ]
@@ -33,7 +33,7 @@ tempfile = "3"
 common = { path = "crates/common"}
 ff_core = { path = "crates/ff_core" }
 sqlparser = { path = "crates/sqlparser" }
-registry = { path = "crates/registry" }
+registry = { path = "crates/engine" }
 logging = { path = "crates/logging"}
 test_utils = { path = "crates/test_utils" }
 dag = { path = "crates/dag"}
