@@ -1,4 +1,5 @@
 use serde_json::Value as Json;
+use common::types::sources::SourceConnArgs;
 use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
 use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineMeta, TransformMeta};
 use crate::executor::{ExecutorError, ExecutorResponse};
@@ -51,12 +52,35 @@ impl SqlExecutor {
         Self
     }
 
-    pub async fn execute(ast: Statement, registry: MemoryCatalog) -> Result<ExecutorResponse, ExecutorError> {
-        match ast {
-            Statement::CreateKafkaConnector(stmt) => {
-                Self::execute_create_kafka_connector_if_not_exists(KafkaExecutor, stmt, registry).await
+    pub async fn execute<S>(
+        parsed_stmts: S, 
+        registry: &MemoryCatalog,
+        source_conn_args: SourceConnArgs
+    ) -> Result<ExecutorResponse, ExecutorError> 
+    where 
+        S: IntoIterator<Item = Statement>,
+    {
+        for ast in parsed_stmts.into_iter() {
+            match ast {
+                Statement::CreateKafkaConnector(stmt) => {
+                    let kafka_executor = if let Some(ref connect_host) = source_conn_args.kafka_connect {
+                        KafkaExecutor::new(connect_host)
+                    } else {
+                        return Err(ExecutorError::ConfigError("No Kafka Connect host provided".to_string()))
+                    };
+                    Self::execute_create_kafka_connector_if_not_exists(&kafka_executor, stmt, registry).await?;
+                }
+                Statement::CreateSMTransform(stmt) => {
+                    Self::execute_create_simple_message_transform_if_not_exists(stmt, registry.clone())?;
+                }
+                Statement::CreateSMTPipeline(stmt) => {
+                    Self::execute_create_simple_message_transform_pipeline_if_not_exists(stmt, registry.clone())?;
+                }
+                _ => return Err(ExecutorError::FailedToExecute("Method not supported yet".to_string()))
             }
         }
+        
+        Ok(ExecutorResponse::Ok)
     }
 
     pub fn execute_create_simple_message_transform_if_not_exists(
@@ -89,7 +113,7 @@ impl SqlExecutor {
     pub async fn execute_create_kafka_connector_if_not_exists<K>(
         kafka_executor: &K,
         connector_config: CreateKafkaConnector,
-        registry: MemoryCatalog,
+        registry: &MemoryCatalog,
     ) -> Result<ExecutorResponse, ExecutorError>
     where
         K: KafkaDeploy
@@ -157,7 +181,6 @@ mod tests {
     use async_trait::async_trait;
     use super::*;
     use sqlparser::ast::KafkaConnectorType::Source;
-    use sqlparser::ast::TransformCall;
     use sqlparser::ast::Value::SingleQuotedString;
     use sqlparser::tokenizer::{Location, Span};
     use uuid::Uuid;
@@ -505,7 +528,7 @@ mod tests {
         let mock_exec = MockKafkaExecutor { called: Mutex::new(vec![]) };
 
         let resp = SqlExecutor::execute_create_kafka_connector_if_not_exists(
-            &mock_exec, ast, registry.clone(),
+            &mock_exec, ast, &registry,
         ).await.unwrap();
         assert_eq!(resp, ExecutorResponse::Ok);
         assert_eq!(mock_exec.called.lock().unwrap().len(), 1);

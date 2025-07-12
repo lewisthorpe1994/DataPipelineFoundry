@@ -3,11 +3,13 @@ mod kafka;
 
 use std::error::Error;
 use std::fmt;
+use common::types::sources::SourceConnArgs;
 use sqlparser::ast::Statement;
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
 use crate::CatalogError;
 use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
+use crate::executor::sql::SqlExecutor;
 use crate::registry::MemoryCatalog;
 
 #[derive(Debug)]
@@ -75,16 +77,14 @@ impl Executor {
     }
 }
 impl Executor {
-    pub fn execute(&self, sql: &str, catalog: MemoryCatalog) -> Result<ExecutorResponse, ExecutorError> {
+    pub async fn execute(
+        &self, 
+        sql: &str, 
+        catalog: &MemoryCatalog, 
+        source_conn_args: SourceConnArgs
+    ) -> Result<ExecutorResponse, ExecutorError> {
         let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
         
-        for ast in ast_vec {
-            match ast { 
-                Statement::CreateKafkaConnector(stmt) => {
-                    
-                }
-            }
-        }
-        Ok(ExecutorResponse::Ok)
+        Ok(SqlExecutor::execute(ast_vec, catalog, source_conn_args).await?)
     }
 }

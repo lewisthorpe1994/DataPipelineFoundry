@@ -16274,20 +16274,6 @@ mod tests {
     }
 
     #[test]
-    fn test_create_kafka_connector_source_with_pipeline() {
-        let sql = r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
-            "connector.class" = "io.confluent.connect.kafka.KafkaSourceConnector",
-            "key.converter" = "org.apache.kafka.connect.json.JsonConverter",
-            "value.converter" = "org.apache.kafka.connect.json.JsonConverter",
-            "topics" = "topic1",
-            "kafka.bootstrap.servers" = "localhost:9092"
-        );"#;
-
-        let ast = Parser::parse_sql(&PostgreSqlDialect {}, sql).unwrap();
-        println!("{:?}", ast);
-    }
-
-    #[test]
     fn test_create_kafka_connector_source_with_pipelines() {
         use sqlparser::dialect::PostgreSqlDialect;
         use sqlparser::parser::Parser;

@@ -9,6 +9,7 @@ tempfile = { workspace = true }
 once_cell = { workspace = true }
 test_utils = { workspace = true }
 wiremock = { version = "0.6.4" }
+testcontainers = { version = "0.24.0" }
 
 [dependencies]
 thiserror = "2.0.12"
@@ -22,3 +23,4 @@ reqwest = { version = "0.12.22", features = ["json"] }
 tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 tokio-postgres = { version = "0.7", features = ["runtime"] }
 async-trait = "0.1.88"
+common = { workspace = true }
