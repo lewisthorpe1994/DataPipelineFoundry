@@ -8,7 +8,8 @@ pub use errors::*;
 use async_trait::async_trait;
 use serde::{Deserialize};
 use reqwest::{Client, StatusCode};
-
+use crate::executor::ExecutorHost;
+use crate::executor::kafka::utils::KafkaConnectUtils;
 
 #[derive(Deserialize)]
 struct ConnectErrorBody {
@@ -70,6 +71,15 @@ impl KafkaDeploy for KafkaExecutor {
     //     Ok(())
     // }
 }
+
+impl ExecutorHost for KafkaExecutor {
+    fn host(&self) -> &str {
+        self.connect_host.as_str()
+    }
+}
+
+#[async_trait]
+impl KafkaConnectUtils for KafkaExecutor {}
 
 #[cfg(test)]
 mod test {

@@ -12,6 +12,9 @@ use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
 use crate::executor::sql::SqlExecutor;
 use crate::registry::MemoryCatalog;
 
+pub trait ExecutorHost {
+    fn host(&self) -> &str;
+}
 #[derive(Debug)]
 pub enum ExecutorError {
     FailedToConnect(String),

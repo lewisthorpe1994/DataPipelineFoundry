@@ -1,6 +1,7 @@
 mod executor;
 pub mod registry;
 
+use std::fmt::{Debug, Formatter};
 use common::types::sources::SourceConnArgs;
 pub use registry::model::*;
 pub use registry::error::CatalogError;
@@ -10,14 +11,28 @@ use crate::registry::MemoryCatalog;
 pub enum EngineError {
     FailedToExecute(String),
 }
+impl Debug for EngineError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self { 
+            EngineError::FailedToExecute(err) => {write!(f,"FailedToExecute: {}", err)},
+        }
+    }
+}
 impl From<ExecutorError> for EngineError {
     fn from(e: ExecutorError) -> Self {
         Self::FailedToExecute(e.to_string())
     }   
 }
 
-enum EngineResponse {
+pub enum EngineResponse {
     Ok,
+}
+impl From<ExecutorResponse> for EngineResponse {
+    fn from(resp: ExecutorResponse) -> Self {
+        match resp { 
+            ExecutorResponse::Ok => EngineResponse::Ok,
+        }
+    }
 }
 pub struct Engine {
     executor: Executor,
@@ -31,7 +46,7 @@ impl Engine {
         }
     }
     
-    pub async fn execute(&self, sql: &str, source_conn_args: SourceConnArgs) -> Result<ExecutorResponse, EngineError> {
-        Ok(self.executor.execute(sql, &self.catalog, source_conn_args).await?)
+    pub async fn execute(&self, sql: &str, source_conn_args: SourceConnArgs) -> Result<EngineResponse, EngineError> {
+        Ok(EngineResponse::from(self.executor.execute(sql, &self.catalog, source_conn_args).await?))
     }
 }

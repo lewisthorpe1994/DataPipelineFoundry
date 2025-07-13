@@ -185,7 +185,6 @@ mod tests {
     use sqlparser::tokenizer::{Location, Span};
     use uuid::Uuid;
     use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
-    use crate::executor::kafka::utils::connector_exists;
 
     #[test]
     fn test_create_transform() {
