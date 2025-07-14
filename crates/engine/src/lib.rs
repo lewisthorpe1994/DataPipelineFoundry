@@ -1,12 +1,12 @@
-mod executor;
 pub mod registry;
+pub mod executor;
 
 use std::fmt::{Debug, Formatter};
 use common::types::sources::SourceConnArgs;
 pub use registry::model::*;
 pub use registry::error::CatalogError;
-use crate::executor::{Executor, ExecutorError, ExecutorResponse};
-use crate::registry::MemoryCatalog;
+use executor::{Executor, ExecutorError, ExecutorResponse};
+use registry::MemoryCatalog;
 
 pub enum EngineError {
     FailedToExecute(String),

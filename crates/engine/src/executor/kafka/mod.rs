@@ -4,12 +4,12 @@ mod errors;
 
 pub use types::*;
 pub use errors::*;
+pub use utils::*;
 
 use async_trait::async_trait;
 use serde::{Deserialize};
 use reqwest::{Client, StatusCode};
 use crate::executor::ExecutorHost;
-use crate::executor::kafka::utils::KafkaConnectUtils;
 
 #[derive(Deserialize)]
 struct ConnectErrorBody {

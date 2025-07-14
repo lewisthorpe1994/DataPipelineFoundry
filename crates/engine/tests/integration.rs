@@ -20,7 +20,9 @@ mod tests {
     use testcontainers::core::client::docker_client_instance;
     use tokio_postgres::NoTls;
     use common::types::sources::SourceConnArgs;
-    use registry::Engine;
+    use engine::Engine;
+    use engine::executor::ExecutorHost;
+    use engine::executor::kafka::{KafkaConnectUtils, KafkaExecutor};
     use crate::{KAFKA_BROKER_HOST, KAFKA_BROKER_PORT, KAFKA_CONNECT_HOST, KAFKA_CONNECT_PORT, PG_DB, PG_HOST, PG_PASSWORD, PG_PORT, PG_USER};
 
     struct PgTestContainer {
@@ -54,6 +56,16 @@ mod tests {
         kafka_broker: KafkaTestContainer,
         kafka_connect: KafkaTestContainer
     }
+    
+    struct KafkaConnectClient {
+        host: String,
+    }
+    impl ExecutorHost for KafkaConnectClient {
+        fn host(&self) -> &str {
+            &self.host
+        }
+    }
+    impl KafkaConnectUtils for KafkaConnectClient {}
     
     async fn setup_test_containers() -> Result<TestContainers, Box<dyn std::error::Error>> {
         let docker = docker_client_instance().await.unwrap();
@@ -171,15 +183,28 @@ mod tests {
     async fn test_create_connector() {
         let test_containers = setup_test_containers().await.unwrap();
         set_up_table(test_containers.postgres.conn_string()).await;
-        let sql = r#"CREATE SIMPLE MESSAGE TRANSFORM cast_hash_cols_to_int (
-          type      = 'org.apache.kafka.connect.transforms.Cast$Value',
-          spec      = '${spec}',
-          predicate = '${predicate}'
-        );"#;
+        
+        let con_name = "test";
+        
+        let sql = format!(r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS {con_name} (
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "tasks.max": "1",
+        "database.user": "postgres",
+        "database.password": "password",
+        "database.port": "5432",
+        "database.hostname": "postgres",
+        "database.dbname": "foundry_dev",
+        "table.whitelist": "public.test_connector_src",
+        "snapshot.mode": "initial",
+        "kafka.bootstrap.servers": "kafka-broker:{KAFKA_BROKER_PORT}",
+        "topic.prefix": "postgres-");"#);
 
         let engine = Engine::new();
-        let kafka_args = SourceConnArgs{ kafka_connect: Some(format!("http://{}", test_containers.kafka_connect.host))};
-        let resp = engine.execute(sql, kafka_args).await.unwrap();
-        let kafka_executor = KafkaExecutor::new()
+        let connect_host = format!("http://{}", test_containers.kafka_connect.host);
+        let kafka_args = SourceConnArgs{ kafka_connect: Some(connect_host.clone())};
+        let resp = engine.execute(sql.as_str(), kafka_args).await.unwrap();
+        let kafka_executor = KafkaConnectClient {host: connect_host};
+        let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
+        assert!(conn_exists);
     }
 }

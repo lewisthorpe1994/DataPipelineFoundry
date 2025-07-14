@@ -6,7 +6,7 @@ use crate::executor::kafka::KafkaExecutorError;
 
 #[async_trait]
 pub trait KafkaConnectUtils: ExecutorHost {
-    async fn connector_exists<S>(&self, conn_name: &str) -> Result<bool, KafkaExecutorError> {
+    async fn connector_exists(&self, conn_name: &str) -> Result<bool, KafkaExecutorError> {
         let client = Client::new();
         let url = format!("{}/connectors/{}/status", &self.host(), conn_name);
         let resp = client.get(&url).send().await?;

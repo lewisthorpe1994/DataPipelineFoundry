@@ -1,5 +1,5 @@
 pub mod sql;
-mod kafka;
+pub mod kafka;
 
 use std::error::Error;
 use std::fmt;

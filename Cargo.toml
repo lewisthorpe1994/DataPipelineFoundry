@@ -38,4 +38,5 @@ logging = { path = "crates/logging"}
 test_utils = { path = "crates/test_utils" }
 dag = { path = "crates/dag"}
 executor = { path = "crates/executor"}
+engine = { path = "crates/engine"}
 

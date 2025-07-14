@@ -534,6 +534,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "common",
+ "once_cell",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "tempfile",
+ "test_utils",
+ "testcontainers",
+ "thiserror",
+ "tokio",
+ "tokio-postgres",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -566,11 +589,11 @@ version = "0.1.0"
 dependencies = [
  "common",
  "dag",
+ "engine",
  "log",
  "logging",
  "once_cell",
  "postgres",
- "registry",
  "reqwest",
  "serde",
  "serde_json",
@@ -1861,29 +1884,6 @@ name = "regex-syntax"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
-
-[[package]]
-name = "registry"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "common",
- "once_cell",
- "parking_lot",
- "reqwest",
- "serde",
- "serde_json",
- "sqlparser",
- "tempfile",
- "test_utils",
- "testcontainers",
- "thiserror",
- "tokio",
- "tokio-postgres",
- "uuid",
- "wiremock",
-]
 
 [[package]]
 name = "reqwest"
