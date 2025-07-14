@@ -20,9 +20,11 @@ mod tests {
     use testcontainers::core::client::docker_client_instance;
     use tokio_postgres::NoTls;
     use common::types::sources::SourceConnArgs;
-    use engine::Engine;
-    use engine::executor::ExecutorHost;
-    use engine::executor::kafka::{KafkaConnectUtils, KafkaExecutor};
+use engine::Engine;
+use engine::executor::ExecutorHost;
+use engine::executor::kafka::{KafkaConnectUtils, KafkaExecutor};
+use engine::executor::Executor;
+use engine::registry::{MemoryCatalog, Catalog};
     use crate::{KAFKA_BROKER_HOST, KAFKA_BROKER_PORT, KAFKA_CONNECT_HOST, KAFKA_CONNECT_PORT, PG_DB, PG_HOST, PG_PASSWORD, PG_PORT, PG_USER};
 
     struct PgTestContainer {
@@ -206,5 +208,68 @@ mod tests {
         let kafka_executor = KafkaConnectClient {host: connect_host};
         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
         assert!(conn_exists);
+    }
+
+    #[tokio::test]
+    async fn test_create_transform_via_executor() {
+        let exec = Executor::new();
+        let catalog = MemoryCatalog::new();
+        let sql = r#"CREATE SIMPLE MESSAGE TRANSFORM cast_hash_cols_to_int (
+  type      = 'org.apache.kafka.connect.transforms.Cast$Value',
+  spec      = '${spec}',
+  predicate = '${predicate}'
+);"#;
+        exec
+            .execute(sql, &catalog, SourceConnArgs { kafka_connect: None })
+            .await
+            .unwrap();
+        let smt = catalog
+            .get_transform("cast_hash_cols_to_int")
+            .expect("transform exists");
+        assert_eq!(smt.name, "cast_hash_cols_to_int");
+        assert_eq!(smt.config["type"], "org.apache.kafka.connect.transforms.Cast$Value");
+        assert_eq!(smt.config["spec"], "${spec}");
+        assert_eq!(smt.config["predicate"], "${predicate}");
+    }
+
+    #[tokio::test]
+    async fn test_create_pipeline_via_executor() {
+        let exec = Executor::new();
+        let catalog = MemoryCatalog::new();
+
+        exec
+            .execute(
+                "CREATE SIMPLE MESSAGE TRANSFORM hash_email (type = 'hash');",
+                &catalog,
+                SourceConnArgs { kafka_connect: None },
+            )
+            .await
+            .unwrap();
+        exec
+            .execute(
+                "CREATE SIMPLE MESSAGE TRANSFORM drop_pii (type = 'drop');",
+                &catalog,
+                SourceConnArgs { kafka_connect: None },
+            )
+            .await
+            .unwrap();
+
+        let sql = r#"
+CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
+    hash_email(email_addr_reg = '.*@example.com'),
+    drop_pii(fields = 'email_addr, phone_num')
+) WITH PIPELINE PREDICATE 'some_predicate';
+"#;
+        exec
+            .execute(sql, &catalog, SourceConnArgs { kafka_connect: None })
+            .await
+            .unwrap();
+
+        let pipe = catalog.get_pipeline("some_pipeline").expect("pipeline exists");
+        let t1 = catalog.get_transform("hash_email").unwrap();
+        let t2 = catalog.get_transform("drop_pii").unwrap();
+        assert_eq!(pipe.name, "some_pipeline");
+        assert_eq!(pipe.transforms, vec![t1.id, t2.id]);
+        assert_eq!(pipe.predicate.as_deref(), Some("some_predicate"));
     }
 }
