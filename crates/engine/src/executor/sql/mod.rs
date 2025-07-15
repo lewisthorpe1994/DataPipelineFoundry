@@ -3,7 +3,7 @@ use common::types::sources::SourceConnArgs;
 use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
 use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineMeta, TransformMeta};
 use crate::executor::{ExecutorError, ExecutorResponse};
-use crate::executor::kafka::{KafkaConnectorConfig, KafkaDeploy, KafkaExecutor};
+use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
 use crate::registry::{Catalog, CatalogHelpers, MemoryCatalog};
 
 trait AstValueFormatter {
@@ -22,7 +22,6 @@ impl AstValueFormatter for ValueWithSpan {
 }
 
 pub struct SqlExecutor;
-
 
 
 pub struct KvPairs(pub Vec<(Ident, ValueWithSpan)>);
@@ -168,7 +167,7 @@ impl SqlExecutor {
         match registry.put_connector(meta.clone()) {
             Ok(_) => Ok(ExecutorResponse::from(
                 kafka_executor.deploy_connector(
-                    &KafkaConnectorConfig::from(meta)
+                    &KafkaConnectorDeployConfig::from(meta)
                 ).await?)),
             Err(e) => Err(e.into()),
         }
@@ -348,12 +347,12 @@ mod tests {
     }
 
     struct MockKafkaExecutor {
-        called: Mutex<Vec<KafkaConnectorConfig>>
+        called: Mutex<Vec<KafkaConnectorDeployConfig>>
     }
 
     #[async_trait]
     impl KafkaDeploy for MockKafkaExecutor {
-        async fn deploy_connector(&self, cfg: &KafkaConnectorConfig) -> Result<KafkaExecutorResponse, KafkaExecutorError> {
+        async fn deploy_connector(&self, cfg: &KafkaConnectorDeployConfig) -> Result<KafkaExecutorResponse, KafkaExecutorError> {
             self.called.lock().unwrap().push(cfg.clone());
             Ok(KafkaExecutorResponse::Ok)
         }

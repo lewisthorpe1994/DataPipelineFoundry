@@ -7,11 +7,11 @@ const KAFKA_BROKER_HOST: &str = "0.0.0.0";
 const KAFKA_BROKER_PORT: &str = "9092";
 const KAFKA_CONNECT_HOST: &str = "0.0.0.0";
 const KAFKA_CONNECT_PORT: &str = "8083";
-const KAFKA_CONNECT_PLUGINS_INSTALL: &str = "confluentinc/kafka-connect-jdbc:latest";
+const NET: &str = "int-net";
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use testcontainers::{core::{
         WaitFor,
         IntoContainerPort,
@@ -20,10 +20,12 @@ mod tests {
     use testcontainers::core::client::docker_client_instance;
     use tokio_postgres::NoTls;
     use common::types::sources::SourceConnArgs;
-    use engine::Engine;
-    use engine::executor::ExecutorHost;
-    use engine::executor::kafka::{KafkaConnectUtils, KafkaExecutor};
-    use crate::{KAFKA_BROKER_HOST, KAFKA_BROKER_PORT, KAFKA_CONNECT_HOST, KAFKA_CONNECT_PORT, PG_DB, PG_HOST, PG_PASSWORD, PG_PORT, PG_USER};
+use engine::{Engine, EngineError};
+use engine::executor::ExecutorHost;
+use engine::executor::kafka::{KafkaConnectClient, KafkaConnectorType};
+use engine::executor::Executor;
+use engine::registry::{MemoryCatalog, Catalog};
+    use crate::{KAFKA_BROKER_HOST, KAFKA_BROKER_PORT, KAFKA_CONNECT_HOST, KAFKA_CONNECT_PORT, NET, PG_DB, PG_HOST, PG_PASSWORD, PG_PORT, PG_USER};
 
     struct PgTestContainer {
         container: ContainerAsync<GenericImage>,
@@ -57,15 +59,21 @@ mod tests {
         kafka_connect: KafkaTestContainer
     }
     
-    struct KafkaConnectClient {
+    struct KafkaConnectTestClient {
         host: String,
     }
-    impl ExecutorHost for KafkaConnectClient {
+    impl ExecutorHost for KafkaConnectTestClient {
         fn host(&self) -> &str {
             &self.host
         }
     }
-    impl KafkaConnectUtils for KafkaConnectClient {}
+    impl KafkaConnectClient for KafkaConnectTestClient {}
+
+    fn plugins_host_path() -> PathBuf {
+        // Always relative to current project root
+        let base_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        base_dir.join("tests").join("connect_plugins")
+    }
     
     async fn setup_test_containers() -> Result<TestContainers, Box<dyn std::error::Error>> {
         let docker = docker_client_instance().await.unwrap();
@@ -74,16 +82,17 @@ mod tests {
             .with_wait_for(WaitFor::message_on_stdout(
                 "database system is ready to accept connections",
             ))
+            .with_container_name("postgres")
             .with_env_var("POSTGRES_DB", PG_DB)
             .with_env_var("POSTGRES_USER", PG_USER)
             .with_env_var("POSTGRES_PASSWORD", PG_PASSWORD)
-            .with_network("pg_network")
+            .with_network(NET)
             .with_mapped_port(PG_PORT.parse::<u16>().unwrap(), PG_PORT.parse::<u16>().unwrap().tcp())
             .start()
             .await.unwrap();
 
         let kafka_broker = GenericImage::new("apache/kafka", "latest")
-            .with_name("kafka-broker")
+            .with_container_name("kafka-broker")
             .with_env_var("KAFKA_NODE_ID", "1")
             .with_env_var("KAFKA_PROCESS_ROLES", "broker,controller")
             .with_env_var(
@@ -99,20 +108,20 @@ mod tests {
             .with_env_var("KAFKA_TRANSACTION_STATE_LOG_MIN_ISR", "1")
             .with_env_var("KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS", "0")
             .with_env_var("KAFKA_NUM_PARTITIONS", "3")
-            .with_network("kafka_network")
+            .with_network(NET)
             .start()
             .await.unwrap();
 
         let kafka_connect = GenericImage::new("confluentinc/cp-kafka-connect", "7.7.1")
             .with_wait_for(WaitFor::message_on_stdout(
-                "Kafka started (kafka.server.KafkaServer)",
+                "INFO REST resources initialized; server is started and ready to handle requests",
             ))
-            .with_name("kafka-connect")
+            .with_container_name("kafka-connect")
             .with_mapped_port(KAFKA_CONNECT_PORT.parse::<u16>().unwrap(), KAFKA_CONNECT_PORT.parse::<u16>().unwrap().tcp())
-            .with_network("kafka_network")
+            .with_network(NET)
             .with_mount(
                 Mount::bind_mount(
-                    "/absolute/host/connect_plugins",
+                    plugins_host_path().to_str().unwrap(),
                     "/opt/kafka/plugins",
                 )
             )
@@ -180,31 +189,125 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_connector() {
+    async fn test_create_connector() -> Result<(), EngineError> {
         let test_containers = setup_test_containers().await.unwrap();
         set_up_table(test_containers.postgres.conn_string()).await;
         
         let con_name = "test";
         
         let sql = format!(r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS {con_name} (
-        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-        "tasks.max": "1",
-        "database.user": "postgres",
-        "database.password": "password",
-        "database.port": "5432",
-        "database.hostname": "postgres",
-        "database.dbname": "foundry_dev",
-        "table.whitelist": "public.test_connector_src",
-        "snapshot.mode": "initial",
-        "kafka.bootstrap.servers": "kafka-broker:{KAFKA_BROKER_PORT}",
-        "topic.prefix": "postgres-");"#);
+        "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
+        "tasks.max" = "1",
+        "database.user" = "{PG_USER}",
+        "database.password" = "{PG_PASSWORD}",
+        "database.port" = "{PG_PORT}",
+        "database.hostname" = "postgres",
+        "database.dbname" = "{PG_DB}",
+        "table.include.list" = "public.test_connector_src",
+        "snapshot.mode" = "initial",
+        "kafka.bootstrap.servers" = "kafka-broker:{KAFKA_BROKER_PORT}",
+        "topic.prefix" = "postgres-");"#);
 
         let engine = Engine::new();
         let connect_host = format!("http://{}", test_containers.kafka_connect.host);
         let kafka_args = SourceConnArgs{ kafka_connect: Some(connect_host.clone())};
-        let resp = engine.execute(sql.as_str(), kafka_args).await.unwrap();
-        let kafka_executor = KafkaConnectClient {host: connect_host};
+        let resp = engine.execute(sql.as_str(), kafka_args).await?;
+        let kafka_executor = KafkaConnectTestClient {host: connect_host};
         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
         assert!(conn_exists);
+        let conn_config = kafka_executor.get_connector_config(con_name).await.unwrap();
+        assert_eq!(conn_config.conn_type.unwrap(), KafkaConnectorType::Source);
+        assert_eq!(conn_config.config["table.include.list"], "public.test_connector_src");
+        assert_eq!(conn_config.config["snapshot.mode"], "initial");
+        assert_eq!(conn_config.config["kafka.bootstrap.servers"], format!("kafka-broker:{KAFKA_BROKER_PORT}"));
+        assert_eq!(conn_config.config["topic.prefix"], "postgres-");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_create_connector_with_pipeline() -> Result<(), EngineError> {
+        let test_containers = setup_test_containers().await.unwrap();
+        set_up_table(test_containers.postgres.conn_string()).await;
+
+        let con_name = "test";
+        let sql = format!(r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS {con_name} (
+        "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
+        "tasks.max" = "1",
+        "database.user" = "{PG_USER}",
+        "database.password" = "{PG_PASSWORD}",
+        "database.port" = "{PG_PORT}",
+        "database.hostname" = "postgres",
+        "database.dbname" = "{PG_DB}",
+        "table.include.list" = "public.test_connector_src",
+        "snapshot.mode" = "initial",
+        "kafka.bootstrap.servers" = "kafka-broker:{KAFKA_BROKER_PORT}",
+        "topic.prefix" = "postgres-")
+        WITH PIPELINES"#);
+
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_create_transform_via_executor() {
+        let exec = Executor::new();
+        let catalog = MemoryCatalog::new();
+        let sql = r#"CREATE SIMPLE MESSAGE TRANSFORM cast_hash_cols_to_int (
+  type      = 'org.apache.kafka.connect.transforms.Cast$Value',
+  spec      = '${spec}',
+  predicate = '${predicate}'
+);"#;
+        exec
+            .execute(sql, &catalog, SourceConnArgs { kafka_connect: None })
+            .await
+            .unwrap();
+        let smt = catalog
+            .get_transform("cast_hash_cols_to_int")
+            .expect("transform exists");
+        assert_eq!(smt.name, "cast_hash_cols_to_int");
+        assert_eq!(smt.config["type"], "org.apache.kafka.connect.transforms.Cast$Value");
+        assert_eq!(smt.config["spec"], "${spec}");
+        assert_eq!(smt.config["predicate"], "${predicate}");
+    }
+
+    #[tokio::test]
+    async fn test_create_pipeline_via_executor() {
+        let exec = Executor::new();
+        let catalog = MemoryCatalog::new();
+
+        exec
+            .execute(
+                "CREATE SIMPLE MESSAGE TRANSFORM hash_email (type = 'hash');",
+                &catalog,
+                SourceConnArgs { kafka_connect: None },
+            )
+            .await
+            .unwrap();
+        exec
+            .execute(
+                "CREATE SIMPLE MESSAGE TRANSFORM drop_pii (type = 'drop');",
+                &catalog,
+                SourceConnArgs { kafka_connect: None },
+            )
+            .await
+            .unwrap();
+
+        let sql = r#"
+CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
+    hash_email(email_addr_reg = '.*@example.com'),
+    drop_pii(fields = 'email_addr, phone_num')
+) WITH PIPELINE PREDICATE 'some_predicate';
+"#;
+        exec
+            .execute(sql, &catalog, SourceConnArgs { kafka_connect: None })
+            .await
+            .unwrap();
+
+        let pipe = catalog.get_pipeline("some_pipeline").expect("pipeline exists");
+        let t1 = catalog.get_transform("hash_email").unwrap();
+        let t2 = catalog.get_transform("drop_pii").unwrap();
+        assert_eq!(pipe.name, "some_pipeline");
+        assert_eq!(pipe.transforms, vec![t1.id, t2.id]);
+        assert_eq!(pipe.predicate.as_deref(), Some("some_predicate"));
     }
 }

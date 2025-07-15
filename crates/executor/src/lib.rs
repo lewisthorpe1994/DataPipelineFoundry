@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
 use postgres::error::Error as PostgresError;
+use engine::CatalogError;
 use registry::CatalogError;
 use sqlparser::ast::Statement;
 
