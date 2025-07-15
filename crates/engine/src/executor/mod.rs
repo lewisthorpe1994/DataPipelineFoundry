@@ -19,9 +19,11 @@ pub trait ExecutorHost {
 pub enum ExecutorError {
     FailedToConnect(String),
     FailedToExecute(String),
+    UnexpectedError(String),
     InvalidFilePath(String),
     ConfigError(String),
     ParseError(String),
+    IoError(std::io::Error),
 }
 
 #[derive(PartialEq, Debug)]
@@ -45,6 +47,8 @@ impl fmt::Display for ExecutorError {
             ExecutorError::InvalidFilePath(msg) => write!(f, "Invalid file path: {}", msg),
             ExecutorError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             ExecutorError::ParseError(msg) => write!(f, "Parse error: {}", msg),
+            ExecutorError::UnexpectedError(msg) => write!(f, "Unexpected error: {}", msg),
+            ExecutorError::IoError(err) => write!(f, "IO error: {}", err),
         }
     }
 }
@@ -62,8 +66,9 @@ impl From<KafkaExecutorError> for ExecutorError {
         match e {
             KafkaExecutorError::ConnectionError(e) => ExecutorError::FailedToConnect(e.to_string()),
             KafkaExecutorError::IncorrectConfig(e) => ExecutorError::FailedToExecute(e.to_string()),
-            KafkaExecutorError::IoError(e) => ExecutorError::FailedToExecute(e.to_string()),
-            KafkaExecutorError::UnexpectedError(e) => ExecutorError::FailedToExecute(e.to_string()),
+            KafkaExecutorError::IoError(e) => ExecutorError::IoError(e),
+            KafkaExecutorError::UnexpectedError(e) => ExecutorError::UnexpectedError(e.to_string()),
+            KafkaExecutorError::InternalServerError(e) => ExecutorError::UnexpectedError(e.to_string()),
         }
     }
 }
