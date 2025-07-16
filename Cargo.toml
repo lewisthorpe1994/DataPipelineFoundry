@@ -8,8 +8,8 @@ members = [
     "crates/logging",
     "crates/test_utils",
     "crates/engine",
-    "crates/executor",
-    "crates/dag"
+    "crates/dag",
+     "crates/database_adapters"
 ]
 
 [workspace.package]
@@ -37,6 +37,6 @@ registry = { path = "crates/engine" }
 logging = { path = "crates/logging"}
 test_utils = { path = "crates/test_utils" }
 dag = { path = "crates/dag"}
-executor = { path = "crates/executor"}
+tokio-postgres = { version = "0.7", features = ["runtime"] }
 engine = { path = "crates/engine"}
 

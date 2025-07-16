@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "adapters"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "dag",
+ "logging",
+ "tokio-postgres",
+ "tracing",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -539,7 +550,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "common",
  "once_cell",
  "parking_lot",
  "reqwest",
@@ -584,29 +594,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "executor"
-version = "0.1.0"
-dependencies = [
- "common",
- "dag",
- "engine",
- "log",
- "logging",
- "once_cell",
- "postgres",
- "reqwest",
- "serde",
- "serde_json",
- "sqlparser",
- "tempfile",
- "test_utils",
- "tokio",
- "tokio-postgres",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "fallible-iterator"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -624,7 +611,6 @@ version = "0.1.0"
 dependencies = [
  "common",
  "dag",
- "executor",
  "log",
  "minijinja",
  "once_cell",
