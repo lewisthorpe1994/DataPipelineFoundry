@@ -1,0 +1,25 @@
+[package]
+name = "engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }
+once_cell = { workspace = true }
+test_utils = { workspace = true }
+wiremock = { version = "0.6.4" }
+testcontainers = { version = "0.24.0" }
+tokio-postgres = { workspace = true }
+
+[dependencies]
+thiserror = "2.0.12"
+serde_json = { workspace = true }
+chrono = { version = "0.4.41", features = ["serde"] }
+serde = { workspace = true }
+uuid = { version = "1.17.0", features = ["v4", "serde"] }
+parking_lot = "0.12.4"
+sqlparser = { workspace = true }
+reqwest = { version = "0.12.22", features = ["json"] }
+tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+async-trait = "0.1.88"

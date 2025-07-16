@@ -1,8 +1,8 @@
 use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
-use crate::dag::ModelsDag;
 use minijinja::{Environment, Error, ErrorKind, Value};
 use std::sync::Arc;
 use common::types::{Materialize, Relation};
+use dag::ModelsDag;
 
 /// Register the `ref` macro with the provided Jinja [`Environment`].
 ///

@@ -4595,7 +4595,7 @@ impl<'a> Parser<'a> {
             self.parse_create_connector()
         } else if self.parse_keyword(Keyword::SOURCE) {
             self.parse_source()
-        } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM, Keyword::PIPELINE]) {
+        } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM]) {
             self.parse_smt()
         }
         else {
@@ -15321,32 +15321,82 @@ impl<'a> Parser<'a> {
             with_pipelines: pipeline_idents,
         }))
     }
-    
+
     pub fn parse_smt(&mut self) -> Result<Statement, ParserError> {
+        if self.parse_keyword(Keyword::PIPELINE) {
+            self.parse_smt_pipeline()
+        } else {
+            self.parse_sm_transform()
+        }
+    }
+
+    pub fn parse_sm_transform(&mut self) -> Result<Statement, ParserError> {
         let if_not_exists = self.parse_if_not_exists();
         let name = self.parse_identifier()?;
-        
-        let connector_type = self.parse_connector_type()?;
-        let mut with_transforms = vec![];
-
+        let mut config = vec![];
         if self.consume_token(&Token::LParen) {
             loop {
                 let ident = self.parse_identifier()?;
                 self.expect_token(&Token::Eq)?;
                 let val = self.parse_value()?;
-                with_transforms.push((ident, val));
+                config.push((ident, val));
                 if self.consume_token(&Token::RParen) {
                     break;
                 }
                 self.expect_token(&Token::Comma)?;
             }
         };
+
+        Ok(Statement::CreateSMTransform(CreateSimpleMessageTransform {
+            name,
+            if_not_exists,
+            config
+        }))
+
+
+    }
+    /// e.g CREATE SIMPLE MESSAGE TRANSFORM PIPELINE [IF NOT EXISTS] some_connector SOURCE (
+    /// some_smt(some_arg = '123')
+    /// ) WITH PIPELINE PREDICATE 'SOME_TOPIC'"
+    pub fn parse_smt_pipeline(&mut self) -> Result<Statement, ParserError> {
+        let if_not_exists = self.parse_if_not_exists();
+        let name = self.parse_identifier()?;
+
+        let connector_type = self.parse_connector_type()?;
+        let mut steps = vec![];
+
+        if self.consume_token(&Token::LParen) {
+            loop {
+                let ident = self.parse_identifier()?;
+                let mut transform = TransformCall::new(ident, vec![]);
+                if self.consume_token(&Token::LParen) {
+                    let targs = self.parse_parenthesized_kv()?;
+                    transform.args = targs;
+                }
+                steps.push(transform);
+                if self.consume_token(&Token::RParen) {
+                    break;
+                }
+                self.expect_token(&Token::Comma)?;
+            }
+        };
+
+        if steps.is_empty() {
+            return Err(ParserError::ParserError("Expected at least one step in the pipeline".to_string()));
+        }
+
+        let mut pipe_predicate: Option<ValueWithSpan> = None;
+        if self.parse_keywords(&[Keyword::WITH, Keyword::PIPELINE, Keyword::PREDICATE]) {
+            pipe_predicate = Some(self.parse_value()?);
+        }
+
         Ok(
             Statement::CreateSMTPipeline(CreateSimpleMessageTransformPipeline {
                 name,
                 if_not_exists,
                 connector_type,
-                with_transforms,
+                steps,
+                pipe_predicate,
             })
         )
     }
@@ -16224,20 +16274,6 @@ mod tests {
     }
 
     #[test]
-    fn test_create_kafka_connector_source_with_pipeline() {
-        let sql = r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
-            "connector.class" = "io.confluent.connect.kafka.KafkaSourceConnector",
-            "key.converter" = "org.apache.kafka.connect.json.JsonConverter",
-            "value.converter" = "org.apache.kafka.connect.json.JsonConverter",
-            "topics" = "topic1",
-            "kafka.bootstrap.servers" = "localhost:9092"
-        );"#;
-
-        let ast = Parser::parse_sql(&PostgreSqlDialect {}, sql).unwrap();
-        println!("{:?}", ast);
-    }
-
-    #[test]
     fn test_create_kafka_connector_source_with_pipelines() {
         use sqlparser::dialect::PostgreSqlDialect;
         use sqlparser::parser::Parser;
@@ -16286,51 +16322,55 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_smt() {
+        let sql = r#"CREATE SIMPLE MESSAGE TRANSFORM cast_hash_cols_to_int (
+  type      = 'org.apache.kafka.connect.transforms.Cast$Value',
+  spec      = '${spec}',
+  predicate = '${predicate}'
+);"#;
+        let stmts = Parser::parse_sql(&GenericDialect, sql).expect("parse failed");
+        println!("{:?}", stmts);
+        match &stmts[0] {
+            Statement::CreateSMTransform(smt) => {
+                assert_eq!(smt.name.value, "cast_hash_cols_to_int");
+                assert_eq!(smt.if_not_exists, false);
+                assert_eq!(smt.config[0].0.value, "type");
+                assert_eq!(smt.config[0].1.to_string(), "'org.apache.kafka.connect.transforms.Cast$Value'");
+                assert_eq!(smt.config[1].0.value, "spec");
+                assert_eq!(smt.config[1].1.to_string(), "'${spec}'");
+                assert_eq!(smt.config[2].0.value, "predicate");
+                assert_eq!(smt.config[2].1.to_string(), "'${predicate}'");
+            }
+            _ => panic!("expected CreateSMTransform")
+        }
+    }
+
+    #[test]
     fn test_parse_simple_message_transform_pipeline() {
-        use sqlparser::dialect::PostgreSqlDialect;
         use sqlparser::parser::Parser;
         use sqlparser::ast::Statement;
+        use sqlparser::tokenizer::{Span, Location};
 
-        // ── SQL under test ──────────────────────────────────────────────────
         let sql = r#"
-        CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS clean_pii SOURCE (
-            hash_email = 'sha256',
-            drop_pii   = 'ssn,ccn'
-        );
+        CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
+            hash_email(email_addr_reg = '.*@example.com'),
+            drop_pii(fields = 'email_addr, phone_num')
+        ) WITH PIPELINE PREDICATE 'some_predicate';
     "#;
-
-        // ── parse ───────────────────────────────────────────────────────────
-        let dialect = PostgreSqlDialect {};
+        
+        let dialect = GenericDialect {};
         let stmts   = Parser::parse_sql(&dialect, sql).expect("parse failed");
-        assert_eq!(stmts.len(), 1, "expected exactly one statement");
-
-        // ── validate AST variant & fields ───────────────────────────────────
-        match &stmts[0] {
-            // adjust this pattern to your real enum/variant names
+        println!("{:?}", stmts);
+        
+        match &stmts[0] { 
             Statement::CreateSMTPipeline(pipe) => {
-                // down-cast if you have several pipeline kinds
-
-                // basic field checks
-                assert!(pipe.if_not_exists);
-                assert_eq!(pipe.name.value, "clean_pii");
-                assert_eq!(pipe.connector_type, KafkaConnectorType::Source);
-
-                // transforms parsed as k=v pairs, order preserved
-                let kv: Vec<(String, String)> = pipe
-                    .with_transforms
-                    .iter()
-                    .map(|(k, v)| (k.value.clone(), v.to_string()))
-                    .collect();
-
-                assert_eq!(
-                    kv,
-                    vec![
-                        ("hash_email".into(), "'sha256'".into()),
-                        ("drop_pii".into(),   "'ssn,ccn'".into()),
-                    ]
-                );
+                assert_eq!(pipe.name.value, "some_pipeline");
+                assert_eq!(pipe.if_not_exists, true);
+                assert_eq!(pipe.steps.len(), 2);
+                assert_eq!(pipe.clone().pipe_predicate.unwrap().to_string(), "'some_predicate'");
             }
-            _ => panic!("expected CreatePipeline statement"),
+            _ => panic!("expected CreateSMTPipeline")
         }
+
     }
 }

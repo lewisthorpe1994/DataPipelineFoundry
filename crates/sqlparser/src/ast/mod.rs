@@ -56,7 +56,7 @@ pub use self::ddl::{
     AlterTypeAddValuePosition, AlterTypeOperation, AlterTypeRename, AlterTypeRenameValue,
     ClusteredBy, ColumnDef, ColumnOption, ColumnOptionDef, ColumnPolicy, ColumnPolicyProperty,
     ConstraintCharacteristics, CreateConnector, CreateKafkaConnector, CreateSimpleMessageTransformPipeline,
-    CreateFunction, Deduplicate, DeferrableInitial,
+    TransformCall, CreateSimpleMessageTransform, CreateFunction, Deduplicate, DeferrableInitial,
     DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters, IdentityProperty,
     IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder, IndexOption,
     IndexType, KeyOrIndexDisplay, NullsDistinctOption, Owner, Partition, ProcedureParam,
@@ -3175,6 +3175,7 @@ pub enum Statement {
     CreateConnector(CreateConnector),
     CreateKafkaConnector(CreateKafkaConnector),
     CreateSMTPipeline(CreateSimpleMessageTransformPipeline),
+    CreateSMTransform(CreateSimpleMessageTransform),
     /// ```sql
     /// ALTER TABLE
     /// ```
@@ -4699,6 +4700,7 @@ impl fmt::Display for Statement {
             Statement::CreateTable(create_table) => create_table.fmt(f),
             Statement::CreateKafkaConnector(create_kafka_connector) => {create_kafka_connector.fmt(f)},
             Statement::CreateSMTPipeline(create_smtpipe) => create_smtpipe.fmt(f),
+            Statement::CreateSMTransform(create_smt) => create_smt.fmt(f),
             Statement::LoadData {
                 local,
                 inpath,

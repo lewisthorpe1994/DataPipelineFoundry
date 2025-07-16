@@ -688,6 +688,7 @@ define_keywords!(
     PRECEDES,
     PRECEDING,
     PRECISION,
+    PREDICATE,
     PREPARE,
     PRESERVE,
     PREWHERE,

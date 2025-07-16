@@ -1,13 +1,13 @@
 use crate::compiler;
 use crate::config::components::global::FoundryConfig;
-use crate::dag::ModelsDag;
-use crate::executor::sql::SqlExecutor;
 use common::error::FFError;
 use petgraph::Direction;
 use postgres::{Client, NoTls};
+use dag::ModelsDag;
+use executor::database::DatabaseExecutor;
 
 /// Execute the compiled SQL in dependency order using the provided executor.
-pub fn execute_dag<E: SqlExecutor>(
+pub fn execute_dag<E: DatabaseExecutor>(
     dag: &ModelsDag,
     config: &FoundryConfig,
     executor: &mut E,
@@ -36,7 +36,7 @@ pub fn execute_dag<E: SqlExecutor>(
 /// * `"model>"` - execute all downstream dependents of `model`.
 /// * `"<model>"` - execute both upstream and downstream nodes as well as the
 ///   model itself.
-fn execute_model<E: SqlExecutor>(
+fn execute_model<E: DatabaseExecutor>(
     dag: &ModelsDag,
     model: String,
     config: &FoundryConfig,
@@ -129,13 +129,13 @@ pub fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> 
 mod tests {
     use super::*;
     use crate::config::loader::read_config;
-    use crate::dag::IntoDagNodes;
-    use crate::executor::ExecutorError;
     use crate::test_utils::{
         TEST_MUTEX, create_medallion_project, create_project_with_layers, DbConnection,
     };
     use common::types::Identifier;
     use std::fs;
+    use dag::IntoDagNodes;
+    use executor::ExecutorError;
     use crate::config::components::sources::SourcePaths;
 
     struct FakeExec {
@@ -148,7 +148,7 @@ mod tests {
         }
     }
 
-    impl SqlExecutor for FakeExec {
+    impl DatabaseExecutor for FakeExec {
         fn execute(&mut self, sql: &str) -> Result<(), ExecutorError> {
             self.calls.push(sql.to_string());
             Ok(())
