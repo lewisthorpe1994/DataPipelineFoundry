@@ -1,0 +1,12 @@
+[package]
+name = "adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+logging = { workspace = true }
+tracing = "0.1.41"
+tokio-postgres = { workspace = true }
+dag = { workspace = true }
+common = { workspace = true }
