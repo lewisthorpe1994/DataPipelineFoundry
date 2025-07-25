@@ -39,4 +39,4 @@ test_utils = { path = "crates/test_utils" }
 dag = { path = "crates/dag"}
 tokio-postgres = { version = "0.7", features = ["runtime"] }
 engine = { path = "crates/engine"}
-
+database_adapters = { path = "crates/database_adapters"}
