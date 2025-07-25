@@ -233,7 +233,7 @@ mod tests {
         let kafka_args = SourceConnArgs {
             kafka_connect: Some(connect_host.clone()),
         };
-        let resp = engine.execute(sql.as_str(), kafka_args).await?;
+        let resp = engine.execute(sql.as_str(), kafka_args, None).await?;
         let kafka_executor = KafkaConnectTestClient { host: connect_host };
         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
         assert!(conn_exists);
@@ -288,6 +288,7 @@ mod tests {
                 SourceConnArgs {
                     kafka_connect: None,
                 },
+                None
             )
             .await?;
 
@@ -301,6 +302,7 @@ mod tests {
                 SourceConnArgs {
                     kafka_connect: None,
                 },
+                None
             )
             .await?;
 
@@ -316,6 +318,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
                 SourceConnArgs {
                     kafka_connect: None,
                 },
+                None
             )
             .await?;
 
@@ -324,7 +327,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
         let kafka_args = SourceConnArgs {
             kafka_connect: Some(connect_host.clone()),
         };
-        engine.execute(sql.as_str(), kafka_args).await?;
+        engine.execute(sql.as_str(), kafka_args, None).await?;
 
         let kafka_executor = KafkaConnectTestClient { host: connect_host };
         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
@@ -373,6 +376,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
             SourceConnArgs {
                 kafka_connect: None,
             },
+            None
         )
         .await
         .unwrap();
@@ -399,6 +403,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
             SourceConnArgs {
                 kafka_connect: None,
             },
+            None
         )
         .await
         .unwrap();
@@ -408,6 +413,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
             SourceConnArgs {
                 kafka_connect: None,
             },
+            None
         )
         .await
         .unwrap();
@@ -424,6 +430,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
             SourceConnArgs {
                 kafka_connect: None,
             },
+            None
         )
         .await
         .unwrap();

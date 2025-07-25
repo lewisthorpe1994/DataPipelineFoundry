@@ -41,24 +41,47 @@ impl From<std::io::Error> for DatabaseAdapterError {
 pub trait DatabaseAdapter {
     fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
     fn connection(&self) -> String;
-    fn execute_dag_models<'a, T>(
-        &mut self,
-        nodes: T,
-        compile_path: &str,
-        models_dir: &str,
-    ) -> Result<(), DatabaseAdapterError>
-    where
-        T: IntoDagNodes<'a>,
-    {
-        timeit!("Executed all models", {
-            for node in nodes.into_vec() {
-                timeit!(format!("Executed model {}", &node.path.display()), {
-                    let sql = read_sql_file(models_dir, &node.path, compile_path)?;
-                    self.execute(&sql)?
-                });
-            }
-        });
-
-        Ok(())
-    }
+    // fn execute_dag_models<'a, T>(
+    //     &mut self,
+    //     nodes: T,
+    //     compile_path: &str,
+    //     models_dir: &str,
+    // ) -> Result<(), DatabaseAdapterError>
+    // where
+    //     T: IntoDagNodes<'a>,
+    // {
+    //     timeit!("Executed all models", {
+    //         for node in nodes.into_vec() {
+    //             timeit!(format!("Executed model {}", &node.path.display()), {
+    //                 let sql = read_sql_file(models_dir, &node.path, compile_path)?;
+    //                 self.execute(&sql)?
+    //             });
+    //         }
+    //     });
+    // 
+    //     Ok(())
+    // }
 }
+
+impl<T: DatabaseAdapter + ?Sized> DatabaseAdapter for &mut T {
+    fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
+        (**self).execute(sql)
+    }
+
+    fn connection(&self) -> String {
+        (**self).connection()
+    }
+
+    // fn execute_dag_models<'a, N>(
+    //     &mut self,
+    //     nodes: N,
+    //     compile_path: &str,
+    //     models_dir: &str,
+    // ) -> Result<(), DatabaseAdapterError>
+    // where
+    //     N: IntoDagNodes<'a>,
+    // {
+    //     (**self).execute_dag_models(nodes, compile_path, models_dir)
+    // }
+}
+

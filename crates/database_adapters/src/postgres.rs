@@ -1,5 +1,4 @@
 use std::io::ErrorKind;
-use std::ops::{Deref, DerefMut};
 use postgres::{Client, Error, NoTls}
 ;
 use postgres::error::SqlState;

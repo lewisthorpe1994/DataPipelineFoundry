@@ -1,5 +1,6 @@
 use serde_json::Value as Json;
 use common::types::sources::SourceConnArgs;
+use database_adapters::DatabaseAdapter;
 use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
 use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineMeta, TransformMeta};
 use crate::executor::{ExecutorError, ExecutorResponse};
@@ -52,13 +53,15 @@ impl SqlExecutor {
     }
 
     pub async fn execute<S>(
-        parsed_stmts: S, 
+        parsed_stmts: S,
         registry: &MemoryCatalog,
-        source_conn_args: SourceConnArgs
+        source_conn_args: SourceConnArgs,
+        mut target_db_adapter: Option<Box<dyn DatabaseAdapter>>,
     ) -> Result<ExecutorResponse, ExecutorError> 
     where 
         S: IntoIterator<Item = Statement>,
     {
+
         for ast in parsed_stmts.into_iter() {
             match ast {
                 Statement::CreateKafkaConnector(stmt) => {
@@ -75,11 +78,30 @@ impl SqlExecutor {
                 Statement::CreateSMTPipeline(stmt) => {
                     Self::execute_create_simple_message_transform_pipeline_if_not_exists(stmt, registry.clone())?;
                 }
-                _ => return Err(ExecutorError::FailedToExecute("Method not supported yet".to_string()))
+                _ => {
+                    let db_adapter = match target_db_adapter.as_mut() {
+                        Some(adapter) => adapter,
+                        None => {
+                            return Err(ExecutorError::ConfigError(
+                                "No database adapter provided".to_string(),
+                            ));
+                        }
+                    };
+
+                    Self::execute_db_query(ast, db_adapter)?
+                }
             }
         }
         
         Ok(ExecutorResponse::Ok)
+    }
+
+    pub fn execute_db_query(
+        ast: Statement,
+        db_adapter: &mut Box<dyn DatabaseAdapter>,
+    ) -> Result<(), ExecutorError> {
+        db_adapter.execute(&ast.to_string())?;
+        Ok(())
     }
 
     pub fn execute_create_simple_message_transform_if_not_exists(
@@ -183,6 +205,7 @@ mod tests {
     use sqlparser::ast::Value::SingleQuotedString;
     use sqlparser::tokenizer::{Location, Span};
     use uuid::Uuid;
+    use database_adapters::DatabaseAdapterError;
     use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
 
     #[test]
@@ -542,5 +565,44 @@ mod tests {
         assert_eq!(c.config["transforms.pipe1_mask.predicate"], "pred1");
         assert_eq!(c.config["transforms.pipe2_drop.field"], "b");
         assert_eq!(c.config["transforms.pipe2_drop.predicate"], "pred2");
+    }
+
+    #[test]
+    fn test_execute_db_query() {
+        use std::sync::{Arc, Mutex};
+        use sqlparser::dialect::PostgreSqlDialect;
+        use sqlparser::parser::Parser;
+
+        // shared recording buffer
+        let executed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        // ── mock adapter that writes into the Arc ─────────────────────────
+        struct MockDbAdapter {
+            executed_sql: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl DatabaseAdapter for MockDbAdapter {
+            fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
+                self.executed_sql.lock().unwrap().push(sql.to_owned());
+                Ok(())
+            }
+            fn connection(&self) -> String { "mock://localhost".into() }
+        }
+
+        // ── build boxed trait object ───────────────────────────────────────
+        let mut boxed: Box<dyn DatabaseAdapter> =
+            Box::new(MockDbAdapter { executed_sql: executed.clone() });
+
+        // ── run executor ───────────────────────────────────────────────────
+        let stmt = Parser::parse_sql(&PostgreSqlDialect {}, "SELECT 1;")
+            .unwrap()
+            .pop()
+            .unwrap();
+        SqlExecutor::execute_db_query(stmt.clone(), &mut boxed).unwrap();
+
+        // ── assert via the shared Arc ──────────────────────────────────────
+        let recorded = executed.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0], stmt.to_string());
     }
 }

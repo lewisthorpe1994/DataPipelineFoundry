@@ -2,10 +2,7 @@ use crate::compiler;
 use crate::config::components::global::FoundryConfig;
 use common::error::FFError;
 use petgraph::Direction;
-use postgres::{Client, NoTls};
 use dag::ModelsDag;
-use executor::database::DatabaseExecutor;
-
 /// Execute the compiled SQL in dependency order using the provided executor.
 pub fn execute_dag<E: DatabaseExecutor>(
     dag: &ModelsDag,
@@ -36,7 +33,7 @@ pub fn execute_dag<E: DatabaseExecutor>(
 /// * `"model>"` - execute all downstream dependents of `model`.
 /// * `"<model>"` - execute both upstream and downstream nodes as well as the
 ///   model itself.
-fn execute_model<E: DatabaseExecutor>(
+fn execute_model<E: DatabaseAdapter>(
     dag: &ModelsDag,
     model: String,
     config: &FoundryConfig,

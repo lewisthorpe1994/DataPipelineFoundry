@@ -3,17 +3,6 @@
 version = 4
 
 [[package]]
-name = "adapters"
-version = "0.1.0"
-dependencies = [
- "common",
- "dag",
- "logging",
- "postgres",
- "tracing",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -457,6 +446,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "database_adapters"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "dag",
+ "logging",
+ "postgres",
+ "tracing",
+]
+
+[[package]]
 name = "deadpool"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -551,6 +551,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "common",
+ "dag",
+ "database_adapters",
  "once_cell",
  "parking_lot",
  "reqwest",
@@ -612,11 +614,11 @@ version = "0.1.0"
 dependencies = [
  "common",
  "dag",
+ "database_adapters",
  "log",
  "minijinja",
  "once_cell",
  "petgraph",
- "postgres",
  "serde",
  "serde_json",
  "serde_yaml",
