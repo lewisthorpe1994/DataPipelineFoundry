@@ -555,6 +555,7 @@ dependencies = [
  "database_adapters",
  "once_cell",
  "parking_lot",
+ "postgres",
  "reqwest",
  "serde",
  "serde_json",

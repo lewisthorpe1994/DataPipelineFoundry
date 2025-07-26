@@ -11,6 +11,7 @@ test_utils = { workspace = true }
 wiremock = { version = "0.6.4" }
 testcontainers = { version = "0.24.0" }
 tokio-postgres = { workspace = true }
+postgres = { workspace = true }
 dag = { workspace = true}
 
 [dependencies]
