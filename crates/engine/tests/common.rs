@@ -11,8 +11,8 @@ use engine::executor::ExecutorHost;
 pub const PG_DB: &str = "foundry_dev";
 pub const PG_USER: &str = "postgres";
 pub const PG_PASSWORD: &str = "password";
-pub const PG_HOST: &str = "0.0.0.0";
-pub const PG_PORT: &str = "5432";
+pub const PG_HOST: &str = "127.0.0.1";
+pub const PG_PORT: &str = "5433";
 
 pub const KAFKA_BROKER_HOST: &str = "0.0.0.0";
 pub const KAFKA_BROKER_PORT: &str = "9092";

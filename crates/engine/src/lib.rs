@@ -3,7 +3,7 @@ pub mod executor;
 
 use std::fmt::{Debug, Formatter};
 use common::types::sources::SourceConnArgs;
-use database_adapters::DatabaseAdapter;
+use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
 pub use registry::model::*;
 pub use registry::error::CatalogError;
 use executor::{Executor, ExecutorError, ExecutorResponse};
@@ -51,7 +51,7 @@ impl Engine {
         &self,
         sql: &str,
         source_conn_args: SourceConnArgs, 
-        target_db_adapter: Option<Box<dyn DatabaseAdapter>>
+        target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>>
     ) -> Result<EngineResponse, EngineError> {
         Ok(EngineResponse::from(self.executor.execute(
             sql, 
