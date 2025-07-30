@@ -11,7 +11,7 @@ use crate::CatalogError;
 use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
 use crate::executor::sql::SqlExecutor;
 use crate::registry::MemoryCatalog;
-use database_adapters::{DatabaseAdapter, DatabaseAdapterError};
+use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError};
 
 pub trait ExecutorHost {
     fn host(&self) -> &str;
@@ -98,7 +98,7 @@ impl Executor {
         sql: &str, 
         catalog: &MemoryCatalog, 
         source_conn_args: SourceConnArgs,
-        target_db_adapter: Option<Box<dyn DatabaseAdapter>> 
+        target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>> 
     ) -> Result<ExecutorResponse, ExecutorError> {
         let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
         

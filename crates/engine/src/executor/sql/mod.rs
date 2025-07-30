@@ -1,6 +1,6 @@
 use serde_json::Value as Json;
 use common::types::sources::SourceConnArgs;
-use database_adapters::DatabaseAdapter;
+use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
 use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
 use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineMeta, TransformMeta};
 use crate::executor::{ExecutorError, ExecutorResponse};
@@ -56,7 +56,7 @@ impl SqlExecutor {
         parsed_stmts: S,
         registry: &MemoryCatalog,
         source_conn_args: SourceConnArgs,
-        mut target_db_adapter: Option<Box<dyn DatabaseAdapter>>,
+        mut target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>>,
     ) -> Result<ExecutorResponse, ExecutorError> 
     where 
         S: IntoIterator<Item = Statement>,
@@ -88,7 +88,7 @@ impl SqlExecutor {
                         }
                     };
 
-                    Self::execute_db_query(ast, db_adapter)?
+                    Self::execute_async_db_query(ast, db_adapter).await?
                 }
             }
         }
@@ -96,11 +96,11 @@ impl SqlExecutor {
         Ok(ExecutorResponse::Ok)
     }
 
-    pub fn execute_db_query(
+    pub async fn execute_async_db_query(
         ast: Statement,
-        db_adapter: &mut Box<dyn DatabaseAdapter>,
+        db_adapter: &mut Box<dyn AsyncDatabaseAdapter>,
     ) -> Result<(), ExecutorError> {
-        db_adapter.execute(&ast.to_string())?;
+        db_adapter.execute(&ast.to_string()).await?;
         Ok(())
     }
 
@@ -567,8 +567,8 @@ mod tests {
         assert_eq!(c.config["transforms.pipe2_drop.predicate"], "pred2");
     }
 
-    #[test]
-    fn test_execute_db_query() {
+    #[tokio::test]
+    async fn test_execute_db_query() {
         use std::sync::{Arc, Mutex};
         use sqlparser::dialect::PostgreSqlDialect;
         use sqlparser::parser::Parser;
@@ -581,16 +581,16 @@ mod tests {
             executed_sql: Arc<Mutex<Vec<String>>>,
         }
 
-        impl DatabaseAdapter for MockDbAdapter {
-            fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
+        #[async_trait]
+        impl AsyncDatabaseAdapter for MockDbAdapter {
+            async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
                 self.executed_sql.lock().unwrap().push(sql.to_owned());
                 Ok(())
             }
-            fn connection(&self) -> String { "mock://localhost".into() }
         }
 
         // ── build boxed trait object ───────────────────────────────────────
-        let mut boxed: Box<dyn DatabaseAdapter> =
+        let mut boxed: Box<dyn AsyncDatabaseAdapter> =
             Box::new(MockDbAdapter { executed_sql: executed.clone() });
 
         // ── run executor ───────────────────────────────────────────────────
@@ -598,7 +598,7 @@ mod tests {
             .unwrap()
             .pop()
             .unwrap();
-        SqlExecutor::execute_db_query(stmt.clone(), &mut boxed).unwrap();
+        SqlExecutor::execute_async_db_query(stmt.clone(), &mut boxed).await.unwrap();
 
         // ── assert via the shared Arc ──────────────────────────────────────
         let recorded = executed.lock().unwrap();

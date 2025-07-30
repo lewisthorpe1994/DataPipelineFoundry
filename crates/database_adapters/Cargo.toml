@@ -10,3 +10,6 @@ tracing = "0.1.41"
 postgres = { version = "0.19.10" }
 dag = { workspace = true }
 common = { workspace = true }
+async-trait = "0.1.88"
+tokio = "1.45.1"
+tokio-postgres = {workspace = true}

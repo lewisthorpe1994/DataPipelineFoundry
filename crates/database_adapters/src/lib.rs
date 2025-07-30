@@ -1,10 +1,7 @@
 pub mod postgres;
 
-use std::fmt::Display;
-use logging::timeit;
-use tracing::info;
-use common::utils::read_sql_file;
-use dag::IntoDagNodes;
+use std::fmt::{Debug, Display};
+use async_trait::async_trait;
 
 pub enum DatabaseAdapterError {
     InvalidConnectionError(String),
@@ -14,6 +11,25 @@ pub enum DatabaseAdapterError {
 }
 
 impl Display for DatabaseAdapterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DatabaseAdapterError::InvalidConnectionError(err) => {
+                write!(f, "Invalid connection details: {}", err)
+            }
+            DatabaseAdapterError::SyntaxError(err) => {
+                write!(f, "Syntax error: {}", err)
+            }
+            DatabaseAdapterError::UnexpectedError(err) => {
+                write!(f, "Unexpected error: {}", err)
+            }
+            DatabaseAdapterError::IoError(err) => {
+                write!(f, "I/O error: {}", err)
+            }
+        }
+    }
+}
+
+impl Debug for DatabaseAdapterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DatabaseAdapterError::InvalidConnectionError(err) => {
@@ -58,7 +74,7 @@ pub trait DatabaseAdapter {
     //             });
     //         }
     //     });
-    // 
+    //
     //     Ok(())
     // }
 }
@@ -85,3 +101,18 @@ impl<T: DatabaseAdapter + ?Sized> DatabaseAdapter for &mut T {
     // }
 }
 
+#[async_trait]
+pub trait AsyncDatabaseAdapter {
+    async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
+}
+
+#[async_trait]                          // ← leave the default (Send) mode
+impl<T> AsyncDatabaseAdapter for &mut T
+where
+    T: DatabaseAdapter + Send + ?Sized, //  ↑ ensure the captured &mut T _is_
+{                                       //    Send (it is, if T: Send)
+    async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
+        // if this call can block, wrap it in spawn_blocking!
+        (**self).execute(sql)
+    }
+}
