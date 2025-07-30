@@ -11,6 +11,7 @@ use crate::CatalogError;
 use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
 use crate::executor::sql::SqlExecutor;
 use crate::registry::MemoryCatalog;
+use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError};
 
 pub trait ExecutorHost {
     fn host(&self) -> &str;
@@ -78,6 +79,13 @@ impl From<ParserError> for ExecutorError {
     }
 }
 
+impl From<DatabaseAdapterError> for ExecutorError {
+    fn from(value: DatabaseAdapterError) -> Self {
+        ExecutorError::UnexpectedError(value.to_string())
+    }
+    
+}
+
 pub struct Executor {}
 impl Executor {
     pub fn new() -> Self {
@@ -89,10 +97,11 @@ impl Executor {
         &self, 
         sql: &str, 
         catalog: &MemoryCatalog, 
-        source_conn_args: SourceConnArgs
+        source_conn_args: SourceConnArgs,
+        target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>> 
     ) -> Result<ExecutorResponse, ExecutorError> {
         let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
         
-        Ok(SqlExecutor::execute(ast_vec, catalog, source_conn_args).await?)
+        Ok(SqlExecutor::execute(ast_vec, catalog, source_conn_args, target_db_adapter).await?)
     }
 }

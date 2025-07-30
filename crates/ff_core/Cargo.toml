@@ -12,10 +12,10 @@ serde_json = { workspace = true }
 petgraph = "0.8.2"
 common = { workspace = true}
 walkdir = "2.5.0"
-postgres = "0.19"
 log = "0.4.27"
 sqlparser = { workspace = true}
 dag = { workspace = true}
+database_adapters = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

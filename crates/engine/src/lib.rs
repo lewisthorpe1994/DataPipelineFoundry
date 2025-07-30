@@ -3,6 +3,7 @@ pub mod executor;
 
 use std::fmt::{Debug, Formatter};
 use common::types::sources::SourceConnArgs;
+use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
 pub use registry::model::*;
 pub use registry::error::CatalogError;
 use executor::{Executor, ExecutorError, ExecutorResponse};
@@ -36,7 +37,7 @@ impl From<ExecutorResponse> for EngineResponse {
 }
 pub struct Engine {
     executor: Executor,
-    catalog: MemoryCatalog,
+    pub catalog: MemoryCatalog,
 }
 impl Engine {
     pub fn new() -> Self {
@@ -46,7 +47,17 @@ impl Engine {
         }
     }
     
-    pub async fn execute(&self, sql: &str, source_conn_args: SourceConnArgs) -> Result<EngineResponse, EngineError> {
-        Ok(EngineResponse::from(self.executor.execute(sql, &self.catalog, source_conn_args).await?))
+    pub async fn execute(
+        &self,
+        sql: &str,
+        source_conn_args: SourceConnArgs, 
+        target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>>
+    ) -> Result<EngineResponse, EngineError> {
+        Ok(EngineResponse::from(self.executor.execute(
+            sql, 
+            &self.catalog, 
+            source_conn_args,
+            target_db_adapter
+        ).await?))
     }
 }
