@@ -77,7 +77,7 @@ mod tests {
         // 1️⃣  ── create the connections YAML file ───────────────────────────────
         let connections_yaml = r#"
 dev:
-  adapter: postgres
+  adapter_type: postgres
   host: localhost
   port: "5432"
   user: postgres
@@ -106,6 +106,9 @@ kafka_sources:
 - name: kafka_test_source
   bootstrap:
     servers: localhost:9092
+  connect:
+    host: localhost
+    port: "8083"
 "#;
         let mut kafka_src_file = NamedTempFile::new().unwrap();
         write!(kafka_src_file, "{}", kafka_sources_yaml).unwrap();
@@ -168,8 +171,11 @@ connection_profile: dev
         assert_eq!(layers["bronze"], "foundry_models/bronze");
         assert_eq!(layers["silver"], "foundry_models/silver");
         assert_eq!(layers["gold"], "foundry_models/gold");
-        let adapter = cfg.connections["dev"].clone();
-        assert_eq!(adapter, "postgres");
+        let conn_details = cfg
+            .connections
+            .get("dev")
+            .expect("missing dev connection profile");
+        assert!(format!("{:?}", conn_details).contains("Postgres"));
     }
 
     #[test]
@@ -237,7 +243,7 @@ models:
         // Create connections YAML file
         let connections_yaml = r#"
 dev:
-  adapter: postgres
+  adapter_type: postgres
   host: localhost
   port: "5432"
   user: postgres
