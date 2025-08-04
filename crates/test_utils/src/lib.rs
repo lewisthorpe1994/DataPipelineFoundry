@@ -58,7 +58,7 @@ pub fn create_medallion_project(
 
     // ----- connections.yml -----
     let connections = format!(
-        "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
+        "dev:\n  adapter_type: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
         conn.host, conn.port, conn.user, conn.password, conn.database
     );
     fs::write(root.join("connections.yml"), connections)?;
@@ -135,7 +135,7 @@ pub fn create_project_with_layers(
 
     // connections.yml
     let connections = format!(
-        "dev:\n  adapter: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
+        "dev:\n  adapter_type: postgres\n  host: {}\n  port: {}\n  user: {}\n  password: {}\n  database: {}\n",
         conn.host, conn.port, conn.user, conn.password, conn.database
     );
     fs::write(root.join("connections.yml"), connections)?;

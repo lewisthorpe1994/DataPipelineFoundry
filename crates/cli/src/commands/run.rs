@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use clap::Args;
 use common::error::FFError;
 use ff_core::{functions, config::loader::read_config};
+use tokio::runtime::Runtime;
 
 
 #[derive(Debug, Args)]
@@ -20,5 +21,6 @@ pub struct RunArgs {
 /// `connections.yml`.
 pub fn handle_run(model_name: Option<String>, config_path: Option<PathBuf>) -> Result<(), FFError> {
     let cfg = read_config(config_path).map_err(|e| FFError::Compile(e.into()))?;
-    functions::run::run(cfg, model_name)
+    let rt = Runtime::new().map_err(|e| FFError::Run(Box::new(e)))?;
+    rt.block_on(functions::run::run(cfg, model_name))
 }

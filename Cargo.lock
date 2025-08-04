@@ -702,6 +702,7 @@ dependencies = [
  "serde",
  "tempfile",
  "time",
+ "tokio",
  "tracing-subscriber",
 ]
 
