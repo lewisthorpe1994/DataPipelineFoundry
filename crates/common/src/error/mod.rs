@@ -2,6 +2,7 @@ use std::{
     error::Error,
     fmt::{self, Display, Formatter},
 };
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum FFError {
@@ -31,6 +32,17 @@ impl Error for FFError {
     }
 }
 
-
+pub struct ConfigError(String);
+impl Display for ConfigError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Config Error: {}", self.0)
+    }
+}
+impl Debug for ConfigError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Config Error: {}", self.0)
+    }
+}
+impl Error for ConfigError {}
 
 

@@ -55,8 +55,8 @@ impl SqlExecutor {
     pub async fn execute<S>(
         parsed_stmts: S,
         registry: &MemoryCatalog,
-        source_conn_args: SourceConnArgs,
-        mut target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>>,
+        source_conn_args: &SourceConnArgs,
+        mut target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>,
     ) -> Result<ExecutorResponse, ExecutorError> 
     where 
         S: IntoIterator<Item = Statement>,

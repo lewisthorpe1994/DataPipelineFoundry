@@ -125,6 +125,7 @@ pub enum DagError {
     CycleDetected(Vec<ModelRef>),
     Io(io::Error),
     RefNotFound(String),
+    ExecutionError(String)
 }
 impl Display for DagError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -142,6 +143,7 @@ impl Display for DagError {
             }
             DagError::MissingDependency(d, r) => write!(f, "Dependency {d:?} not found for {r:?}"),
             DagError::RefNotFound(r) => write!(f, "Ref {r} not found!"),
+            DagError::ExecutionError(e) => write!(f, "Execution error: {e}"),
         }
     }
 }
@@ -616,8 +618,6 @@ impl ModelsDag {
 mod tests {
     use super::*;
     use common::types::ModelRef as MR;
-    use std::fs;
-    use tempfile::tempdir;
 
     fn build_models() -> Vec<ParsedNode> {
         vec![

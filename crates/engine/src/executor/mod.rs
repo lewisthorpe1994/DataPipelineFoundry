@@ -4,7 +4,6 @@ pub mod kafka;
 use std::error::Error;
 use std::fmt;
 use common::types::sources::SourceConnArgs;
-use sqlparser::ast::Statement;
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
 use crate::CatalogError;
@@ -97,8 +96,8 @@ impl Executor {
         &self, 
         sql: &str, 
         catalog: &MemoryCatalog, 
-        source_conn_args: SourceConnArgs,
-        target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>> 
+        source_conn_args: &SourceConnArgs,
+        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>
     ) -> Result<ExecutorResponse, ExecutorError> {
         let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
         

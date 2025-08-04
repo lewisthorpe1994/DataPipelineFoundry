@@ -9,6 +9,11 @@ use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use common::types::sources::SourceType;
 
 // ---------------- KafkaSource Config ----------------
+#[derive(Debug, Deserialize)]
+pub struct KafkaConnect {
+    pub host: String,
+    pub port: String,
+}
 #[derive(Deserialize, Debug)]
 pub struct KafkaBootstrap {
     pub servers: String,
@@ -17,6 +22,7 @@ pub struct KafkaBootstrap {
 pub struct KafkaSourceConfig {
     pub name: String,
     pub bootstrap: KafkaBootstrap,
+    pub connect: KafkaConnect,
 }
 impl ConfigName for KafkaSourceConfig {
     fn name(&self) -> &str {

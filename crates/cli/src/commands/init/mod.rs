@@ -30,7 +30,7 @@ const FOUNDRY_KAFKA_SOURCE_PATH: &str = "foundry-sources/kafka/kafka-sources.yml
 // Api source templates
 const API_FILE_NAME: &str = "api-sources.yml";
 const API_SOURCE_TEMPLATE: &str = include_str!("templates/api-sources.yml.j2");
-const FOUNDRY_API_SOURCE_PATH: &str = "foundry-sources/api/api-sources.yml";
+const FOUNDRY_API_SOURCE_PATH: &str = "foundry_sources/api/api-sources.yml";
 
 // Default dirs
 const DEFAULT_MODELS_DIR: &str = "foundry_models";

@@ -15,8 +15,9 @@ walkdir = "2.5.0"
 log = "0.4.27"
 sqlparser = { workspace = true}
 dag = { workspace = true}
+engine = { workspace = true}
+logging = { workspace = true }
 database_adapters = { workspace = true }
-
 [dev-dependencies]
 tempfile = { workspace = true }
 once_cell = { workspace = true }

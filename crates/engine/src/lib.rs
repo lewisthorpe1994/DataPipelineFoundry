@@ -1,7 +1,7 @@
 pub mod registry;
 pub mod executor;
 
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
 pub use registry::model::*;
@@ -12,6 +12,15 @@ use registry::MemoryCatalog;
 pub enum EngineError {
     FailedToExecute(String),
 }
+impl Display for EngineError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EngineError::FailedToExecute(err) => {write!(f, "Failed to execute: {}", err)}
+        }
+    }
+}
+
+impl std::error::Error for EngineError {}
 impl Debug for EngineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self { 
@@ -50,8 +59,8 @@ impl Engine {
     pub async fn execute(
         &self,
         sql: &str,
-        source_conn_args: SourceConnArgs, 
-        target_db_adapter: Option<Box<dyn AsyncDatabaseAdapter>>
+        source_conn_args: &SourceConnArgs,
+        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>
     ) -> Result<EngineResponse, EngineError> {
         Ok(EngineResponse::from(self.executor.execute(
             sql, 

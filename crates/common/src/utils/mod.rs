@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use crate::error::FFError;
 
 pub fn read_sql_file(models_dir: &str, node_path: &PathBuf, compile_path: &str) -> Result<String, std::io::Error> {
     let rel_path = Path::new(&node_path)

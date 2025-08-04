@@ -1,13 +1,17 @@
 pub mod postgres;
 
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use async_trait::async_trait;
+use serde::Deserialize;
+use crate::postgres::PostgresAdapter;
 
 pub enum DatabaseAdapterError {
     InvalidConnectionError(String),
     SyntaxError(String),
     UnexpectedError(String),
     IoError(std::io::Error),
+    ConfigError(String),
 }
 
 impl Display for DatabaseAdapterError {
@@ -24,6 +28,9 @@ impl Display for DatabaseAdapterError {
             }
             DatabaseAdapterError::IoError(err) => {
                 write!(f, "I/O error: {}", err)
+            }
+            DatabaseAdapterError::ConfigError(err) => {
+                write!(f, "Configuration error: {}", err)
             }
         }
     }
@@ -44,6 +51,9 @@ impl Debug for DatabaseAdapterError {
             DatabaseAdapterError::IoError(err) => {
                 write!(f, "I/O error: {}", err)
             }
+            DatabaseAdapterError::ConfigError(err) => {
+                write!(f, "Configuration error: {}", err)
+            }
         }
     }
 }
@@ -57,26 +67,6 @@ impl From<std::io::Error> for DatabaseAdapterError {
 pub trait DatabaseAdapter {
     fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
     fn connection(&self) -> String;
-    // fn execute_dag_models<'a, T>(
-    //     &mut self,
-    //     nodes: T,
-    //     compile_path: &str,
-    //     models_dir: &str,
-    // ) -> Result<(), DatabaseAdapterError>
-    // where
-    //     T: IntoDagNodes<'a>,
-    // {
-    //     timeit!("Executed all models", {
-    //         for node in nodes.into_vec() {
-    //             timeit!(format!("Executed model {}", &node.path.display()), {
-    //                 let sql = read_sql_file(models_dir, &node.path, compile_path)?;
-    //                 self.execute(&sql)?
-    //             });
-    //         }
-    //     });
-    //
-    //     Ok(())
-    // }
 }
 
 impl<T: DatabaseAdapter + ?Sized> DatabaseAdapter for &mut T {
@@ -87,18 +77,6 @@ impl<T: DatabaseAdapter + ?Sized> DatabaseAdapter for &mut T {
     fn connection(&self) -> String {
         (**self).connection()
     }
-
-    // fn execute_dag_models<'a, N>(
-    //     &mut self,
-    //     nodes: N,
-    //     compile_path: &str,
-    //     models_dir: &str,
-    // ) -> Result<(), DatabaseAdapterError>
-    // where
-    //     N: IntoDagNodes<'a>,
-    // {
-    //     (**self).execute_dag_models(nodes, compile_path, models_dir)
-    // }
 }
 
 #[async_trait]
@@ -114,5 +92,49 @@ where
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
         // if this call can block, wrap it in spawn_blocking!
         (**self).execute(sql)
+    }
+}
+pub type AsyncDbAdapter = Box<dyn AsyncDatabaseAdapter>;
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseAdapterType {
+    Postgres,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdapterConnectionDetails {
+    host: String,
+    user: String,
+    database: String,
+    password: String,
+    port: String,
+    adapter_type: DatabaseAdapterType,
+}
+impl AdapterConnectionDetails {
+    pub fn new(host: &str, user: &str, database: &str, password: &str, port: &str, adapter_type: DatabaseAdapterType) -> Self {
+        Self {
+            host: host.to_string(),
+            user: user.to_string(),
+            database: database.to_string(),
+            password: password.to_string(),
+            port: port.to_string(),
+            adapter_type
+        }
+    }
+}
+pub async fn create_db_adapter(
+    conn_details: AdapterConnectionDetails
+) -> Result<AsyncDbAdapter, DatabaseAdapterError> {
+    match conn_details.adapter_type {
+        DatabaseAdapterType::Postgres => {
+            Ok(Box::new(PostgresAdapter::new(
+                conn_details.host.as_str(),
+                conn_details.port.parse::<u16>().expect("failed to parse port"),
+                conn_details.database.as_str(),
+                conn_details.user.as_str(),
+                conn_details.password.as_str(),
+            ).await?))
+        }
     }
 }
