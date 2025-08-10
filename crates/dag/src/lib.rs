@@ -1,6 +1,4 @@
-use common::types::{
-    Identifier, Materialize, ModelRef, ParsedNode, Relation, RelationType, Relations,
-};
+use common::types::{Identifier, Materialize, ModelNode, ModelRef, ParsedNode, Relation, RelationType, Relations};
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
@@ -11,6 +9,7 @@ use std::fmt::{format, Display, Formatter};
 use std::path::Path;
 use std::path::PathBuf;
 use std::{fmt, io};
+use petgraph::visit::Walker;
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -252,12 +251,12 @@ impl ModelsDag {
     /// let dag = ModelDag::new(nodes)?;
     /// ```
     /// Build a [`ModelsDag`] from parsed model nodes.
-    pub fn new(input_nodes: Vec<ParsedNode>) -> DagResult<Self> {
+    pub fn new(input_nodes: Vec<ModelNode>) -> DagResult<Self> {
         let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
         let mut ref_to_index: HashMap<String, NodeIndex> =
             HashMap::with_capacity(input_nodes.len());
 
-        for ParsedNode {
+        for ModelNode {
             schema,
             model,
             materialization,
@@ -281,7 +280,7 @@ impl ModelsDag {
             ref_to_index.insert(model.clone(), from_idx);
         }
 
-        for ParsedNode {
+        for ModelNode {
             schema: pschema,
             model,
             relations,

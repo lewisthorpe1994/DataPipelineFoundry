@@ -356,8 +356,9 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
- "regex",
  "serde",
+ "serde_json",
+ "sqlparser",
 ]
 
 [[package]]
@@ -628,6 +629,7 @@ dependencies = [
  "minijinja",
  "once_cell",
  "petgraph",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",

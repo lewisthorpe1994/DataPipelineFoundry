@@ -1,15 +1,47 @@
 use std::fs::File;
 use std::io::{BufReader, Error, Read};
+use std::path::PathBuf;
 use crate::config::components::foundry_project::ModelLayers;
 use walkdir::WalkDir;
 use common::{types::{ParsedNode, Relations}, traits::IsFileExtension};
+use common::types::{KafkaNode, ModelNode, Relation, RelationType, SourceNode};
+use regex::Regex;
+use engine::ConnectorType;
+use sqlparser::ast::{KafkaConnectorType, Statement};
+use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser as SqlParser;
-pub struct Parser<'a> {
-    sql_parser: SqlParser<'a>
+use crate::config::components::sources::SourcePaths;
+
+fn parse_model_sql(sql: String) -> Relations {
+    let mut out = Vec::new();
+
+    // ---------- ref(...) ------------------------------------------------
+    let re_ref = Regex::new(r#"ref\(\s*["']([\w_]+)["']\s*\)"#).unwrap();
+    out.extend(
+        re_ref
+            .captures_iter(&sql)
+            .filter_map(|cap| cap.get(1))
+            .map(|m| Relation::new(RelationType::Model, m.as_str().to_string())),
+    );
+
+    // ---------- source(schema, table) -----------------------------------
+    // capture group 2 = table name
+    let re_src = Regex::new(
+        r#"source\(\s*["'][\w_]+["']\s*,\s*["']([\w_]+)["']\s*\)"#,
+    )
+        .unwrap();
+    out.extend(
+        re_src
+            .captures_iter(&sql)
+            .filter_map(|cap| cap.get(1))
+            .map(|m| Relation::new(RelationType::Source, m.as_str().to_string())),
+    );
+
+    Relations::new(out)
 }
 
-pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ParsedNode>, Error> {
-    let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
+pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ModelNode>, Error> {
+    let mut parsed_nodes: Vec<ModelNode> = Vec::new();
     for (name, dir) in dirs.iter() {
         for file in WalkDir::new(dir) {
             let path = file?
@@ -21,11 +53,11 @@ pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ParsedNode>, Error> {
                 let mut contents = String::new();
                 buf_reader.read_to_string(&mut contents)?;
 
-                let node = ParsedNode::new(
+                let node = ModelNode::new(
                     name.to_string(),
                     path.file_stem().unwrap().to_str().unwrap().to_string(),
                     None, // TODO: handle materialisation 
-                    Relations::from(contents),
+                    parse_model_sql(contents),
                     path
                 );
                 parsed_nodes.push(node);
@@ -34,6 +66,61 @@ pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ParsedNode>, Error> {
     }
     Ok(parsed_nodes)
 }
+// TODO - parse kafka sql to get relations and deps
+// TODO - look at source db and topic for source and topic and dest db for sink
+fn parse_kafka_sql(sql: String) -> Result<(Option<Vec<SourceNode>>, KafkaNode), Error> {
+    let parsed = SqlParser::parse_sql(&GenericDialect, &sql)
+        .map_err(|e|  std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    assert_eq!(parsed.len(), 1, "parse_kafka_sql only expects one statement in the parsed ast vec!");
+    println!("{:#?}", parsed);
+    match &parsed[0] {
+        Statement::CreateKafkaConnector(stmt) => {
+            let name = &stmt.name.value;
+            let (src_nodes, kk_node) = match &stmt.connector_type {
+                KafkaConnectorType::Source => {
+                    let sources = &stmt.with_properties
+                        .iter()
+                        .find_map(|(i, v)| i.value.eq("table.include.list")
+                            .then(||
+                                v.value.to_string()
+                                    .replace(" ", "")
+                                    .split(",")
+                                    .collect::<Vec<&str>>()
+                            )
+                        );
+                    let source_nodes = if let Some(srcs) = sources {
+                        srcs
+                            .iter()
+                            .map(|s| SourceNode {
+                                name: s.to_string(), 
+                                relations: Relations::from(
+                                    vec![Relation::new(RelationType::Kafka, name.clone())
+                                    ]),
+                                path: PathBuf::new()
+                            })
+                            .collect::<Vec<SourceNode>>()
+                    } else {
+                        return Err(Error::new(
+                            std::io::ErrorKind::Other,
+                            "expected table include list to be present for source connector"))
+                    };
+                    let kk_node = KafkaNode {}
+                }
+                KafkaConnectorType::Sink => {
+                    let name = &stmt.with_properties
+                }
+            }
+        }
+        _ => return Err(Error::new(std::io::ErrorKind::Other, "Unsupported statement type")),
+    };
+    Ok(Relations::new(vec![]))
+}
+
+
+pub fn parse_kafka_nodes(dirs: &SourcePaths) -> Result<Vec<KafkaNode>, Error> {
+    unimplemented!()
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -84,6 +171,28 @@ mod tests {
             assert!(n.relations.iter().any(|r| matches!(r.relation_type, RelationType::Model)));
             assert!(n.relations.iter().any(|r| matches!(r.relation_type, RelationType::Source)));
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_kafka_nodes() -> std::io::Result<()> {
+        let sql =
+            r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS some_conn (
+        "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
+        "tasks.max" = "1",
+        "database.user" = "postgres",
+        "database.password" = "password",
+        "database.port" = 1234,
+        "database.hostname" = "db_host",
+        "database.dbname" = "some_db",
+        "table.include.list" = "public.test_connector_src",
+        "snapshot.mode" = "initial",
+        "topic.prefix" = "postgres-",
+        "kafka.bootstrap.servers" = "kafka_broker:1")
+        WITH PIPELINES(pii_pipeline);"#;
+
+        parse_kafka_sql(sql.to_string())?;
 
         Ok(())
     }

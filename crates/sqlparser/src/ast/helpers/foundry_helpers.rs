@@ -15,7 +15,8 @@ impl KafkaParse for Parser<'_> {
         } else if self.parse_keyword(Keyword::SINK) {
             KafkaConnectorType::Sink
         } else {
-            Err(ParserError::ParserError("Expected SOURCE or SINK".to_string()))?
+            Err(ParserError::ParserError(
+                format!("Expected SOURCE or SINK but got {}", self.peek_token()),))?
         };
         
         Ok(connector_type)

@@ -16371,6 +16371,83 @@ mod tests {
             }
             _ => panic!("expected CreateSMTPipeline")
         }
+    }
 
+    #[test]
+    fn test_create_kafka_connector_sink_no_pipeline() {
+        use sqlparser::dialect::GenericDialect;
+        use sqlparser::parser::Parser;
+        use sqlparser::ast::Statement;
+
+        let sql = r#"CREATE SINK KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
+        "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
+        "key.converter"           = "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter"         = "org.apache.kafka.connect.json.JsonConverter",
+        "topics"                  = "topic1",
+        "kafka.bootstrap.servers" = "localhost:9092"
+    );"#;
+
+        let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
+        assert_eq!(stmts.len(), 1);
+
+        match &stmts[0] {
+            Statement::CreateKafkaConnector(ref c) => {
+                assert_eq!(c.connector_type, KafkaConnectorType::Sink);
+                assert!(c.if_not_exists);
+                assert_eq!(c.name.value, "test_sink");
+
+                // no WITH PIPELINES clause in this variant
+                assert!(c.with_pipelines.is_empty());
+
+                // sanity-check one property
+                let topics = c.with_properties
+                    .iter()
+                    .find(|(k, _)| k.value == "topics")
+                    .expect("missing topics prop");
+                assert_eq!(topics.1.to_string(), "\"topic1\"");
+            }
+            _ => panic!("expected CreateKafkaConnector"),
+        }
+    }
+
+    #[test]
+    fn test_create_kafka_connector_sink_with_pipelines() {
+        use sqlparser::parser::Parser;
+        use sqlparser::ast::Statement;
+
+        let sql = r#"
+    CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
+        "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
+        "key.converter"           = "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter"         = "org.apache.kafka.connect.json.JsonConverter",
+        "topics"                  = "topic2",
+        "kafka.bootstrap.servers" = "localhost:9092"
+    ) WITH PIPELINES(filter_rejects, mask_data);
+    "#;
+
+        let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
+        assert_eq!(stmts.len(), 1);
+
+        match &stmts[0] {
+            Statement::CreateKafkaConnector(ref c) => {
+                assert_eq!(c.connector_type, KafkaConnectorType::Sink);
+                assert!(c.if_not_exists);
+                assert_eq!(c.name.value, "test_sink");
+
+                // ✔ pipelines captured in order
+                assert_eq!(
+                    c.with_pipelines.iter().map(|id| id.value.clone()).collect::<Vec<_>>(),
+                    vec!["filter_rejects".to_string(), "mask_data".to_string()]
+                );
+
+                // quick property spot-check
+                let topics = c.with_properties
+                    .iter()
+                    .find(|(k, _)| k.value == "topics")
+                    .expect("missing topics prop");
+                assert_eq!(topics.1.to_string(), "\"topic2\"");
+            }
+            _ => panic!("expected CreateKafkaConnector"),
+        }
     }
 }

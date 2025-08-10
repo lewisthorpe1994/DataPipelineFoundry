@@ -81,7 +81,7 @@ mod tests {
         let kafka_args = SourceConnArgs {
             kafka_connect: Some(connect_host.clone()),
         };
-        let resp = engine.execute(sql.as_str(), kafka_args, None).await?;
+        let resp = engine.execute(sql.as_str(), &kafka_args, None).await?;
         let kafka_executor = KafkaConnectTestClient { host: connect_host };
         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
         assert!(conn_exists);
@@ -136,7 +136,7 @@ mod tests {
         engine
             .execute(
                 smt_mask,
-                SourceConnArgs {
+                &SourceConnArgs {
                     kafka_connect: None,
                 },
                 None
@@ -150,7 +150,7 @@ mod tests {
         engine
             .execute(
                 smt_drop,
-                SourceConnArgs {
+                &SourceConnArgs {
                     kafka_connect: None,
                 },
                 None
@@ -166,7 +166,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
         engine
             .execute(
                 pipe_sql,
-                SourceConnArgs {
+                &SourceConnArgs {
                     kafka_connect: None,
                 },
                 None
@@ -178,7 +178,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
         let kafka_args = SourceConnArgs {
             kafka_connect: Some(connect_host.clone()),
         };
-        engine.execute(sql.as_str(), kafka_args, None).await?;
+        engine.execute(sql.as_str(), &kafka_args, None).await?;
 
         let kafka_executor = KafkaConnectTestClient { host: connect_host };
         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
@@ -222,7 +222,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
 );"#;
         engine.execute(
             sql,
-            SourceConnArgs {
+            &SourceConnArgs {
                 kafka_connect: None,
             },
             None
@@ -248,7 +248,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
 
         engine.execute(
             "CREATE SIMPLE MESSAGE TRANSFORM hash_email (type = 'hash');",
-            SourceConnArgs {
+            &SourceConnArgs {
                 kafka_connect: None,
             },
             None
@@ -258,7 +258,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
 
         engine.execute(
             "CREATE SIMPLE MESSAGE TRANSFORM drop_pii (type = 'drop');",
-            SourceConnArgs {
+            &SourceConnArgs {
                 kafka_connect: None,
             },
             None
@@ -274,7 +274,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
 "#;
         engine.execute(
             sql,
-            SourceConnArgs {
+            &SourceConnArgs {
                 kafka_connect: None,
             },
             None
@@ -304,13 +304,13 @@ async fn test_execute_db_query_against_postgres() -> anyhow::Result<()> {
     let adapter = PostgresAdapter::new(
         &pg.local_host, pg.port.parse().unwrap(), &pg.db_name, &pg.user, &pg.password
     ).await.unwrap();
-    let boxed: Box<dyn AsyncDatabaseAdapter> = Box::new(adapter);
+    let mut boxed: Box<dyn AsyncDatabaseAdapter> = Box::new(adapter);
 
     let engine = Engine::new();
     engine.execute(
         "CREATE TABLE ints (id INT);",
-        SourceConnArgs{ kafka_connect: None},
-        Some(boxed)
+        &SourceConnArgs{ kafka_connect: None},
+        Some(&mut boxed)
     ).await.unwrap();
 
     let (mut client, conn) = tokio_postgres::connect(&pg.conn_string(false), NoTls).await?;

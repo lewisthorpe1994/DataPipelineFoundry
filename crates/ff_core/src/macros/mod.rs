@@ -61,7 +61,7 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
     use super::*;
-    use common::types::{ParsedNode, Relations, Relation, RelationType};
+    use common::types::{ParsedNode, Relations, Relation, RelationType, ModelNode};
     use common::types::schema::{Database, Schema, Table};
     use crate::config::components::sources::warehouse_source::WarehouseSourceConfig;
 
@@ -69,7 +69,7 @@ mod tests {
     fn ref_resolves_known_model() {
         let mut env = Environment::new();
         let dag = Arc::new(
-            ModelsDag::new(vec![ParsedNode::new(
+            ModelsDag::new(vec![ModelNode::new(
                 "schema".to_string(),
                 "model_a".to_string(),
                 None,

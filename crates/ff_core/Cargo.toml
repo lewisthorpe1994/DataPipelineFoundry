@@ -18,6 +18,8 @@ dag = { workspace = true}
 engine = { workspace = true}
 logging = { workspace = true }
 database_adapters = { workspace = true }
+regex = "1.11.1"
+
 [dev-dependencies]
 tempfile = { workspace = true }
 once_cell = { workspace = true }
