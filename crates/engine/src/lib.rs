@@ -1,5 +1,6 @@
 pub mod registry;
 pub mod executor;
+mod planner;
 
 use std::fmt::{Debug, Display, Formatter};
 use common::types::sources::SourceConnArgs;

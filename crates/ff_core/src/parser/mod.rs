@@ -68,7 +68,7 @@ pub fn parse_models(dirs: &ModelLayers) -> Result<Vec<ModelNode>, Error> {
 }
 // TODO - parse kafka sql to get relations and deps
 // TODO - look at source db and topic for source and topic and dest db for sink
-fn parse_kafka_sql(sql: String) -> Result<(Option<Vec<SourceNode>>, KafkaNode), Error> {
+fn parse_kafka_sql(sql: String, path: PathBuf) -> Result<KafkaNode, Error> {
     let parsed = SqlParser::parse_sql(&GenericDialect, &sql)
         .map_err(|e|  std::io::Error::new(std::io::ErrorKind::Other, e))?;
     assert_eq!(parsed.len(), 1, "parse_kafka_sql only expects one statement in the parsed ast vec!");
@@ -76,7 +76,7 @@ fn parse_kafka_sql(sql: String) -> Result<(Option<Vec<SourceNode>>, KafkaNode), 
     match &parsed[0] {
         Statement::CreateKafkaConnector(stmt) => {
             let name = &stmt.name.value;
-            let (src_nodes, kk_node) = match &stmt.connector_type {
+            let kk_node = match &stmt.connector_type {
                 KafkaConnectorType::Source => {
                     let sources = &stmt.with_properties
                         .iter()
@@ -88,26 +88,26 @@ fn parse_kafka_sql(sql: String) -> Result<(Option<Vec<SourceNode>>, KafkaNode), 
                                     .collect::<Vec<&str>>()
                             )
                         );
-                    let source_nodes = if let Some(srcs) = sources {
+                    let relations = if let Some(srcs) = sources {
                         srcs
                             .iter()
-                            .map(|s| SourceNode {
-                                name: s.to_string(), 
-                                relations: Relations::from(
-                                    vec![Relation::new(RelationType::Kafka, name.clone())
-                                    ]),
-                                path: PathBuf::new()
-                            })
-                            .collect::<Vec<SourceNode>>()
+                            .map(|s| Relation::new(RelationType::Source, s.to_string()))
+                            .collect::<Vec<Relation>>()
                     } else {
                         return Err(Error::new(
                             std::io::ErrorKind::Other,
                             "expected table include list to be present for source connector"))
                     };
-                    let kk_node = KafkaNode {}
+                    KafkaNode {
+                        name: name.to_owned(),
+                        relations: Relations::new(relations),
+                        path,
+                    }
                 }
                 KafkaConnectorType::Sink => {
-                    let name = &stmt.with_properties
+                    let name = &stmt.with_properties;
+
+                    KafkaNode {}
                 }
             }
         }
