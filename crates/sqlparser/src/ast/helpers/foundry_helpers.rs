@@ -1,5 +1,7 @@
-use core::fmt::Display;
-use crate::ast::{Ident, KafkaConnectorType, Value, ValueWithSpan};
+use core::fmt::{Display, Formatter};
+#[cfg(feature = "json_example")]
+use serde::{Deserialize, Deserializer, Serializer, de::Visitor};
+use crate::ast::{Ident, KafkaConnectorType, Statement, Value, ValueWithSpan};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
@@ -48,3 +50,30 @@ impl ParseUtils for Parser<'_> {
         Ok(kv_vec)
     }
 }
+
+// #[cfg(feature = "json_example")]
+// impl<'de> serde::Deserialize<'de> for Statement {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where D: serde::Deserializer<'de> {
+//         struct StmtVisitor;
+//         impl<'de> serde::de::Visitor<'de> for StmtVisitor {
+//             type Value = Statement;
+//             fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+//                 f.write_str("a SQL statement string")
+//             }
+//             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+//             where E: serde::de::Error {
+//                 sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect, v)
+//                     .map_err(|e| E::custom(e.to_string()))
+//                     .and_then(|mut v| v.pop().ok_or_else(|| E::custom("empty SQL")))
+//             }
+//         }
+//         deserializer.deserialize_str(StmtVisitor)
+//     }
+// }
+// #[cfg(feature = "json_example")]
+// impl serde::Serialize for Statement {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+//         serializer.collect_str(self)
+//     }
+// }

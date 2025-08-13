@@ -1,11 +1,10 @@
 pub mod registry;
 pub mod executor;
-mod planner;
 
 use std::fmt::{Debug, Display, Formatter};
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
-pub use registry::model::*;
+pub use registry::models::*;
 pub use registry::error::CatalogError;
 use executor::{Executor, ExecutorError, ExecutorResponse};
 use registry::MemoryCatalog;

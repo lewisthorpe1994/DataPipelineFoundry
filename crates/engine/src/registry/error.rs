@@ -4,8 +4,8 @@ use thiserror::Error;
 pub enum CatalogError {
     #[error("name already exists")]
     Duplicate,
-    #[error("not found")]
-    NotFound,
+    #[error("{0}")]
+    NotFound(String),
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("io error: {0}")]

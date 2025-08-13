@@ -2,12 +2,12 @@ use serde_json::Value as Json;
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
 use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
-use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineMeta, TransformMeta};
+use crate::{CatalogError, ConnectorMeta, ConnectorType, PipelineDecl, TransformDecl};
 use crate::executor::{ExecutorError, ExecutorResponse};
 use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
 use crate::registry::{Catalog, CatalogHelpers, MemoryCatalog};
 
-trait AstValueFormatter {
+pub trait AstValueFormatter {
     fn formatted_string(&self) -> String;
 }
 impl AstValueFormatter for ValueWithSpan {
@@ -109,7 +109,7 @@ impl SqlExecutor {
         registry: MemoryCatalog,
     ) -> Result<(), ExecutorError> {
         let config: Json = KvPairs(smt_pipe.config).into();
-        let meta = TransformMeta::new(smt_pipe.name.to_string(), config);
+        let meta = TransformDecl::new(smt_pipe.name.to_string(), config);
         handle_put_op(registry.put_transform(meta))
     }
 
@@ -127,7 +127,7 @@ impl SqlExecutor {
             Some(p) => Some(p.formatted_string()),
             None => None,
         };
-        let pipe = PipelineMeta::new(smt_pipe.name.value, t_ids, pred);
+        let pipe = PipelineDecl::new(smt_pipe.name.value, t_ids, pred);
         handle_put_op(registry.put_pipeline(pipe))
     }
 
@@ -287,7 +287,7 @@ mod tests {
 
         // helper: create + insert transform, return its UUID
         let make_t = |name: &str| -> Uuid {
-            let meta = TransformMeta::new(name.to_string(), json!({}));
+            let meta = TransformDecl::new(name.to_string(), json!({}));
             let id = meta.id;
             registry.put_transform(meta).unwrap();
             id
@@ -388,13 +388,13 @@ mod tests {
         let registry = MemoryCatalog::new();
 
         // two transforms used in two distinct pipelines
-        let mask = TransformMeta::new("mask".into(), json!({"field": "a"}));
-        let drop = TransformMeta::new("drop".into(), json!({"field": "b"}));
+        let mask = TransformDecl::new("mask".into(), json!({"field": "a"}));
+        let drop = TransformDecl::new("drop".into(), json!({"field": "b"}));
         registry.put_transform(mask.clone()).unwrap();
         registry.put_transform(drop.clone()).unwrap();
 
-        let pipe1 = PipelineMeta::new("pipe1".into(), vec![mask.id], Some("pred1".into()));
-        let pipe2 = PipelineMeta::new("pipe2".into(), vec![drop.id], Some("pred2".into()));
+        let pipe1 = PipelineDecl::new("pipe1".into(), vec![mask.id], Some("pred1".into()));
+        let pipe2 = PipelineDecl::new("pipe2".into(), vec![drop.id], Some("pred2".into()));
         registry.put_pipeline(pipe1).unwrap();
         registry.put_pipeline(pipe2).unwrap();
 
