@@ -1,30 +1,16 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::ConnectorMeta;
-use sqlparser::ast::KafkaConnectorType as SqlParserKafkaConnectorType;
+use crate::KafkaConnectorMeta;
+use crate::types::KafkaConnectorType;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum KafkaConnectorType {
-    Source,
-    Sink
-}
-impl From<SqlParserKafkaConnectorType> for KafkaConnectorType {
-    fn from(value: SqlParserKafkaConnectorType) -> Self {
-        match value {
-            SqlParserKafkaConnectorType::Source => Self::Source,
-            SqlParserKafkaConnectorType::Sink => Self::Sink,
-        }
-    }
-}
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KafkaConnectorDeployConfig {
     pub name: String,
     pub config: Value
 }
 
-impl From<ConnectorMeta> for KafkaConnectorDeployConfig {
-    fn from(meta: ConnectorMeta) -> Self {
+impl From<KafkaConnectorMeta> for KafkaConnectorDeployConfig {
+    fn from(meta: KafkaConnectorMeta) -> Self {
         Self {
             config: meta.config,
             name: meta.name,

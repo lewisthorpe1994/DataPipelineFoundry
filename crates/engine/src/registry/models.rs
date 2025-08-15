@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use uuid::Uuid;
 use common::types::Materialize;
-use sqlparser::ast::{Statement};
-use crate::executor::kafka::KafkaConnectorType;
+use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Select, Statement};
+use crate::executor::sql::KvPairs;
+use crate::types::KafkaConnectorType;
 
 /// A single SMT / transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,16 +14,19 @@ pub struct TransformDecl {
     pub name: String,
     pub config: serde_json::Value,
     pub created: DateTime<Utc>,
-    pub sql: Statement
+    pub sql: CreateSimpleMessageTransform
 }
 impl TransformDecl {
-    pub fn new(name: String, config: serde_json::Value, statement: Statement) -> Self {
+    pub fn new(
+        ast: CreateSimpleMessageTransform
+    ) -> Self {
+        let sql = ast.clone();
         Self {
             id: Uuid::new_v4(),
-            name,
-            config,
+            name: ast.name.to_string(),
+            config: KvPairs(ast.config).into(),
             created: Utc::now(),
-            sql: statement
+            sql
         }
     }
 }
@@ -34,14 +38,14 @@ pub struct PipelineDecl {
     pub transforms: Vec<Uuid>, // ordered IDs
     pub created: DateTime<Utc>,
     pub predicate: Option<String>,
-    pub sql: Statement
+    pub sql: CreateSimpleMessageTransformPipeline
 }
 impl PipelineDecl {
     pub fn new(
         name: String,
         transforms: Vec<Uuid>,
         predicate: Option<String>,
-        sql: Statement
+        sql: CreateSimpleMessageTransformPipeline
     ) -> Self {
         Self {
             name,
@@ -52,26 +56,46 @@ impl PipelineDecl {
         }
     }
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ConnectorType {
-    Kafka, // TODO - more connectors
-}
-
-/// Connector definition (Kafka, Airbyte, …)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectorMeta {
+pub struct KafkaConnectorMeta {
     pub name: String,
-    pub plugin: ConnectorType, // "kafka", "airbyte", …
+    pub con_type: KafkaConnectorType,
     pub config: serde_json::Value,
-    pub sql: Statement
+    pub sql: CreateKafkaConnector,
+    pub pipelines: Option<Vec<String>>
+}
+impl KafkaConnectorMeta {
+    pub fn new(ast: CreateKafkaConnector) -> Self {
+        let sql = ast.clone();
+        let pipelines = {
+            let mapped = ast.with_pipelines
+                .iter()
+                .map(|v| v.value)
+                .collect::<Vec<String>>();
+
+            if mapped.is_empty() {
+                None
+            } else if mapped.len() == 1 && mapped[0].trim().is_empty() {
+                None
+            } else {
+                Some(mapped)
+            }
+        }
+
+        Self {
+            name: ast.name.to_string(),
+            con_type: KafkaConnectorType::from(ast.connector_type),
+            config: KvPairs(ast.with_properties).into(),
+            sql
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelDecl {
     pub schema: String,
     pub name: String,
-    pub sql: Statement,
+    pub sql: Select,
     pub materialize: Option<Materialize>,
     pub refs: Vec<String>,
     pub sources: Vec<String>,
@@ -85,7 +109,7 @@ pub enum ResourceRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KafkaConnectorDecls {
+pub struct KafkaConnectorDecl {
     pub kind: KafkaConnectorType,
     pub name: String,
     pub config: Json,

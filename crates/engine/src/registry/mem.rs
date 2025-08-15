@@ -5,9 +5,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Statement};
-use crate::{CatalogError, ConnectorMeta, ConnectorType, KafkaConnectorDecls, ModelDecl, PipelineDecl, TransformDecl};
+use crate::{CatalogError, KafkaConnectorMeta, KafkaConnectorDecl, ModelDecl, PipelineDecl, TransformDecl};
 use crate::executor::{ExecutorError, ExecutorResponse};
 use crate::executor::sql::{AstValueFormatter, KvPairs};
+use crate::types::KafkaConnectorType;
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -15,10 +16,11 @@ struct State {
     transforms_by_id: HashMap<Uuid, TransformDecl>,
     transform_name_to_id: HashMap<String, Uuid>,
     pipelines: HashMap<String, PipelineDecl>,
-    connectors: HashMap<String, ConnectorMeta>,
+    connectors: HashMap<String, KafkaConnectorMeta>,
     models: HashMap<String, ModelDecl>,
 }
 
+#[derive(Debug)]
 pub enum Key {
     Id(Uuid),
     Name(String),
@@ -45,93 +47,6 @@ impl MemoryCatalog {
             inner: Arc::new(RwLock::new(State::default())),
         }
     }
-    pub fn register_object<S>(
-        &self,
-        parsed_stmts: S,
-    ) -> Result<(), ExecutorError>
-    where
-        S: IntoIterator<Item = Statement>,
-    {
-
-        for ast in parsed_stmts.into_iter() {
-            match ast.clone() {
-                Statement::CreateKafkaConnector(stmt) => {
-                    self.register_kafka_connector(stmt, ast)?;
-                }
-                Statement::CreateSMTransform(stmt) => {
-                    self.register_kafka_smt(stmt, ast)?;
-                }
-                Statement::CreateSMTPipeline(stmt) => {
-                    self.register_smt_pipeline(stmt, ast)?;
-                }
-                _ => {
-                    ()
-                }
-            }
-        }
-
-        Ok(())
-    }
-    
-    fn register_kafka_connector(
-        &self,
-        ast: CreateKafkaConnector,
-        stmt: Statement
-    ) -> Result<(), CatalogError> {
-        let conn_name = ast.name.to_string();
-        let conn_type = ast.connector_type; 
-        let props: Json = KvPairs(ast.with_properties).into();
-
-        let mut obj = match props {
-            Json::Object(map) => map,
-            _ => Map::new(),
-        };
-
-        let meta = ConnectorMeta {
-            name: conn_name,
-            plugin: ConnectorType::Kafka,
-            config: Json::Object(obj),
-            sql: stmt
-        };
-
-        self.put_connector(meta.clone())
-    }
-    
-    fn register_kafka_smt(
-        &self,
-        ast: CreateSimpleMessageTransform,
-        stmt: Statement
-    ) -> Result<(), CatalogError> {
-        let config: Json = KvPairs(ast.config).into();
-        let meta = TransformDecl::new(ast.name.to_string(), config, stmt);
-        self.put_transform(meta)
-    }
-
-    fn register_smt_pipeline(
-        &self,
-        ast: CreateSimpleMessageTransformPipeline,
-        stmt: Statement
-    ) -> Result<(), CatalogError> {
-        let t_names = ast
-            .steps
-            .iter()
-            .map(|s| s.name.to_string())
-            .collect::<Vec<String>>();
-        let t_ids = self.get_transform_ids_by_name(t_names)?;
-        let pred = match ast.pipe_predicate {
-            Some(p) => Some(p.formatted_string()),
-            None => None,
-        };
-        let pipe = PipelineDecl::new(ast.name.value, t_ids, pred, stmt);
-        self.put_pipeline(pipe)
-    }
-
-    // fn register_model(
-    //     &self,
-    //     stmt: Statement
-    // ) -> Result<(), CatalogError> {
-    //     stmt
-    // }
 
     /* ---------- optional durability ---------- */
     pub fn load_from(path: &str) -> Result<Self, CatalogError> {
@@ -150,6 +65,178 @@ impl MemoryCatalog {
     }
 }
 
+pub trait Register: Send + Sync + 'static {
+    fn register_object<S>(
+        &self,
+        parsed_stmts: S,
+    ) -> Result<(), ExecutorError>
+    where
+        S: IntoIterator<Item = Statement>;
+    fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError>;
+    fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError>;
+    fn register_smt_pipeline(&self, ast: CreateSimpleMessageTransformPipeline) -> Result<(), CatalogError>;
+    //fn register_model()
+}
+impl Register for MemoryCatalog {
+    fn register_object<S>(
+        &self,
+        parsed_stmts: S,
+    ) -> Result<(), ExecutorError>
+    where
+        S: IntoIterator<Item = Statement>,
+    {
+
+        for ast in parsed_stmts.into_iter() {
+            match ast.clone() {
+                Statement::CreateKafkaConnector(stmt) => {
+                    self.register_kafka_connector(stmt)?;
+                }
+                Statement::CreateSMTransform(stmt) => {
+                    self.register_kafka_smt(stmt)?;
+                }
+                Statement::CreateSMTPipeline(stmt) => {
+                    self.register_smt_pipeline(stmt)?;
+                }
+                _ => {
+                    ()
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn register_kafka_connector(
+        &self,
+        ast: CreateKafkaConnector,
+    ) -> Result<(), CatalogError> {
+        let sql = ast.clone();
+        
+        let meta = KafkaConnectorMeta::new(ast);
+
+        let mut g = self.inner.write();
+        if g.connectors.contains_key(&meta.name) {
+            return Err(CatalogError::Duplicate);
+        }
+        g.connectors.insert(meta.name.clone(), meta);
+        Ok(())
+    }
+
+    fn register_kafka_smt(
+        &self,
+        ast: CreateSimpleMessageTransform,
+    ) -> Result<(), CatalogError> {
+        let meta = TransformDecl::new(ast);
+        let mut g = self.inner.write();
+        if g.transforms_by_id.contains_key(&meta.id) || g.transform_name_to_id.contains_key(&meta.name) {
+            return Err(CatalogError::Duplicate);
+        }
+        g.transform_name_to_id.insert(meta.name.clone(), meta.id);
+        g.transforms_by_id.insert(meta.id, meta);
+        Ok(())
+    }
+
+    fn register_smt_pipeline(
+        &self,
+        ast: CreateSimpleMessageTransformPipeline,
+    ) -> Result<(), CatalogError> {
+        let sql = ast.clone();
+        let t_ids = self.get_transform_ids_by_name(ast.clone())?;
+        let pred = match ast.pipe_predicate {
+            Some(p) => Some(p.formatted_string()),
+            None => None,
+        };
+        let pipe = PipelineDecl::new(ast.name.value, t_ids, pred, sql);
+        
+        let mut g = self.inner.write();
+        if g.pipelines.contains_key(&pipe.name) {
+            return Err(CatalogError::Duplicate); // name already taken
+        }
+        g.pipelines.insert(pipe.name.clone(), pipe);
+        Ok(())
+    }
+
+    // fn register_model(
+    //     &self,
+    //     stmt: Statement
+    // ) -> Result<(), CatalogError> {
+    //     stmt
+    // }
+
+}
+
+pub trait Getter: Send + Sync + 'static {
+    fn get_kafka_connector(&self, name: &str) -> Result<KafkaConnectorMeta, CatalogError>;
+    fn get_kafka_smt<K>(&self, name: K) -> Result<TransformDecl, CatalogError>
+    where
+        K: for<'a> Into<Key>,;
+    fn get_smt_pipeline(&self, name: &str) -> Result<PipelineDecl, CatalogError>;
+    fn get_transform_ids_by_name(
+        &self, 
+        ast: CreateSimpleMessageTransformPipeline
+    ) -> Result<Vec<Uuid>, CatalogError>;
+}
+
+impl Getter for MemoryCatalog {
+    fn get_kafka_connector(&self, name: &str) -> Result<KafkaConnectorMeta, CatalogError> {
+        self.inner
+            .read()
+            .connectors
+            .get(name)
+            .cloned()
+            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
+    }
+
+    fn get_kafka_smt<K>(&self, key: K) -> Result<TransformDecl, CatalogError>
+    where
+        K: for<'a> Into<Key>,
+    {
+        use Key::*;
+        let s = self.inner.read();
+        let k = &key.into();
+        match k {
+            Id(id) => s.transforms_by_id.get(&id).cloned(),
+            Name(n) => s
+                .transform_name_to_id
+                .get(n)
+                .and_then(|id| s.transforms_by_id.get(id))
+                .cloned(),
+        }
+            .ok_or(CatalogError::NotFound(format!("{:?} not found", k).to_string()))
+    }
+
+    fn get_smt_pipeline(&self, name: &str) -> Result<PipelineDecl, CatalogError> {
+        self.inner
+            .read()
+            .pipelines
+            .get(name)
+            .cloned()
+            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
+    }
+
+    fn get_transform_ids_by_name(&self, ast: CreateSimpleMessageTransformPipeline) -> Result<Vec<Uuid>, CatalogError>
+    {
+        let mut ids = Vec::new();
+        let g = self.inner.read();
+        let names = ast
+            .steps
+            .iter()
+            .map(|s| s.name.to_string())
+            .collect::<Vec<String>>();
+        
+        for name in names {
+            let t = g.transform_name_to_id.get(&name).cloned();
+            if let Some(id) = t {
+                ids.push(id);
+            } else {
+                return Err(CatalogError::NotFound(format!("{} not found", name)))
+            }
+        }
+
+        Ok(ids)
+    }
+}
+
 /* ---------- trait ----------- */
 // src/mem.rs
 pub trait Catalog: Send + Sync + 'static {
@@ -164,104 +251,58 @@ pub trait Catalog: Send + Sync + 'static {
     fn get_pipeline(&self, name: &str) -> Result<PipelineDecl, CatalogError>;
 
     /* connectors */
-    fn put_connector(&self, c: ConnectorMeta) -> Result<(), CatalogError>;
-    fn get_connector(&self, name: &str) -> Result<ConnectorMeta, CatalogError>;
+    fn put_connector(&self, c: KafkaConnectorMeta) -> Result<(), CatalogError>;
+    fn get_connector(&self, name: &str) -> Result<KafkaConnectorMeta, CatalogError>;
 
     /* tables … */
 }
 
-pub trait CatalogHelpers {
-    fn get_transform_ids_by_name<I, S>(&self, names: I) -> Result<Vec<Uuid>, CatalogError>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>;
+pub trait Compile: Send + Sync + 'static {
+    fn compile_kafka_decl(&self, name: &str) -> Result<KafkaConnectorDecl, CatalogError>;
 }
 
-impl Catalog for MemoryCatalog {
-    /* ---- transforms ---- */
-    fn put_transform(&self, t: TransformDecl) -> Result<(), CatalogError> {
-        let mut g = self.inner.write();
-        if g.transforms_by_id.contains_key(&t.id) || g.transform_name_to_id.contains_key(&t.name) {
-            return Err(CatalogError::Duplicate);
-        }
-        g.transform_name_to_id.insert(t.name.clone(), t.id);
-        g.transforms_by_id.insert(t.id, t);
-        Ok(())
-    }
-    fn get_transform<K>(&self, key: K) -> Result<TransformDecl, CatalogError>
-    where
-        K: for<'a> Into<Key>,
-    {
-        use Key::*;
-        let s = self.inner.read();
-        match key.clone().into() {
-            Id(id) => s.transforms_by_id.get(&id).cloned(),
-            Name(n) => s
-                .transform_name_to_id
-                .get(&n)
-                .and_then(|id| s.transforms_by_id.get(id))
-                .cloned(),
-        }
-        .ok_or(CatalogError::NotFound(format!("{} not found", key).to_string()))
-    }
+impl Compile for MemoryCatalog {
+    fn compile_kafka_decl(&self, name: &str) -> Result<KafkaConnectorDecl, CatalogError> {
+        let conn = self.get_kafka_connector(name)?;
+        let props: Json = conn.config;
 
-    /* ---- pipelines ---- */
-    fn put_pipeline(&self, p: PipelineDecl) -> Result<(), CatalogError> {
-        let mut g = self.inner.write();
-        if g.pipelines.contains_key(&p.name) {
-            return Err(CatalogError::Duplicate); // name already taken
-        }
-        g.pipelines.insert(p.name.clone(), p);
-        Ok(())
-    }
+        let mut transform_names = Vec::new();
+        
+        for pipe_ident in connector_config.with_pipelines {
+            let pipe = registry.get_pipeline(pipe_ident.value.as_str())?;
+            let pipe_name = pipe.name.clone();
+            for t_id in pipe.transforms {
+                let t = registry.get_transform(t_id)?;
+                let tname = format!("{}_{}", pipe_name, t.name);
+                transform_names.push(tname.clone());
 
-    fn get_pipeline(&self, name: &str) -> Result<PipelineDecl, CatalogError> {
-        self.inner
-            .read()
-            .pipelines
-            .get(name)
-            .cloned()
-            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
-    }
-
-    /* ---- connectors ---- */
-    fn put_connector(&self, c: ConnectorMeta) -> Result<(), CatalogError> {
-        let mut g = self.inner.write();
-        if g.connectors.contains_key(&c.name) {
-            return Err(CatalogError::Duplicate);
-        }
-        g.connectors.insert(c.name.clone(), c);
-        Ok(())
-    }
-
-    fn get_connector(&self, name: &str) -> Result<ConnectorMeta, CatalogError> {
-        self.inner
-            .read()
-            .connectors
-            .get(name)
-            .cloned()
-            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
-    }
-}
-
-impl CatalogHelpers for MemoryCatalog {
-    fn get_transform_ids_by_name<I, S>(&self, names: I) -> Result<Vec<Uuid>, CatalogError>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>,
-    {
-        let mut ids = Vec::new();
-        let g = self.inner.read();
-        for name in names {
-            let t = g.transform_name_to_id.get(name.as_ref()).cloned();
-            if let Some(id) = t {
-                ids.push(id);
-            } else {
-                return Err(CatalogError::NotFound(format!("{} not found", name)));
+                if let Value::Object(cfg) = t.config {
+                    for (k, v) in cfg {
+                        obj.insert(format!("transforms.{tname}.{k}"), v);
+                    }
+                }
+                if let Some(pred) = &pipe.predicate {
+                    obj.insert(
+                        format!("transforms.{tname}.predicate"),
+                        Value::String(pred.clone()),
+                    );
+                }
             }
         }
 
-        Ok(ids)
+        if !transform_names.is_empty() {
+            obj.insert(
+                "transforms".to_string(),
+                Value::String(transform_names.join(",")),
+            );
+        }
+
+        let meta = KafkaConnectorMeta {
+            name: conn_name,
+            con_type: conn.con_type,
+            config: Value::Object(obj),
+            sql: connector_config
+        };
     }
 }
 
@@ -337,7 +378,7 @@ mod tests {
 //     #[test]
 //     fn test_put_get_connector() {
 //         let cat = MemoryCatalog::new();
-//         let conn = ConnectorMeta {
+//         let conn = KafkaConnectorMeta {
 //             name: "my_conn".into(),
 //             plugin: ConnectorType::Kafka,
 //             config: json!({"a": "b"}),

@@ -184,6 +184,7 @@ impl SqlExecutor {
             name: conn_name,
             plugin: ConnectorType::Kafka,
             config: Value::Object(obj),
+            sql: connector_config
         };
 
         match registry.put_connector(meta.clone()) {
