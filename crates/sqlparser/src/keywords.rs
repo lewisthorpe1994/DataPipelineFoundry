@@ -555,6 +555,7 @@ define_keywords!(
     MINVALUE,
     MOD,
     MODE,
+    MODEL,
     MODIFIES,
     MODIFY,
     MODULE,

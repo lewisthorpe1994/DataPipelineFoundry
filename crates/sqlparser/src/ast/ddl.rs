@@ -20,7 +20,7 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::fmt::{self, Display, Write};
+use core::fmt::{self, Display, Formatter, Write};
 use std::collections::HashMap;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,8 @@ use serde::{Deserialize, Serialize};
 use sqlparser_derive::{Visit, VisitMut};
 
 use crate::ast::value::escape_single_quote_string;
-use crate::ast::{display_comma_separated, display_separated, CommentDef, CreateFunctionBody, CreateFunctionUsing, DataType, Expr, FunctionBehavior, FunctionCalledOnNull, FunctionDeterminismSpecifier, FunctionParallel, Ident, KafkaConnectorType, MySQLColumnPosition, ObjectName, OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag, Value, ValueWithSpan};
+use crate::ast::{display_comma_separated, display_separated, CommentDef, CreateFunctionBody, CreateFunctionUsing, CreateTable, DataType, Expr, FunctionBehavior, FunctionCalledOnNull, FunctionDeterminismSpecifier, FunctionParallel, Ident, KafkaConnectorType, MySQLColumnPosition, ObjectName, OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag, Value, ValueWithSpan};
+use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
 use crate::keywords::Keyword;
 use crate::tokenizer::Token;
 
@@ -2441,6 +2442,7 @@ pub struct CreateSimpleMessageTransformPipeline {
     pub name: Ident,
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
+    /// Ordered list of SMTs to call
     pub steps: Vec<TransformCall>,
     pub pipe_predicate: Option<ValueWithSpan>,
 }
@@ -2472,3 +2474,52 @@ impl fmt::Display for CreateSimpleMessageTransformPipeline {
         )
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ModelDef {
+    Table(CreateTable),
+    View(CreateModelView),
+}
+impl fmt::Display for ModelDef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Table(table) => write!(f, "{}", table),
+            Self::View(view) => write!(f, "{}", view),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CreateModel {
+    pub name: Ident,
+    pub model: ModelDef,
+    pub drop: DropStmt
+}
+
+impl fmt::Display for CreateModel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let model = match &self.model {
+            ModelDef::Table(stmt) => "TABLE",
+            ModelDef::View(stmt) => {
+                if stmt.materialized {
+                    "MATERIALIZED VIEW"
+                } else {
+                    "VIEW"
+                }
+            },
+        };
+
+        write!(
+            f,
+            "CREATE MODEL {name} AS\n\
+            DROP {model} IF EXISTS {name};\n\
+            {statement}",
+            name = self.name,
+            model = model,
+            statement = self.model
+        )
+    }
+}
+

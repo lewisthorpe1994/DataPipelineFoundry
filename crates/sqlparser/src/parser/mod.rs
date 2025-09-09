@@ -39,10 +39,12 @@ use crate::ast::helpers::{
 
 use crate::ast::Statement::CreatePolicy;
 use crate::ast::*;
+use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
 use crate::dialect::*;
 use crate::keywords::{Keyword, ALL_KEYWORDS};
 use crate::tokenizer::*;
 mod alter;
+mod parser_helpers;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParserError {
@@ -4597,6 +4599,9 @@ impl<'a> Parser<'a> {
             self.parse_source()
         } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM]) {
             self.parse_smt()
+        }
+        else if self.parse_keyword(Keyword::MODEL) {
+            self.parse_model()
         }
         else {
             self.expected("an object type after CREATE", self.peek_token())
@@ -11966,6 +11971,13 @@ impl<'a> Parser<'a> {
 
     /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
+        if matches!(self.peek_tokens(), [Token::LBrace, Token::LBrace]) {
+            if let Some(parsed) = self.maybe_parse(|p| p.try_parse_braced_macro_table_factor())? {
+               if let Some(tf) = parsed {
+                   return Ok(tf)
+               }
+            }
+        }
         if self.parse_keyword(Keyword::LATERAL) {
             // LATERAL must always be followed by a subquery or table function.
             if self.consume_token(&Token::LParen) {
@@ -15330,6 +15342,49 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_model(&mut self) -> Result<Statement, ParserError> {
+        let name = self.parse_identifier()?;
+        if self.parse_keywords(&[Keyword::AS, Keyword::DROP]) {
+            ()
+        } else {
+            return Err(ParserError::ParserError("Expected a DROP statement to be present for CreateModel".parse().unwrap()))
+        }
+
+        let model_type = if self.parse_keyword(Keyword::TABLE) {
+            ObjectType::Table
+        } else if self.parse_keywords(&[Keyword::MATERIALIZED, Keyword::VIEW]){
+            ObjectType::View
+        } else if self.parse_keyword(Keyword::VIEW) {
+            ObjectType::View
+        } else {
+            return Err(ParserError::ParserError("Expected TABLE, MATERIALISED VIEW or VIEW for DropStmt".to_string()))
+        };
+
+        let drop_if_exists = self.parse_if_exists();
+        let drop_name = self.parse_object_name(false)?;
+        let cascade = self.parse_keyword(Keyword::CASCADE);
+        if cascade == false {
+            return Err(ParserError::ParserError("Cascade is required to drop the previous model when creating a new one.".to_string()))
+        }
+        assert_eq!(name.value, drop_name.to_string(), "Expected model and drop statement identifiers to match!");
+
+        let drop_stmt = DropStmt::new(model_type, vec![drop_name], drop_if_exists, cascade);
+        self.expect_token(&Token::SemiColon)?;
+        self.expect_keyword(Keyword::CREATE)?;
+        let create_model = self.parse_create()?;
+        let model_def = match create_model {
+            Statement::CreateTable(tbl) => ModelDef::Table(tbl),
+            _ => ModelDef::View(CreateModelView::try_from(create_model)?)
+        };
+        let stmt = Statement::CreateModel(CreateModel {
+            name,
+            model: model_def,
+            drop: drop_stmt
+        });
+
+        Ok(stmt)
+    }
+
     pub fn parse_sm_transform(&mut self) -> Result<Statement, ParserError> {
         let if_not_exists = self.parse_if_not_exists();
         let name = self.parse_identifier()?;
@@ -16409,6 +16464,92 @@ mod tests {
             _ => panic!("expected CreateKafkaConnector"),
         }
     }
+
+    #[test]
+    fn parses_create_model_table_with_cte_and_drop_view() {
+        use sqlparser::ast::*;
+        use sqlparser::dialect::GenericDialect;
+        use sqlparser::parser::Parser;
+
+        // Minimal SQL that should produce the structure in your debug dump.
+        // Adjust whitespace as needed; the assertions below match the AST, not formatting.
+        let sql = r#"
+      create model some_model as
+      drop view if exists some_model cascade;
+      create table some_model as
+      with test as (
+        select *
+        from ref('stg_orders') as o
+        join source('raw','stg_customers') as c
+          on o.customer_id = c.id
+      )
+      select * from test;
+    "#;
+        //TODO - inspect for schema/table/ refs on how to build ModelDec
+
+        let dialect = GenericDialect {};
+        let stmts = Parser::parse_sql(&dialect, sql).expect("parse should succeed");
+        print!("{}", stmts[0]);
+
+        // The parser wraps both the table def and the drop into a single CreateModel node,
+        // per your printed output: [CreateModel(CreateModel { ... })]
+        assert_eq!(stmts.len(), 1, "expected exactly one top-level CreateModel statement");
+
+        match &stmts[0] {
+            Statement::CreateModel(cm) => {
+                // name: Ident("some_model")
+                assert_eq!(cm.name.value.as_str(), "some_model");
+
+                // model: Table(CreateTable { name: ObjectName(["some_model"]), query: Some(Query { with: Some(...), body: Select(... from test) }) ... })
+                match &cm.model {
+                    // If your enum is named differently (e.g., CreateModelDef::Table), adjust the path here.
+                    ModelDef::Table(tbl) => {
+                        // table name
+                        assert_eq!(tbl.name.to_string(), "some_model");
+
+                        // ensure there's an embedded query
+                        let q = tbl.query.as_ref().expect("table.query should be Some");
+
+                        // WITH cte named "test" with 1 entry
+                        let with = q.with.as_ref().expect("WITH clause should exist");
+                        assert_eq!(with.cte_tables.len(), 1, "expected a single CTE");
+                        assert_eq!(with.cte_tables[0].alias.name.value.as_str(), "test");
+
+                        // body: SELECT * FROM test
+                        match &*q.body {
+                            SetExpr::Select(select) => {
+                                // projection is a wildcard
+                                assert_eq!(select.projection.len(), 1);
+                                matches!(&select.projection[0], SelectItem::Wildcard(_));
+
+                                // FROM test
+                                assert_eq!(select.from.len(), 1);
+                                let tbl_ref = &select.from[0].relation;
+                                match tbl_ref {
+                                    TableFactor::Table { name, .. } => {
+                                        assert_eq!(name.to_string(), "test");
+                                    }
+                                    other => panic!("expected FROM test, got: {:?}", other),
+                                }
+                            }
+                            other => panic!("expected SELECT body, got: {:?}", other),
+                        }
+                    }
+                    other => panic!("expected CreateModel::Table, got: {:?}", other),
+                }
+
+                // drop: DropStmt { object_type: View, if_exists: true, names: [some_model], cascade: true, ... }
+                let drop_stmt = &cm.drop;
+                assert_eq!(drop_stmt.object_type, ObjectType::View);
+                assert!(drop_stmt.if_exists, "DROP VIEW should be IF EXISTS");
+                assert!(drop_stmt.cascade, "DROP VIEW should be CASCADE");
+                assert_eq!(drop_stmt.names.len(), 1);
+                assert_eq!(drop_stmt.names[0].to_string(), "some_model");
+            }
+            other => panic!("expected Statement::CreateModel, got: {:?}", other),
+        }
+    }
+
 
     #[test]
     fn test_create_kafka_connector_sink_with_pipelines() {

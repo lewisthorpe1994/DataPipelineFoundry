@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use uuid::Uuid;
 use common::types::Materialize;
-use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Select, Statement};
+use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Select, Statement};
 use crate::executor::sql::KvPairs;
 use crate::types::KafkaConnectorType;
 
@@ -70,7 +70,7 @@ impl KafkaConnectorMeta {
         let pipelines = {
             let mapped = ast.with_pipelines
                 .iter()
-                .map(|v| v.value)
+                .map(|v| v.value.clone())
                 .collect::<Vec<String>>();
 
             if mapped.is_empty() {
@@ -80,13 +80,14 @@ impl KafkaConnectorMeta {
             } else {
                 Some(mapped)
             }
-        }
+        };
 
         Self {
             name: ast.name.to_string(),
             con_type: KafkaConnectorType::from(ast.connector_type),
             config: KvPairs(ast.with_properties).into(),
-            sql
+            sql,
+            pipelines
         }
     }
 }
@@ -95,7 +96,7 @@ impl KafkaConnectorMeta {
 pub struct ModelDecl {
     pub schema: String,
     pub name: String,
-    pub sql: Select,
+    pub sql: CreateModel,
     pub materialize: Option<Materialize>,
     pub refs: Vec<String>,
     pub sources: Vec<String>,
@@ -113,7 +114,8 @@ pub struct KafkaConnectorDecl {
     pub kind: KafkaConnectorType,
     pub name: String,
     pub config: Json,
-    pub sql: Statement,
+    pub sql: CreateKafkaConnector,
     pub reads: Vec<ResourceRef>,
     pub writes: Vec<ResourceRef>
 }
+

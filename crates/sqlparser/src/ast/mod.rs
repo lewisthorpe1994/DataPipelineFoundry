@@ -61,7 +61,7 @@ pub use self::ddl::{
     IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder, IndexOption,
     IndexType, KeyOrIndexDisplay, NullsDistinctOption, Owner, Partition, ProcedureParam,
     ReferentialAction, TableConstraint, TagsColumnOption, UserDefinedTypeCompositeAttributeDef,
-    UserDefinedTypeRepresentation, ViewColumnDef,
+    UserDefinedTypeRepresentation, ViewColumnDef, CreateModel, ModelDef
 };
 pub use self::dml::{CreateIndex, CreateTable, Delete, IndexColumn, Insert};
 pub use self::operator::{BinaryOperator, UnaryOperator};
@@ -3094,6 +3094,7 @@ pub enum Statement {
         /// MySQL: Optional parameters for the view algorithm, definer, and security context
         params: Option<CreateViewParams>,
     },
+    CreateModel(CreateModel),
     /// ```sql
     /// CREATE TABLE
     /// ```
@@ -4701,6 +4702,7 @@ impl fmt::Display for Statement {
             Statement::CreateKafkaConnector(create_kafka_connector) => {create_kafka_connector.fmt(f)},
             Statement::CreateSMTPipeline(create_smtpipe) => create_smtpipe.fmt(f),
             Statement::CreateSMTransform(create_smt) => create_smt.fmt(f),
+            Statement::CreateModel(create_model) => create_model.fmt(f),
             Statement::LoadData {
                 local,
                 inpath,

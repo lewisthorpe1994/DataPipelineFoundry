@@ -406,6 +406,7 @@ impl Spanned for Statement {
             Statement::CreateKafkaConnector { .. } => Span::empty(),
             Statement::CreateSMTPipeline(create_smtpipeline) => create_smtpipeline.span(),
             Statement::CreateSMTransform { ..} => Span::empty(),
+            Statement::CreateModel{ .. } => Span::empty(),
             Statement::AlterTable {
                 name,
                 if_exists: _,
