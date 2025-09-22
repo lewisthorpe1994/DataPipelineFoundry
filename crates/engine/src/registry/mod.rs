@@ -1,6 +1,6 @@
 pub mod error;
-pub mod models;
 pub mod mem;
+pub mod models;
 mod tests;
 
 pub use mem::*;

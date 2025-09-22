@@ -1,12 +1,12 @@
+use crate::types::KafkaConnectorType;
+use crate::KafkaConnectorMeta;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::KafkaConnectorMeta;
-use crate::types::KafkaConnectorType;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KafkaConnectorDeployConfig {
     pub name: String,
-    pub config: Value
+    pub config: Value,
 }
 
 impl From<KafkaConnectorMeta> for KafkaConnectorDeployConfig {
@@ -23,10 +23,10 @@ pub struct KafkaConnectorDeployedConfig {
     pub name: String,
     pub config: Value,
     #[serde(rename = "type")]
-    pub conn_type: Option<KafkaConnectorType>
+    pub conn_type: Option<KafkaConnectorType>,
 }
 
 #[derive(PartialEq, Debug)]
 pub enum KafkaExecutorResponse {
-    Ok
+    Ok,
 }

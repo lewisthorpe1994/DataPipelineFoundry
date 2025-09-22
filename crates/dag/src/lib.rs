@@ -1,15 +1,17 @@
-use common::types::{Identifier, Materialize, ModelNode, ModelRef, ParsedNode, Relation, RelationType, Relations};
+use common::types::{
+    Identifier, Materialize, ModelNode, ModelRef, ParsedNode, Relation, RelationType, Relations,
+};
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{node_index, DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
+use petgraph::visit::Walker;
 use petgraph::Direction;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{format, Display, Formatter};
 use std::path::Path;
 use std::path::PathBuf;
 use std::{fmt, io};
-use petgraph::visit::Walker;
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -124,7 +126,7 @@ pub enum DagError {
     CycleDetected(Vec<ModelRef>),
     Io(io::Error),
     RefNotFound(String),
-    ExecutionError(String)
+    ExecutionError(String),
 }
 impl Display for DagError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -203,121 +205,121 @@ pub struct ModelsDag {
     pub ref_to_index: HashMap<String, NodeIndex>,
 }
 impl ModelsDag {
-    /// Constructs a new directed acyclic graph (DAG) from the provided input nodes.
-    ///
-    /// # Parameters
-    /// - `input_nodes`: A vector of [`ParsedNode`] where each node has:
-    ///   - A `schema` and `model` identifying the node
-    ///   - Parsed `relations` which may reference other models or sources
-    ///
-    /// # Returns
-    /// A `DagResult<Self>` containing:
-    /// - `graph`: A `DiGraph` where:
-    ///   - Nodes are `DagNode` instances holding model reference and materialization state
-    ///   - Edges point from dependent nodes to their dependencies
-    /// - `ref_to_index`: Maps `ModelRef` to corresponding `NodeIndex` for lookup
-    ///
-    /// # Errors
-    /// Return a `DagError` if:
-    /// - Duplicate model references are found (`DuplicateModel`)
-    /// - A dependency reference is missing (`MissingDependency`)
-    /// - Cyclic dependencies are detected (`CycleDetected`)
-    ///
-    /// # Implementation Notes
-    /// 1. Adds nodes for all models first, checking for duplicates
-    /// 2. Adds edges for dependencies, validating they exist
-    /// 3. Verifies graph is acyclic using Kosaraju's algorithm
-    ///
-    /// # Example
-    /// ```ignore
-    /// use ff_core::dag::ModelDag;
-    /// use common::types::{ParsedNode, Relations, Relation, RelationType};
-    ///
-    /// let nodes = vec![
-    ///     ParsedNode::new(
-    ///         "SchemaA".to_string(),
-    ///         "ModelA".to_string(),
-    ///         None,
-    ///         Relations::from(vec![Relation::new(RelationType::Model, "ModelB".into())])
-    ///     ),
-    ///     ParsedNode::new(
-    ///         "SchemaA".to_string(),
-    ///         "ModelB".to_string(),
-    ///         None,
-    ///         Relations::from(vec![])
-    ///     )
-    /// ];
-    ///
-    /// let dag = ModelDag::new(nodes)?;
-    /// ```
-    /// Build a [`ModelsDag`] from parsed model nodes.
-    pub fn new(input_nodes: Vec<ModelNode>) -> DagResult<Self> {
-        let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
-        let mut ref_to_index: HashMap<String, NodeIndex> =
-            HashMap::with_capacity(input_nodes.len());
-
-        for ModelNode {
-            schema,
-            model,
-            materialization,
-            relations,
-            path,
-        } in &input_nodes
-        {
-            if ref_to_index.contains_key(model) {
-                return Err(DagError::DuplicateModel(ModelRef::new(
-                    schema.clone(),
-                    model.clone(),
-                )));
-            }
-            let model_ref = ModelRef::new(schema.clone(), model.clone());
-            let from_idx = graph.add_node(DagNode::new(
-                model_ref.clone(),
-                materialization.clone(),
-                relations.clone(),
-                path.clone(),
-            ));
-            ref_to_index.insert(model.clone(), from_idx);
-        }
-
-        for ModelNode {
-            schema: pschema,
-            model,
-            relations,
-            ..
-        } in &input_nodes
-        {
-            let to_idx = ref_to_index[model];
-
-            for rel in relations.iter() {
-                if matches!(rel.relation_type, RelationType::Model) {
-                    let dep_table = &rel.name;
-                    let from_idx = match ref_to_index.get(dep_table) {
-                        Some(idx) => *idx,
-                        None => {
-                            let missing = ModelRef::new(pschema.clone(), dep_table.clone());
-                            return Err(DagError::MissingDependency(missing, model.clone()));
-                        }
-                    };
-                    graph.add_edge(from_idx, to_idx, EmtpyEdge);
-                }
-            }
-        }
-        if petgraph::algo::is_cyclic_directed(&graph) {
-            if let Some(cyclic_refs) = kosaraju_scc(&graph).into_iter().find(|c| c.len() > 1) {
-                let cyclic_models: Vec<ModelRef> = cyclic_refs
-                    .iter()
-                    .map(|&node_idx| graph[node_idx].reference.clone())
-                    .collect();
-                return Err(DagError::CycleDetected(cyclic_models));
-            }
-        }
-
-        Ok(Self {
-            graph,
-            ref_to_index,
-        })
-    }
+    // /// Constructs a new directed acyclic graph (DAG) from the provided input nodes.
+    // ///
+    // /// # Parameters
+    // /// - `input_nodes`: A vector of [`ParsedNode`] where each node has:
+    // ///   - A `schema` and `model` identifying the node
+    // ///   - Parsed `relations` which may reference other models or sources
+    // ///
+    // /// # Returns
+    // /// A `DagResult<Self>` containing:
+    // /// - `graph`: A `DiGraph` where:
+    // ///   - Nodes are `DagNode` instances holding model reference and materialization state
+    // ///   - Edges point from dependent nodes to their dependencies
+    // /// - `ref_to_index`: Maps `ModelRef` to corresponding `NodeIndex` for lookup
+    // ///
+    // /// # Errors
+    // /// Return a `DagError` if:
+    // /// - Duplicate model references are found (`DuplicateModel`)
+    // /// - A dependency reference is missing (`MissingDependency`)
+    // /// - Cyclic dependencies are detected (`CycleDetected`)
+    // ///
+    // /// # Implementation Notes
+    // /// 1. Adds nodes for all models first, checking for duplicates
+    // /// 2. Adds edges for dependencies, validating they exist
+    // /// 3. Verifies graph is acyclic using Kosaraju's algorithm
+    // ///
+    // /// # Example
+    // /// ```ignore
+    // /// use ff_core::dag::ModelDag;
+    // /// use common::types::{ParsedNode, Relations, Relation, RelationType};
+    // ///
+    // /// let nodes = vec![
+    // ///     ParsedNode::new(
+    // ///         "SchemaA".to_string(),
+    // ///         "ModelA".to_string(),
+    // ///         None,
+    // ///         Relations::from(vec![Relation::new(RelationType::Model, "ModelB".into())])
+    // ///     ),
+    // ///     ParsedNode::new(
+    // ///         "SchemaA".to_string(),
+    // ///         "ModelB".to_string(),
+    // ///         None,
+    // ///         Relations::from(vec![])
+    // ///     )
+    // /// ];
+    // ///
+    // /// let dag = ModelDag::new(nodes)?;
+    // /// ```
+    // /// Build a [`ModelsDag`] from parsed model nodes.
+    // pub fn new(input_nodes: Vec<ModelNode>) -> DagResult<Self> {
+    //     let mut graph: DiGraph<DagNode, EmtpyEdge> = DiGraph::new();
+    //     let mut ref_to_index: HashMap<String, NodeIndex> =
+    //         HashMap::with_capacity(input_nodes.len());
+    //
+    //     for ModelNode {
+    //         schema,
+    //         model,
+    //         materialization,
+    //         relations,
+    //         path,
+    //     } in &input_nodes
+    //     {
+    //         if ref_to_index.contains_key(model) {
+    //             return Err(DagError::DuplicateModel(ModelRef::new(
+    //                 schema.clone(),
+    //                 model.clone(),
+    //             )));
+    //         }
+    //         let model_ref = ModelRef::new(schema.clone(), model.clone());
+    //         let from_idx = graph.add_node(DagNode::new(
+    //             model_ref.clone(),
+    //             materialization.clone(),
+    //             relations.clone(),
+    //             path.clone(),
+    //         ));
+    //         ref_to_index.insert(model.clone(), from_idx);
+    //     }
+    //
+    //     for ModelNode {
+    //         schema: pschema,
+    //         model,
+    //         relations,
+    //         ..
+    //     } in &input_nodes
+    //     {
+    //         let to_idx = ref_to_index[model];
+    //
+    //         for rel in relations.iter() {
+    //             if matches!(rel.relation_type, RelationType::Model) {
+    //                 let dep_table = &rel.name;
+    //                 let from_idx = match ref_to_index.get(dep_table) {
+    //                     Some(idx) => *idx,
+    //                     None => {
+    //                         let missing = ModelRef::new(pschema.clone(), dep_table.clone());
+    //                         return Err(DagError::MissingDependency(missing, model.clone()));
+    //                     }
+    //                 };
+    //                 graph.add_edge(from_idx, to_idx, EmtpyEdge);
+    //             }
+    //         }
+    //     }
+    //     if petgraph::algo::is_cyclic_directed(&graph) {
+    //         if let Some(cyclic_refs) = kosaraju_scc(&graph).into_iter().find(|c| c.len() > 1) {
+    //             let cyclic_models: Vec<ModelRef> = cyclic_refs
+    //                 .iter()
+    //                 .map(|&node_idx| graph[node_idx].reference.clone())
+    //                 .collect();
+    //             return Err(DagError::CycleDetected(cyclic_models));
+    //         }
+    //     }
+    //
+    //     Ok(Self {
+    //         graph,
+    //         ref_to_index,
+    //     })
+    // }
 
     /// Retrieves a reference to a `DagNode` corresponding to the provided `ModelRef`.
     ///
@@ -606,7 +608,7 @@ impl ModelsDag {
                 edge.target().index(), // flip direction!
                 edge.source().index()
             )
-                .unwrap();
+            .unwrap();
         }
         writeln!(dot, "}}").unwrap();
         std::fs::write(path, dot)
@@ -744,7 +746,7 @@ mod tests {
     #[test]
     fn build_viz() -> Result<(), DagError> {
         use test_utils::TEST_MUTEX;
-        
+
         let _lock = TEST_MUTEX.lock().unwrap();
         let models = build_models();
         let dag = ModelsDag::new(models)?;

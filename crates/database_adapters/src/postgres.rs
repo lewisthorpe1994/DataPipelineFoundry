@@ -1,22 +1,23 @@
-use std::io::ErrorKind;
-use async_trait::async_trait;
-use tokio_postgres::{Client, Error, NoTls, Row};
-use tokio_postgres::error::SqlState;
 use crate::{AsyncDatabaseAdapter, DatabaseAdapterError};
+use async_trait::async_trait;
+use std::io::ErrorKind;
+use tokio_postgres::error::SqlState;
+use tokio_postgres::{Client, Error, NoTls, Row};
 /* ----- error conversion stays almost the same ----- */
 
 impl From<Error> for DatabaseAdapterError {
     fn from(err: Error) -> Self {
         if let Some(e) = err.as_db_error() {
             match e.code() {
-                &SqlState::CONNECTION_DOES_NOT_EXIST =>
-                    DatabaseAdapterError::InvalidConnectionError(e.to_string()),
-                &SqlState::SYNTAX_ERROR =>
-                    DatabaseAdapterError::SyntaxError(e.to_string()),
-                &SqlState::IO_ERROR =>
-                    DatabaseAdapterError::IoError(std::io::Error::new(ErrorKind::Other, e.to_string())),
-                _ =>
-                    DatabaseAdapterError::UnexpectedError(e.to_string()),
+                &SqlState::CONNECTION_DOES_NOT_EXIST => {
+                    DatabaseAdapterError::InvalidConnectionError(e.to_string())
+                }
+                &SqlState::SYNTAX_ERROR => DatabaseAdapterError::SyntaxError(e.to_string()),
+                &SqlState::IO_ERROR => DatabaseAdapterError::IoError(std::io::Error::new(
+                    ErrorKind::Other,
+                    e.to_string(),
+                )),
+                _ => DatabaseAdapterError::UnexpectedError(e.to_string()),
             }
         } else {
             DatabaseAdapterError::UnexpectedError(err.to_string())
@@ -30,14 +31,14 @@ impl From<Error> for DatabaseAdapterError {
 
 pub struct PostgresAdapter {
     client: Client,
-    _driver: tokio::task::JoinHandle<()>,   // keep the task alive
+    _driver: tokio::task::JoinHandle<()>, // keep the task alive
 }
 
 impl PostgresAdapter {
     /// Create and connect (spawning the connection driver in the background)
     pub async fn new(
         host: &str,
-        port: u16,          // ← back to u16
+        port: u16, // ← back to u16
         db: &str,
         user: &str,
         password: &str,
@@ -53,14 +54,17 @@ impl PostgresAdapter {
             }
         });
 
-        Ok(Self { client, _driver: driver })
+        Ok(Self {
+            client,
+            _driver: driver,
+        })
     }
 }
 
 #[async_trait]
 impl AsyncDatabaseAdapter for PostgresAdapter {
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
-        self.client.batch_execute(sql).await?;   // waits until server confirms
+        self.client.batch_execute(sql).await?; // waits until server confirms
         Ok(())
     }
 }

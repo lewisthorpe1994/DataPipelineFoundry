@@ -1,0 +1,7 @@
+kafka_sources:
+    - name: some_kafka_cluster
+      bootstrap:
+        servers: "some_comma_seperated_list"
+      connect:
+        host: some_connect_cluster
+        port: 8083

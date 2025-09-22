@@ -1,17 +1,12 @@
-use std::path::PathBuf;
 use clap::Args;
 use common::error::FFError;
-use ff_core::{functions, config::loader::read_config};
+use ff_core::{config::loader::read_config, functions};
+use std::path::PathBuf;
 use tokio::runtime::Runtime;
-
 
 #[derive(Debug, Args)]
 pub struct RunArgs {
-    #[arg(
-        long = "model",
-        short = 'm',
-        help = "Which model to run"
-    )]
+    #[arg(long = "model", short = 'm', help = "Which model to run")]
     pub(crate) model: Option<String>,
 }
 

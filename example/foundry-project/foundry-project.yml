@@ -1,0 +1,28 @@
+name: foundry-project
+description: "This is a generated description for the foundry-project project. Overwrite this with
+a description of the project"
+version: "1.0.0"
+
+compile_path: "compiled"
+
+paths:
+  models:
+    dir: foundry_models
+    layers:
+      bronze: foundry_models/bronze
+      silver: foundry_models/silver
+      gold: foundry_models/gold
+  sources:
+    some_orders:
+      path: foundry-sources/warehouse/warehouse-sources.yml
+      kind: warehouse
+    some_kafka_cluster:
+      path: foundry-sources/kafka/kafka-sources.yml
+      kind: kafka
+    some_api:
+      path: foundry-sources/api/api-sources.yml
+      kind: api
+    
+  connections: connections.yml
+modelling_architecture: medallion
+connection_profile: dev

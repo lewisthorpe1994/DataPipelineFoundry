@@ -1,0 +1,10 @@
+digraph {
+    rankdir=LR;
+    0 [label="bronze.bronze_customers"];
+    1 [label="bronze.bronze_orders"];
+    2 [label="gold.gold_summary"];
+    3 [label="silver.silver_orders_customers"];
+    3 -> 2;
+    1 -> 3;
+    0 -> 3;
+}

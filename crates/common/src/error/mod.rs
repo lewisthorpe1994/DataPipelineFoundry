@@ -1,23 +1,22 @@
+use std::fmt::Debug;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
 };
-use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum FFError {
     Init(Box<dyn Error + Send + Sync>), // carries *why* init failed
     Compile(Box<dyn Error + Send + Sync>),
     Run(Box<dyn Error + Send + Sync>),
-    
 }
 
 impl Display for FFError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            FFError::Init(e)     => write!(f, "initialisation failed: {e}"),
-            FFError::Compile(e)  => write!(f, "compile failed: {e}"),
-            FFError::Run(e)      => write!(f, "Run failed: {e}"),
+            FFError::Init(e) => write!(f, "initialisation failed: {e}"),
+            FFError::Compile(e) => write!(f, "compile failed: {e}"),
+            FFError::Run(e) => write!(f, "Run failed: {e}"),
         }
     }
 }
@@ -25,9 +24,9 @@ impl Display for FFError {
 impl Error for FFError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            FFError::Init(e)    => Some(&**e),
+            FFError::Init(e) => Some(&**e),
             FFError::Compile(e) => Some(&**e),
-            FFError::Run(e)      => Some(&**e),
+            FFError::Run(e) => Some(&**e),
         }
     }
 }
@@ -44,5 +43,3 @@ impl Debug for ConfigError {
     }
 }
 impl Error for ConfigError {}
-
-

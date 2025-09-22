@@ -2471,9 +2471,12 @@ mod tests {
     fn test_keywords_are_sorted() {
         let mut sorted = crate::keywords::ALL_KEYWORDS.to_vec();
         sorted.sort();
-        assert_eq!(sorted, crate::keywords::ALL_KEYWORDS, "ALL_KEYWORDS is not sorted!");
+        assert_eq!(
+            sorted,
+            crate::keywords::ALL_KEYWORDS,
+            "ALL_KEYWORDS is not sorted!"
+        );
     }
-
 
     #[test]
     fn tokenize_numeric_literal_underscore() {

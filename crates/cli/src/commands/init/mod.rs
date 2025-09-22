@@ -1,13 +1,13 @@
-use std::collections::HashMap;
 use clap::Args;
+use common::types::sources::SourceType;
 use minijinja::{context, Environment};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use common::types::sources::SourceType;
 
 /// Templates for foundry project
 const PROJECT_FILE_NAME: &str = "foundry-project.yml";
@@ -30,7 +30,10 @@ const FOUNDRY_KAFKA_SOURCE_PATH: &str = "foundry-sources/kafka/kafka-sources.yml
 // Api source templates
 const API_FILE_NAME: &str = "api-sources.yml";
 const API_SOURCE_TEMPLATE: &str = include_str!("templates/api-sources.yml.j2");
-const FOUNDRY_API_SOURCE_PATH: &str = "foundry_sources/api/api-sources.yml";
+const FOUNDRY_API_SOURCE_PATH: &str = "foundry-sources/api/api-sources.yml";
+
+const FOUNDRY_DB_SOURCE_PATH: &str = "foundry-sources/db/db.yml";
+const FOUNDRY_SOURCES_ROOT: &str = "foundry-sources";
 
 // Default dirs
 const DEFAULT_MODELS_DIR: &str = "foundry_models";
@@ -127,7 +130,7 @@ impl FileTemplate for FileTemplates {
             FileTemplates::Connections => CONNECTIONS_FILE_NAME,
             FileTemplates::WarehouseSources => FOUNDRY_WAREHOUSE_SOURCE_PATH,
             FileTemplates::KafkaSources => FOUNDRY_KAFKA_SOURCE_PATH,
-            FileTemplates::ApiSources => FOUNDRY_API_SOURCE_PATH,       
+            FileTemplates::ApiSources => FOUNDRY_API_SOURCE_PATH,
         }
     }
 }
@@ -180,6 +183,11 @@ fn create_dir_with_placeholder<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
     Ok(())
 }
 
+fn create_dir_all_with_placeholder<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+    fs::create_dir_all(&path)?;
+    File::create(path.as_ref().join(".gitkeep"))?;
+    Ok(())
+}
 
 pub fn handle_init(
     path: &Path,
@@ -225,7 +233,7 @@ pub fn handle_init(
     // create macro folder
     let macros_path = proj_path.join("macros");
     fs::create_dir(&macros_path)?;
-    
+
     // create sub folders for different macros
     create_dir_with_placeholder(&macros_path.join("kafka"))?;
     create_dir_with_placeholder(&macros_path.join("warehouse"))?;
@@ -245,7 +253,7 @@ pub fn handle_init(
     }
 
     let mut env = Environment::new();
-    
+
     // create project file
     create_component(
         &mut env,
@@ -258,24 +266,24 @@ pub fn handle_init(
             layers => modelling_layers,
             sources => vec![
                 HashMap::from([
-                    ("name", DEFAULT_WAREHOUSE_SOURCE_NAME), 
+                    ("name", DEFAULT_WAREHOUSE_SOURCE_NAME),
                     ("path", FileTemplates::WarehouseSources.path()),
                     ("kind", &*SourceType::Warehouse.to_string()),
                 ]),
                 HashMap::from([
                     ("name", DEFAULT_KAFKA_SOURCE_NAME),
                     ("path", FileTemplates::KafkaSources.path()),
-                    ("kind", &*SourceType::Kafka.to_string()),   
+                    ("kind", &*SourceType::Kafka.to_string()),
                 ]),
                 HashMap::from([
                     ("name", DEFAULT_API_SOURCE_NAME),
                     ("path", FileTemplates::ApiSources.path()),
-                    ("kind", &*SourceType::Api.to_string()),  
-                ]),           
+                    ("kind", &*SourceType::Api.to_string()),
+                ]),
             ]
         }),
     )?;
-    
+
     // create connections file
     create_component(
         &mut env,
@@ -283,30 +291,48 @@ pub fn handle_init(
         FileTemplates::Connections,
         Option::<()>::None,
     )?;
-    
-    // create warehouse sources file   
+
+    // create warehouse sources file
     create_component(
         &mut env,
         &proj_path,
         FileTemplates::WarehouseSources,
         Some(context! {example_warehouse_source_name => DEFAULT_WAREHOUSE_SOURCE_NAME}),
     )?;
-    
-    // create kafka sources file  
+
+    // create kafka sources file
     create_component(
         &mut env,
         &proj_path,
         FileTemplates::KafkaSources,
-        Some(context! {example_kafka_source_name => DEFAULT_KAFKA_SOURCE_NAME})
+        Some(context! {example_kafka_source_name => DEFAULT_KAFKA_SOURCE_NAME}),
     )?;
-    
-    // create api sources file  
+
+    // create api sources file
     create_component(
         &mut env,
         &proj_path,
         FileTemplates::ApiSources,
-        Some(context! {example_api_source_name => DEFAULT_API_SOURCE_NAME}),   
+        Some(context! {example_api_source_name => DEFAULT_API_SOURCE_NAME}),
     )?;
+
+    // Ensure foundry-sources directory structure exists
+    let sources_root = proj_path.join(FOUNDRY_SOURCES_ROOT);
+    fs::create_dir_all(&sources_root)?;
+
+    // DB folder and placeholder file
+    let db_dir = sources_root.join("db");
+    fs::create_dir_all(&db_dir)?;
+    let db_file = proj_path.join(FOUNDRY_DB_SOURCE_PATH);
+    if !db_file.exists() {
+        let db_placeholder = "# Define database sources for Foundry here\n";
+        fs::write(&db_file, db_placeholder)?;
+    }
+
+    // Kafka _common hierarchy
+    let kafka_common = sources_root.join("kafka/_common");
+    create_dir_all_with_placeholder(kafka_common.join("_smt"))?;
+    create_dir_all_with_placeholder(kafka_common.join("_smt_pipelines"))?;
 
     Ok(())
 }
@@ -314,9 +340,9 @@ pub fn handle_init(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::{tempdir, TempDir};
-    use std::fs;
     use minijinja::Environment;
+    use std::fs;
+    use tempfile::{tempdir, TempDir};
 
     fn read_to_string(path: &Path) -> String {
         fs::read_to_string(path).expect("read file")
@@ -330,12 +356,7 @@ mod tests {
         let mut env = Environment::new();
 
         // write file
-        create_component::<(), _>(
-            &mut env,
-            dir.path(),
-            FileTemplates::Connections,
-            None,
-        )
+        create_component::<(), _>(&mut env, dir.path(), FileTemplates::Connections, None)
             .expect("create_component failed");
 
         // path must exist
@@ -357,7 +378,7 @@ mod tests {
             proj_name.to_string(),
             flow_arch.map(|s| s.to_string()),
         )
-            .expect("handle_init failed");
+        .expect("handle_init failed");
 
         // compute the path *first*
         let proj_path = dir.path().join(proj_name);
@@ -390,13 +411,21 @@ mod tests {
             "foundry-project.yml",
             "connections.yml",
             FOUNDRY_WAREHOUSE_SOURCE_PATH,
+            FOUNDRY_KAFKA_SOURCE_PATH,
+            FOUNDRY_API_SOURCE_PATH,
+            FOUNDRY_DB_SOURCE_PATH,
         ] {
-            assert!(
-                proj_path.join(file).exists(),
-                "file {} missing",
-                file
-            );
+            assert!(proj_path.join(file).exists(), "file {} missing", file);
         }
+
+        // new source structure
+        assert!(proj_path.join("foundry-sources/db").exists());
+        assert!(proj_path
+            .join("foundry-sources/kafka/_common/_smt")
+            .exists());
+        assert!(proj_path
+            .join("foundry-sources/kafka/_common/_smt_pipelines")
+            .exists());
 
         // quick sanity: project YAML contains project name
         let project_yaml = fs::read_to_string(proj_path.join("foundry-project.yml")).unwrap();
@@ -409,8 +438,8 @@ mod tests {
     #[test]
     fn test_handle_init_invalid_arch() {
         let dir = tempdir().unwrap();
-        let err = handle_init(dir.path(), "x".into(), Some("unknown".into()))
-            .expect_err("should fail");
+        let err =
+            handle_init(dir.path(), "x".into(), Some("unknown".into())).expect_err("should fail");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 }

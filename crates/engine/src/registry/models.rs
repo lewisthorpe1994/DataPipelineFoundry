@@ -1,11 +1,14 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_json::Value as Json;
-use uuid::Uuid;
-use common::types::Materialize;
-use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Select, Statement};
 use crate::executor::sql::KvPairs;
 use crate::types::KafkaConnectorType;
+use chrono::{DateTime, Utc};
+use common::types::{Materialize, ModelRef, SourceRef};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
+use sqlparser::ast::{
+    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, Select, Statement,
+};
+use uuid::Uuid;
 
 /// A single SMT / transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,19 +17,17 @@ pub struct TransformDecl {
     pub name: String,
     pub config: serde_json::Value,
     pub created: DateTime<Utc>,
-    pub sql: CreateSimpleMessageTransform
+    pub sql: CreateSimpleMessageTransform,
 }
 impl TransformDecl {
-    pub fn new(
-        ast: CreateSimpleMessageTransform
-    ) -> Self {
+    pub fn new(ast: CreateSimpleMessageTransform) -> Self {
         let sql = ast.clone();
         Self {
             id: Uuid::new_v4(),
             name: ast.name.to_string(),
             config: KvPairs(ast.config).into(),
             created: Utc::now(),
-            sql
+            sql,
         }
     }
 }
@@ -38,21 +39,21 @@ pub struct PipelineDecl {
     pub transforms: Vec<Uuid>, // ordered IDs
     pub created: DateTime<Utc>,
     pub predicate: Option<String>,
-    pub sql: CreateSimpleMessageTransformPipeline
+    pub sql: CreateSimpleMessageTransformPipeline,
 }
 impl PipelineDecl {
     pub fn new(
         name: String,
         transforms: Vec<Uuid>,
         predicate: Option<String>,
-        sql: CreateSimpleMessageTransformPipeline
+        sql: CreateSimpleMessageTransformPipeline,
     ) -> Self {
         Self {
             name,
             transforms,
             created: Utc::now(),
             predicate,
-            sql
+            sql,
         }
     }
 }
@@ -62,13 +63,14 @@ pub struct KafkaConnectorMeta {
     pub con_type: KafkaConnectorType,
     pub config: serde_json::Value,
     pub sql: CreateKafkaConnector,
-    pub pipelines: Option<Vec<String>>
+    pub pipelines: Option<Vec<String>>,
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
         let sql = ast.clone();
         let pipelines = {
-            let mapped = ast.with_pipelines
+            let mapped = ast
+                .with_pipelines
                 .iter()
                 .map(|v| v.value.clone())
                 .collect::<Vec<String>>();
@@ -87,7 +89,7 @@ impl KafkaConnectorMeta {
             con_type: KafkaConnectorType::from(ast.connector_type),
             config: KvPairs(ast.with_properties).into(),
             sql,
-            pipelines
+            pipelines,
         }
     }
 }
@@ -98,8 +100,8 @@ pub struct ModelDecl {
     pub name: String,
     pub sql: CreateModel,
     pub materialize: Option<Materialize>,
-    pub refs: Vec<String>,
-    pub sources: Vec<String>,
+    pub refs: Option<Vec<ModelRef>>,
+    pub sources: Option<Vec<SourceRef>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResourceRef {
@@ -116,6 +118,13 @@ pub struct KafkaConnectorDecl {
     pub config: Json,
     pub sql: CreateKafkaConnector,
     pub reads: Vec<ResourceRef>,
-    pub writes: Vec<ResourceRef>
+    pub writes: Vec<ResourceRef>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompiledModelDecl {
+    pub schema: String,
+    pub name: String,
+    pub sql: String,
+    pub materialize: Option<Materialize>,
+}

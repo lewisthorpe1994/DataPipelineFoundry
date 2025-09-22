@@ -1,11 +1,15 @@
-use core::fmt::{Display, Formatter};
-use std::fmt;
-#[cfg(feature = "json_example")]
-use serde::{Deserialize, Serialize};
-use crate::ast::{display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Ident, KafkaConnectorType, ObjectName, ObjectType, Query, Statement, Value, ValueWithSpan, ViewColumnDef};
+use crate::ast::{
+    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Ident,
+    KafkaConnectorType, ObjectName, ObjectType, Query, Statement, Value, ValueWithSpan,
+    ViewColumnDef,
+};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
+use core::fmt::{Display, Formatter};
+#[cfg(feature = "json_example")]
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 pub trait KafkaParse {
     fn parse_connector_type(&mut self) -> Result<KafkaConnectorType, ParserError>;
@@ -18,10 +22,12 @@ impl KafkaParse for Parser<'_> {
         } else if self.parse_keyword(Keyword::SINK) {
             KafkaConnectorType::Sink
         } else {
-            Err(ParserError::ParserError(
-                format!("Expected SOURCE or SINK but got {}", self.peek_token()),))?
+            Err(ParserError::ParserError(format!(
+                "Expected SOURCE or SINK but got {}",
+                self.peek_token()
+            )))?
         };
-        
+
         Ok(connector_type)
     }
 }
@@ -66,7 +72,7 @@ pub struct CreateModelView {
     or_replace: bool,
     pub materialized: bool,
     /// View name
-    name: ObjectName,
+    pub name: ObjectName,
     columns: Vec<ViewColumnDef>,
     query: Box<Query>,
     options: CreateTableOptions,
@@ -143,11 +149,20 @@ impl fmt::Display for CreateModelView {
         write!(
             f,
             "{materialized}{temporary}VIEW {if_not_exists}{name}{to}",
-            materialized = if self.materialized { "MATERIALIZED " } else { "" },
+            materialized = if self.materialized {
+                "MATERIALIZED "
+            } else {
+                ""
+            },
             name = &self.name,
             temporary = if self.temporary { "TEMPORARY " } else { "" },
-            if_not_exists = if self.if_not_exists { "IF NOT EXISTS " } else { "" },
-            to = self.to
+            if_not_exists = if self.if_not_exists {
+                "IF NOT EXISTS "
+            } else {
+                ""
+            },
+            to = self
+                .to
                 .as_ref()
                 .map(|to| format!(" TO {to}"))
                 .unwrap_or_default()
@@ -167,7 +182,11 @@ impl fmt::Display for CreateModelView {
             )?;
         }
         if !self.cluster_by.is_empty() {
-            write!(f, " CLUSTER BY ({})", display_comma_separated(&self.cluster_by))?;
+            write!(
+                f,
+                " CLUSTER BY ({})",
+                display_comma_separated(&self.cluster_by)
+            )?;
         }
         if matches!(self.options, CreateTableOptions::Options(_)) {
             let options = &self.options;
@@ -208,7 +227,7 @@ impl DropStmt {
         obj_type: ObjectType,
         names: Vec<ObjectName>,
         if_exists: bool,
-        cascade: bool
+        cascade: bool,
     ) -> Self {
         Self {
             object_type: obj_type,

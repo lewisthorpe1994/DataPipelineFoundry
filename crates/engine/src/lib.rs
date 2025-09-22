@@ -1,14 +1,14 @@
-pub mod registry;
 pub mod executor;
+pub mod registry;
 mod types;
 
-use std::fmt::{Debug, Display, Formatter};
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
-pub use registry::models::*;
-pub use registry::error::CatalogError;
 use executor::{Executor, ExecutorError, ExecutorResponse};
+pub use registry::error::CatalogError;
+pub use registry::models::*;
 use registry::MemoryCatalog;
+use std::fmt::{Debug, Display, Formatter};
 
 pub enum EngineError {
     FailedToExecute(String),
@@ -16,7 +16,9 @@ pub enum EngineError {
 impl Display for EngineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            EngineError::FailedToExecute(err) => {write!(f, "Failed to execute: {}", err)}
+            EngineError::FailedToExecute(err) => {
+                write!(f, "Failed to execute: {}", err)
+            }
         }
     }
 }
@@ -24,15 +26,17 @@ impl Display for EngineError {
 impl std::error::Error for EngineError {}
 impl Debug for EngineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self { 
-            EngineError::FailedToExecute(err) => {write!(f,"FailedToExecute: {}", err)},
+        match self {
+            EngineError::FailedToExecute(err) => {
+                write!(f, "FailedToExecute: {}", err)
+            }
         }
     }
 }
 impl From<ExecutorError> for EngineError {
     fn from(e: ExecutorError) -> Self {
         Self::FailedToExecute(e.to_string())
-    }   
+    }
 }
 
 pub enum EngineResponse {
@@ -40,7 +44,7 @@ pub enum EngineResponse {
 }
 impl From<ExecutorResponse> for EngineResponse {
     fn from(resp: ExecutorResponse) -> Self {
-        match resp { 
+        match resp {
             ExecutorResponse::Ok => EngineResponse::Ok,
         }
     }
@@ -56,18 +60,17 @@ impl Engine {
             catalog: MemoryCatalog::new(),
         }
     }
-    
+
     pub async fn execute(
         &self,
         sql: &str,
         source_conn_args: &SourceConnArgs,
-        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>
+        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>,
     ) -> Result<EngineResponse, EngineError> {
-        Ok(EngineResponse::from(self.executor.execute(
-            sql, 
-            &self.catalog, 
-            source_conn_args,
-            target_db_adapter
-        ).await?))
+        Ok(EngineResponse::from(
+            self.executor
+                .execute(sql, &self.catalog, source_conn_args, target_db_adapter)
+                .await?,
+        ))
     }
 }

@@ -1,27 +1,29 @@
+use common::types::sources::SourceConnArgs;
+use database_adapters::postgres::PostgresAdapter;
+use database_adapters::AsyncDatabaseAdapter;
+use engine::Engine;
 use tokio::time::{sleep, Duration};
 use tokio_postgres::NoTls;
-use common::types::sources::SourceConnArgs;
-use database_adapters::AsyncDatabaseAdapter;
-use database_adapters::postgres::PostgresAdapter;
-use engine::Engine;
 
 use crate::common_test_utils::setup_postgres;
-
 
 mod common_test_utils;
 
 #[cfg(test)]
 mod tests {
+    use crate::common_test_utils;
+    use crate::common_test_utils::{
+        setup_postgres, KafkaConnectTestClient, KAFKA_BROKER_PORT, PG_DB, PG_PASSWORD, PG_PORT,
+        PG_USER,
+    };
+    use common::types::sources::SourceConnArgs;
+    use common_test_utils::setup_kafka;
+    use engine::executor::kafka::{KafkaConnectClient, KafkaConnectorType};
+    use engine::registry::Catalog;
+    use engine::{Engine, EngineError};
     use std::time::Duration;
     use tokio::time::sleep;
-    use crate::{common_test_utils};
-    use common_test_utils::setup_kafka;
-    use common::types::sources::SourceConnArgs;
-    use engine::executor::kafka::{KafkaConnectClient, KafkaConnectorType};
-    use engine::registry::{Catalog};
-    use engine::{Engine, EngineError};
     use tokio_postgres::NoTls;
-    use crate::common_test_utils::{setup_postgres, KafkaConnectTestClient, KAFKA_BROKER_PORT, PG_DB, PG_PASSWORD, PG_PORT, PG_USER};
 
     async fn set_up_table(pg_conn: String) {
         let (mut pg, pg_conn) = tokio_postgres::connect(&pg_conn, NoTls)
@@ -139,7 +141,7 @@ mod tests {
                 &SourceConnArgs {
                     kafka_connect: None,
                 },
-                None
+                None,
             )
             .await?;
 
@@ -153,7 +155,7 @@ mod tests {
                 &SourceConnArgs {
                     kafka_connect: None,
                 },
-                None
+                None,
             )
             .await?;
 
@@ -169,7 +171,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
                 &SourceConnArgs {
                     kafka_connect: None,
                 },
-                None
+                None,
             )
             .await?;
 
@@ -220,16 +222,18 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
   spec      = '${spec}',
   predicate = '${predicate}'
 );"#;
-        engine.execute(
-            sql,
-            &SourceConnArgs {
-                kafka_connect: None,
-            },
-            None
-        )
-        .await
-        .unwrap();
-        let smt = engine.catalog
+        engine
+            .execute(
+                sql,
+                &SourceConnArgs {
+                    kafka_connect: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        let smt = engine
+            .catalog
             .get_transform("cast_hash_cols_to_int")
             .expect("transform exists");
         assert_eq!(smt.name, "cast_hash_cols_to_int");
@@ -243,28 +247,29 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
 
     #[tokio::test]
     async fn test_create_pipeline_via_executor() {
-
         let engine = Engine::new();
 
-        engine.execute(
-            "CREATE SIMPLE MESSAGE TRANSFORM hash_email (type = 'hash');",
-            &SourceConnArgs {
-                kafka_connect: None,
-            },
-            None
-        )
-        .await
-        .unwrap();
+        engine
+            .execute(
+                "CREATE SIMPLE MESSAGE TRANSFORM hash_email (type = 'hash');",
+                &SourceConnArgs {
+                    kafka_connect: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
 
-        engine.execute(
-            "CREATE SIMPLE MESSAGE TRANSFORM drop_pii (type = 'drop');",
-            &SourceConnArgs {
-                kafka_connect: None,
-            },
-            None
-        )
-        .await
-        .unwrap();
+        engine
+            .execute(
+                "CREATE SIMPLE MESSAGE TRANSFORM drop_pii (type = 'drop');",
+                &SourceConnArgs {
+                    kafka_connect: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
 
         let sql = r#"
 CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
@@ -272,17 +277,19 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
     drop_pii(fields = 'email_addr, phone_num')
 ) WITH PIPELINE PREDICATE 'some_predicate';
 "#;
-        engine.execute(
-            sql,
-            &SourceConnArgs {
-                kafka_connect: None,
-            },
-            None
-        )
-        .await
-        .unwrap();
+        engine
+            .execute(
+                sql,
+                &SourceConnArgs {
+                    kafka_connect: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
 
-        let pipe = engine.catalog
+        let pipe = engine
+            .catalog
             .get_pipeline("some_pipeline")
             .expect("pipeline exists");
         let t1 = engine.catalog.get_transform("hash_email").unwrap();
@@ -302,26 +309,41 @@ async fn test_execute_db_query_against_postgres() -> anyhow::Result<()> {
     sleep(Duration::from_secs(5)).await;
 
     let adapter = PostgresAdapter::new(
-        &pg.local_host, pg.port.parse().unwrap(), &pg.db_name, &pg.user, &pg.password
-    ).await.unwrap();
+        &pg.local_host,
+        pg.port.parse().unwrap(),
+        &pg.db_name,
+        &pg.user,
+        &pg.password,
+    )
+    .await
+    .unwrap();
     let mut boxed: Box<dyn AsyncDatabaseAdapter> = Box::new(adapter);
 
     let engine = Engine::new();
-    engine.execute(
-        "CREATE TABLE ints (id INT);",
-        &SourceConnArgs{ kafka_connect: None},
-        Some(&mut boxed)
-    ).await.unwrap();
+    engine
+        .execute(
+            "CREATE TABLE ints (id INT);",
+            &SourceConnArgs {
+                kafka_connect: None,
+            },
+            Some(&mut boxed),
+        )
+        .await
+        .unwrap();
 
     let (mut client, conn) = tokio_postgres::connect(&pg.conn_string(false), NoTls).await?;
-    tokio::spawn(async move { let _ = conn.await; });
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
 
     let row = client
-        .query_one("SELECT to_regclass('public.ints') IS NOT NULL AS exists", &[])
+        .query_one(
+            "SELECT to_regclass('public.ints') IS NOT NULL AS exists",
+            &[],
+        )
         .await?;
     let exists: bool = row.get(0);
     assert!(exists);
 
     Ok(())
 }
-

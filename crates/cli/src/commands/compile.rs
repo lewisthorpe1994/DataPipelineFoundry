@@ -6,4 +6,3 @@ pub fn handle_compile() -> Result<(), FFError> {
     let cfg = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
     compiler::compile(cfg.project.compile_path).map(|_| ())
 }
-

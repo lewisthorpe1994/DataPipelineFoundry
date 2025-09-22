@@ -11,7 +11,7 @@ test_utils = { workspace = true }
 wiremock = { version = "0.6.4" }
 testcontainers = { version = "0.24.0" }
 tokio-postgres = { workspace = true }
-dag = { workspace = true}
+#dag = { workspace = true}
 anyhow = { version = "1.0.98" }
 
 [dependencies]
@@ -28,3 +28,4 @@ async-trait = "0.1.88"
 common = { workspace = true }
 database_adapters = { workspace = true }
 tracing-subscriber = "0.3.19"
+regex = { version = "1.11.1" }

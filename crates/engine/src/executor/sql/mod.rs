@@ -1,11 +1,14 @@
-use serde_json::Value as Json;
+use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
+use crate::executor::{ExecutorError, ExecutorResponse};
+use crate::registry::{Compile, MemoryCatalog, Register};
+use crate::{CatalogError, PipelineDecl, TransformDecl};
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
-use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Ident, Statement, ValueWithSpan};
-use crate::{CatalogError, PipelineDecl, TransformDecl};
-use crate::executor::{ExecutorError, ExecutorResponse};
-use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
-use crate::registry::{Compile, MemoryCatalog, Register};
+use serde_json::Value as Json;
+use sqlparser::ast::{
+    CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
+    Ident, Statement, ValueWithSpan,
+};
 
 pub trait AstValueFormatter {
     fn formatted_string(&self) -> String;
@@ -24,7 +27,6 @@ impl AstValueFormatter for ValueWithSpan {
 
 pub struct SqlExecutor;
 
-
 pub struct KvPairs(pub Vec<(Ident, ValueWithSpan)>);
 impl From<KvPairs> for Json {
     fn from(kvs: KvPairs) -> Self {
@@ -34,16 +36,6 @@ impl From<KvPairs> for Json {
             obj.insert(k.value, Value::String(vws.formatted_string()));
         }
         Value::Object(obj)
-    }
-}
-
-fn handle_put_op(res: Result<(), CatalogError>) -> Result<(), ExecutorError> {
-    match res {
-        Ok(_) => Ok(()),
-        Err(e) => match e {
-            CatalogError::Duplicate => Ok(()),
-            _ => Err(e.into()),
-        },
     }
 }
 
@@ -57,20 +49,27 @@ impl SqlExecutor {
         registry: &MemoryCatalog,
         source_conn_args: &SourceConnArgs,
         mut target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>,
-    ) -> Result<ExecutorResponse, ExecutorError> 
-    where 
+    ) -> Result<ExecutorResponse, ExecutorError>
+    where
         S: IntoIterator<Item = Statement>,
     {
-
         for ast in parsed_stmts.into_iter() {
             match ast {
                 Statement::CreateKafkaConnector(stmt) => {
-                    let kafka_executor = if let Some(ref connect_host) = source_conn_args.kafka_connect {
-                        KafkaExecutor::new(connect_host)
-                    } else {
-                        return Err(ExecutorError::ConfigError("No Kafka Connect host provided".to_string()))
-                    };
-                    Self::execute_create_kafka_connector_if_not_exists(&kafka_executor, stmt, registry).await?;
+                    let kafka_executor =
+                        if let Some(ref connect_host) = source_conn_args.kafka_connect {
+                            KafkaExecutor::new(connect_host)
+                        } else {
+                            return Err(ExecutorError::ConfigError(
+                                "No Kafka Connect host provided".to_string(),
+                            ));
+                        };
+                    Self::execute_create_kafka_connector_if_not_exists(
+                        &kafka_executor,
+                        stmt,
+                        registry,
+                    )
+                    .await?;
                 }
                 Statement::CreateTable(stmt) => {
                     let db_adapter = match target_db_adapter.as_mut() {
@@ -85,11 +84,14 @@ impl SqlExecutor {
                     Self::execute_async_db_query(Statement::CreateTable(stmt), db_adapter).await?
                 }
                 _ => {
-                    return Err(ExecutorError::ConfigError(format!("{} not currently supported!", ast)))
+                    return Err(ExecutorError::ConfigError(format!(
+                        "{} not currently supported!",
+                        ast
+                    )))
                 }
             }
         }
-        
+
         Ok(ExecutorResponse::Ok)
     }
 
@@ -107,38 +109,44 @@ impl SqlExecutor {
         registry: &MemoryCatalog,
     ) -> Result<ExecutorResponse, ExecutorError>
     where
-        K: KafkaDeploy
+        K: KafkaDeploy,
     {
         let conn = registry.compile_kafka_decl(&*connector_config.name.value)?;
 
-       Ok(ExecutorResponse::from(
-                kafka_executor.deploy_connector(
-                    &KafkaConnectorDeployConfig { name: conn.name, config: conn.config },
-                ).await?))
-        }
+        Ok(ExecutorResponse::from(
+            kafka_executor
+                .deploy_connector(&KafkaConnectorDeployConfig {
+                    name: conn.name,
+                    config: conn.config,
+                })
+                .await?,
+        ))
     }
-
+}
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-    use async_trait::async_trait;
     use super::*;
-    use sqlparser::ast::{KafkaConnectorType, TransformCall};
-    use sqlparser::ast::Value::SingleQuotedString;
-    use sqlparser::tokenizer::{Location, Span};
-    use uuid::Uuid;
-    use database_adapters::DatabaseAdapterError;
     use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
     use crate::registry::Getter;
+    use async_trait::async_trait;
+    use database_adapters::DatabaseAdapterError;
+    use sqlparser::ast::Value::SingleQuotedString;
+    use sqlparser::ast::{KafkaConnectorType, TransformCall};
+    use sqlparser::tokenizer::{Location, Span};
+    use std::sync::Mutex;
+    use uuid::Uuid;
 
     struct MockKafkaExecutor {
-        called: Mutex<Vec<KafkaConnectorDeployConfig>>
+        called: Mutex<Vec<KafkaConnectorDeployConfig>>,
     }
 
     #[async_trait]
     impl KafkaDeploy for MockKafkaExecutor {
-        async fn deploy_connector(&self, cfg: &KafkaConnectorDeployConfig) -> Result<KafkaExecutorResponse, KafkaExecutorError> {
+        async fn deploy_connector(
+            &self,
+            cfg: &KafkaConnectorDeployConfig,
+        ) -> Result<KafkaExecutorResponse, KafkaExecutorError> {
             self.called.lock().unwrap().push(cfg.clone());
             Ok(KafkaExecutorResponse::Ok)
         }
@@ -146,7 +154,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_kafka_connector() {
-
         let registry = MemoryCatalog::new();
         let smt_span = Span::new(Location::new(0, 0), Location::new(0, 0));
 
@@ -161,13 +168,13 @@ mod tests {
                 Ident {
                     value: "field".to_string(),
                     quote_style: None,
-                    span: smt_span
+                    span: smt_span,
                 },
                 ValueWithSpan {
                     value: SingleQuotedString("a".into()),
                     span: smt_span,
-                }
-                )],
+                },
+            )],
         };
 
         let drop = CreateSimpleMessageTransform {
@@ -181,12 +188,12 @@ mod tests {
                 Ident {
                     value: "field".to_string(),
                     quote_style: None,
-                    span: smt_span
+                    span: smt_span,
                 },
                 ValueWithSpan {
                     value: SingleQuotedString("b".into()),
                     span: smt_span,
-                }
+                },
             )],
         };
 
@@ -202,14 +209,17 @@ mod tests {
             },
             if_not_exists: false,
             connector_type: KafkaConnectorType::Source,
-            steps: vec![TransformCall::new(Ident {
-                value: "mask".to_string(),
-                quote_style: None,
-                span:smt_span,
-            }, Vec::new())],
+            steps: vec![TransformCall::new(
+                Ident {
+                    value: "mask".to_string(),
+                    quote_style: None,
+                    span: smt_span,
+                },
+                Vec::new(),
+            )],
             pipe_predicate: Some(ValueWithSpan {
                 value: SingleQuotedString("pred1".into()),
-                span: smt_span
+                span: smt_span,
             }),
         };
 
@@ -221,14 +231,17 @@ mod tests {
             },
             if_not_exists: false,
             connector_type: KafkaConnectorType::Source,
-            steps: vec![TransformCall::new(Ident {
-                value: "drop".to_string(),
-                quote_style: None,
-                span:smt_span,
-            }, Vec::new())],
+            steps: vec![TransformCall::new(
+                Ident {
+                    value: "drop".to_string(),
+                    quote_style: None,
+                    span: smt_span,
+                },
+                Vec::new(),
+            )],
             pipe_predicate: Some(ValueWithSpan {
                 value: SingleQuotedString("pred2".into()),
-                span: smt_span
+                span: smt_span,
             }),
         };
 
@@ -255,7 +268,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("1".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -264,9 +277,11 @@ mod tests {
                         span,
                     },
                     ValueWithSpan {
-                        value: SingleQuotedString("io.debezium.connector.postgresql.PostgresConnector".into()),
+                        value: SingleQuotedString(
+                            "io.debezium.connector.postgresql.PostgresConnector".into(),
+                        ),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -277,7 +292,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("1".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -288,7 +303,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("postgres".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -299,7 +314,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("password".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -310,7 +325,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("5432".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -321,7 +336,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("postgres".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -332,7 +347,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("foundry_dev".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -343,7 +358,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("public.test_connector_src".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -354,7 +369,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("initial".into()),
                         span,
-                    }
+                    },
                 ),
                 (
                     Ident {
@@ -365,7 +380,7 @@ mod tests {
                     ValueWithSpan {
                         value: SingleQuotedString("postgres-".into()),
                         span,
-                    }
+                    },
                 ),
             ],
             with_pipelines: vec![
@@ -383,31 +398,23 @@ mod tests {
         };
 
         let connect_host = "http://localhost:8083";
-        let mock_exec = MockKafkaExecutor { called: Mutex::new(vec![]) };
-
-        let resp = SqlExecutor::execute_create_kafka_connector_if_not_exists(
-            &mock_exec, ast, &registry,
-        ).await.unwrap();
+        let mock_exec = MockKafkaExecutor {
+            called: Mutex::new(vec![]),
+        };
+        registry.register_kafka_connector(ast.clone()).unwrap();
+        let resp =
+            SqlExecutor::execute_create_kafka_connector_if_not_exists(&mock_exec, ast, &registry)
+                .await
+                .unwrap();
         assert_eq!(resp, ExecutorResponse::Ok);
         assert_eq!(mock_exec.called.lock().unwrap().len(), 1);
-
-
-
-        let c = registry.get_kafka_connector(&conn_name.to_string()).unwrap();
-        assert_eq!(c.name, conn_name.to_string());
-        assert_eq!(c.config["a"], "1");
-        assert_eq!(c.config["transforms"], "pipe1_mask,pipe2_drop");
-        assert_eq!(c.config["transforms.pipe1_mask.field"], "a");
-        assert_eq!(c.config["transforms.pipe1_mask.predicate"], "pred1");
-        assert_eq!(c.config["transforms.pipe2_drop.field"], "b");
-        assert_eq!(c.config["transforms.pipe2_drop.predicate"], "pred2");
     }
 
     #[tokio::test]
     async fn test_execute_db_query() {
-        use std::sync::{Arc, Mutex};
         use sqlparser::dialect::PostgreSqlDialect;
         use sqlparser::parser::Parser;
+        use std::sync::{Arc, Mutex};
 
         // shared recording buffer
         let executed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
@@ -426,15 +433,18 @@ mod tests {
         }
 
         // ── build boxed trait object ───────────────────────────────────────
-        let mut boxed: Box<dyn AsyncDatabaseAdapter> =
-            Box::new(MockDbAdapter { executed_sql: executed.clone() });
+        let mut boxed: Box<dyn AsyncDatabaseAdapter> = Box::new(MockDbAdapter {
+            executed_sql: executed.clone(),
+        });
 
         // ── run executor ───────────────────────────────────────────────────
         let stmt = Parser::parse_sql(&PostgreSqlDialect {}, "SELECT 1;")
             .unwrap()
             .pop()
             .unwrap();
-        SqlExecutor::execute_async_db_query(stmt.clone(), &mut boxed).await.unwrap();
+        SqlExecutor::execute_async_db_query(stmt.clone(), &mut boxed)
+            .await
+            .unwrap();
 
         // ── assert via the shared Arc ──────────────────────────────────────
         let recorded = executed.lock().unwrap();

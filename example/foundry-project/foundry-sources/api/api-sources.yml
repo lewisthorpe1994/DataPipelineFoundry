@@ -1,0 +1,4 @@
+api_sources:
+    - name: some_api
+      base_url: "base url to the api"
+      token: "auth token if required, else this can be omitted"

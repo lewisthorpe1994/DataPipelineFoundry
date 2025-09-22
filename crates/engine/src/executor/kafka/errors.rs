@@ -1,6 +1,6 @@
-use std::fmt::Display;
 use reqwest::Error as ReqwestError;
 use serde_json::error::Error as JsonError;
+use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum KafkaExecutorError {

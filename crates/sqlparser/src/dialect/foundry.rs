@@ -1,8 +1,8 @@
-use log::debug;
 use crate::dialect::{Dialect, Precedence};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
+use log::debug;
 
 /// A [`Dialect`] for [PostgreSQL](https://www.postgresql.org/)
 #[derive(Debug)]
@@ -229,5 +229,4 @@ impl Dialect for FoundryDialect {
     fn supports_set_names(&self) -> bool {
         true
     }
-    
 }

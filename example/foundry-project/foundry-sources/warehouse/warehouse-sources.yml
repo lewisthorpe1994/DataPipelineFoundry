@@ -1,0 +1,17 @@
+warehouse_sources:
+  - name: some_orders
+    database:
+      name: some_database
+      schemas:
+        - name: some_schema
+          description: some schema for raw ingested data
+          tables:
+            - name: raw_orders
+              description: Raw orders ingested from upstream system
+            - name: raw_customers
+              description: Raw customer data
+        - name: some_other_schema
+          description: some other schema for cleaned data
+          tables:
+            - name: cleaned_orders
+              description: Cleaned and deduplicated orders

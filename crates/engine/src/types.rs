@@ -5,7 +5,7 @@ use sqlparser::ast::KafkaConnectorType as SqlParserKafkaConnectorType;
 #[serde(rename_all = "lowercase")]
 pub enum KafkaConnectorType {
     Source,
-    Sink
+    Sink,
 }
 impl From<SqlParserKafkaConnectorType> for KafkaConnectorType {
     fn from(value: SqlParserKafkaConnectorType) -> Self {

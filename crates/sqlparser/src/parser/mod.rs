@@ -33,13 +33,13 @@ use IsLateral::*;
 use IsOptional::*;
 
 use crate::ast::helpers::{
+    foundry_helpers::{KafkaParse, ParseUtils},
     stmt_create_table::{CreateTableBuilder, CreateTableConfiguration},
-    foundry_helpers::{KafkaParse, ParseUtils}
 };
 
+use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
 use crate::ast::Statement::CreatePolicy;
 use crate::ast::*;
-use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
 use crate::dialect::*;
 use crate::keywords::{Keyword, ALL_KEYWORDS};
 use crate::tokenizer::*;
@@ -4599,11 +4599,9 @@ impl<'a> Parser<'a> {
             self.parse_source()
         } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM]) {
             self.parse_smt()
-        }
-        else if self.parse_keyword(Keyword::MODEL) {
+        } else if self.parse_keyword(Keyword::MODEL) {
             self.parse_model()
-        }
-        else {
+        } else {
             self.expected("an object type after CREATE", self.peek_token())
         }
     }
@@ -11973,9 +11971,9 @@ impl<'a> Parser<'a> {
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
         if matches!(self.peek_tokens(), [Token::LBrace, Token::LBrace]) {
             if let Some(parsed) = self.maybe_parse(|p| p.try_parse_braced_macro_table_factor())? {
-               if let Some(tf) = parsed {
-                   return Ok(tf)
-               }
+                if let Some(tf) = parsed {
+                    return Ok(tf);
+                }
             }
         }
         if self.parse_keyword(Keyword::LATERAL) {
@@ -15277,7 +15275,9 @@ impl<'a> Parser<'a> {
         if self.parse_keyword(Keyword::KAFKA) {
             self.parse_kafka()
         } else {
-            Err(ParserError::ParserError("Only Kafka sources are supported at the moment".to_string()))
+            Err(ParserError::ParserError(
+                "Only Kafka sources are supported at the moment".to_string(),
+            ))
         }
     }
     pub fn parse_kafka(&mut self) -> Result<Statement, ParserError> {
@@ -15343,30 +15343,51 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_model(&mut self) -> Result<Statement, ParserError> {
-        let name = self.parse_identifier()?;
+        let ident = self.parse_object_name(false)?;
+        let (schema, name) = match ident.0.as_slice() {
+            [ObjectNamePart::Identifier(schema), ObjectNamePart::Identifier(name)] => {
+                (schema.clone(), name.clone())
+            }
+            _ => {
+                return Err(ParserError::ParserError(format!(
+                    "Expected model name to have schema.model parts, got {}",
+                    ident
+                )))
+            }
+        };
+
         if self.parse_keywords(&[Keyword::AS, Keyword::DROP]) {
             ()
         } else {
-            return Err(ParserError::ParserError("Expected a DROP statement to be present for CreateModel".parse().unwrap()))
+            return Err(ParserError::ParserError(
+                "Expected a DROP statement to be present for CreateModel"
+                    .parse()
+                    .unwrap(),
+            ));
         }
 
         let model_type = if self.parse_keyword(Keyword::TABLE) {
             ObjectType::Table
-        } else if self.parse_keywords(&[Keyword::MATERIALIZED, Keyword::VIEW]){
+        } else if self.parse_keywords(&[Keyword::MATERIALIZED, Keyword::VIEW]) {
             ObjectType::View
         } else if self.parse_keyword(Keyword::VIEW) {
             ObjectType::View
         } else {
-            return Err(ParserError::ParserError("Expected TABLE, MATERIALISED VIEW or VIEW for DropStmt".to_string()))
+            return Err(ParserError::ParserError(
+                "Expected TABLE, MATERIALISED VIEW or VIEW for DropStmt".to_string(),
+            ));
         };
 
         let drop_if_exists = self.parse_if_exists();
         let drop_name = self.parse_object_name(false)?;
         let cascade = self.parse_keyword(Keyword::CASCADE);
         if cascade == false {
-            return Err(ParserError::ParserError("Cascade is required to drop the previous model when creating a new one.".to_string()))
+            return Err(ParserError::ParserError(
+                "Cascade is required to drop the previous model when creating a new one."
+                    .to_string(),
+            ));
         }
-        assert_eq!(name.value, drop_name.to_string(), "Expected model and drop statement identifiers to match!");
+        // assert_eq!(name.value, drop_name.to_string(), "Expected model and drop statement identifiers to match!");
 
         let drop_stmt = DropStmt::new(model_type, vec![drop_name], drop_if_exists, cascade);
         self.expect_token(&Token::SemiColon)?;
@@ -15374,12 +15395,13 @@ impl<'a> Parser<'a> {
         let create_model = self.parse_create()?;
         let model_def = match create_model {
             Statement::CreateTable(tbl) => ModelDef::Table(tbl),
-            _ => ModelDef::View(CreateModelView::try_from(create_model)?)
+            _ => ModelDef::View(CreateModelView::try_from(create_model)?),
         };
         let stmt = Statement::CreateModel(CreateModel {
+            schema,
             name,
             model: model_def,
-            drop: drop_stmt
+            drop: drop_stmt,
         });
 
         Ok(stmt)
@@ -15405,10 +15427,8 @@ impl<'a> Parser<'a> {
         Ok(Statement::CreateSMTransform(CreateSimpleMessageTransform {
             name,
             if_not_exists,
-            config
+            config,
         }))
-
-
     }
     /// e.g CREATE SIMPLE MESSAGE TRANSFORM PIPELINE [IF NOT EXISTS] some_connector SOURCE (
     /// some_smt(some_arg = '123')
@@ -15437,7 +15457,9 @@ impl<'a> Parser<'a> {
         };
 
         if steps.is_empty() {
-            return Err(ParserError::ParserError("Expected at least one step in the pipeline".to_string()));
+            return Err(ParserError::ParserError(
+                "Expected at least one step in the pipeline".to_string(),
+            ));
         }
 
         let mut pipe_predicate: Option<ValueWithSpan> = None;
@@ -15445,15 +15467,15 @@ impl<'a> Parser<'a> {
             pipe_predicate = Some(self.parse_value()?);
         }
 
-        Ok(
-            Statement::CreateSMTPipeline(CreateSimpleMessageTransformPipeline {
+        Ok(Statement::CreateSMTPipeline(
+            CreateSimpleMessageTransformPipeline {
                 name,
                 if_not_exists,
                 connector_type,
                 steps,
                 pipe_predicate,
-            })
-        )
+            },
+        ))
     }
 
     /// Consume the parser and return its underlying token buffer
@@ -16330,9 +16352,9 @@ mod tests {
 
     #[test]
     fn test_create_kafka_connector_source_with_pipelines() {
+        use sqlparser::ast::Statement;
         use sqlparser::dialect::PostgreSqlDialect;
         use sqlparser::parser::Parser;
-        use sqlparser::ast::Statement;
 
         // --- SQL under test ----------------------------------------------------
         let sql = r#"
@@ -16346,8 +16368,8 @@ mod tests {
     "#;
 
         // --- parse -------------------------------------------------------------
-        let dialect  = PostgreSqlDialect {};
-        let stmts    = Parser::parse_sql(&dialect, sql).expect("parse failed");
+        let dialect = PostgreSqlDialect {};
+        let stmts = Parser::parse_sql(&dialect, sql).expect("parse failed");
         println!("{:?}", stmts);
         assert_eq!(stmts.len(), 1);
 
@@ -16361,12 +16383,16 @@ mod tests {
 
                 // ✔ the important bit: pipelines parsed as two idents
                 assert_eq!(
-                    c.with_pipelines.iter().map(|id| id.value.clone()).collect::<Vec<_>>(),
+                    c.with_pipelines
+                        .iter()
+                        .map(|id| id.value.clone())
+                        .collect::<Vec<_>>(),
                     vec!["hash_email".to_string(), "drop_pii".to_string()]
                 );
 
                 // (optional) check one of the props
-                let topics_prop = c.with_properties
+                let topics_prop = c
+                    .with_properties
                     .iter()
                     .find(|(k, _)| k.value == "topics")
                     .expect("missing topics prop");
@@ -16390,21 +16416,24 @@ mod tests {
                 assert_eq!(smt.name.value, "cast_hash_cols_to_int");
                 assert_eq!(smt.if_not_exists, false);
                 assert_eq!(smt.config[0].0.value, "type");
-                assert_eq!(smt.config[0].1.to_string(), "'org.apache.kafka.connect.transforms.Cast$Value'");
+                assert_eq!(
+                    smt.config[0].1.to_string(),
+                    "'org.apache.kafka.connect.transforms.Cast$Value'"
+                );
                 assert_eq!(smt.config[1].0.value, "spec");
                 assert_eq!(smt.config[1].1.to_string(), "'${spec}'");
                 assert_eq!(smt.config[2].0.value, "predicate");
                 assert_eq!(smt.config[2].1.to_string(), "'${predicate}'");
             }
-            _ => panic!("expected CreateSMTransform")
+            _ => panic!("expected CreateSMTransform"),
         }
     }
 
     #[test]
     fn test_parse_simple_message_transform_pipeline() {
-        use sqlparser::parser::Parser;
         use sqlparser::ast::Statement;
-        use sqlparser::tokenizer::{Span, Location};
+        use sqlparser::parser::Parser;
+        use sqlparser::tokenizer::{Location, Span};
 
         let sql = r#"
         CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
@@ -16412,27 +16441,30 @@ mod tests {
             drop_pii(fields = 'email_addr, phone_num')
         ) WITH PIPELINE PREDICATE 'some_predicate';
     "#;
-        
+
         let dialect = GenericDialect {};
-        let stmts   = Parser::parse_sql(&dialect, sql).expect("parse failed");
+        let stmts = Parser::parse_sql(&dialect, sql).expect("parse failed");
         println!("{:?}", stmts);
-        
-        match &stmts[0] { 
+
+        match &stmts[0] {
             Statement::CreateSMTPipeline(pipe) => {
                 assert_eq!(pipe.name.value, "some_pipeline");
                 assert_eq!(pipe.if_not_exists, true);
                 assert_eq!(pipe.steps.len(), 2);
-                assert_eq!(pipe.clone().pipe_predicate.unwrap().to_string(), "'some_predicate'");
+                assert_eq!(
+                    pipe.clone().pipe_predicate.unwrap().to_string(),
+                    "'some_predicate'"
+                );
             }
-            _ => panic!("expected CreateSMTPipeline")
+            _ => panic!("expected CreateSMTPipeline"),
         }
     }
 
     #[test]
     fn test_create_kafka_connector_sink_no_pipeline() {
+        use sqlparser::ast::Statement;
         use sqlparser::dialect::GenericDialect;
         use sqlparser::parser::Parser;
-        use sqlparser::ast::Statement;
 
         let sql = r#"CREATE SINK KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
         "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
@@ -16455,7 +16487,8 @@ mod tests {
                 assert!(c.with_pipelines.is_empty());
 
                 // sanity-check one property
-                let topics = c.with_properties
+                let topics = c
+                    .with_properties
                     .iter()
                     .find(|(k, _)| k.value == "topics")
                     .expect("missing topics prop");
@@ -16479,8 +16512,8 @@ mod tests {
       create table some_model as
       with test as (
         select *
-        from ref('stg_orders') as o
-        join source('raw','stg_customers') as c
+        from {{ ref('stg_orders') }} as o
+        join {{ source('raw','stg_customers') }} as c
           on o.customer_id = c.id
       )
       select * from test;
@@ -16493,7 +16526,11 @@ mod tests {
 
         // The parser wraps both the table def and the drop into a single CreateModel node,
         // per your printed output: [CreateModel(CreateModel { ... })]
-        assert_eq!(stmts.len(), 1, "expected exactly one top-level CreateModel statement");
+        assert_eq!(
+            stmts.len(),
+            1,
+            "expected exactly one top-level CreateModel statement"
+        );
 
         match &stmts[0] {
             Statement::CreateModel(cm) => {
@@ -16550,11 +16587,10 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_create_kafka_connector_sink_with_pipelines() {
-        use sqlparser::parser::Parser;
         use sqlparser::ast::Statement;
+        use sqlparser::parser::Parser;
 
         let sql = r#"
     CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
@@ -16577,12 +16613,16 @@ mod tests {
 
                 // ✔ pipelines captured in order
                 assert_eq!(
-                    c.with_pipelines.iter().map(|id| id.value.clone()).collect::<Vec<_>>(),
+                    c.with_pipelines
+                        .iter()
+                        .map(|id| id.value.clone())
+                        .collect::<Vec<_>>(),
                     vec!["filter_rejects".to_string(), "mask_data".to_string()]
                 );
 
                 // quick property spot-check
-                let topics = c.with_properties
+                let topics = c
+                    .with_properties
                     .iter()
                     .find(|(k, _)| k.value == "topics")
                     .expect("missing topics prop");

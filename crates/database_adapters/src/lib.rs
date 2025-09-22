@@ -1,10 +1,10 @@
 pub mod postgres;
 
-use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use crate::postgres::PostgresAdapter;
 use async_trait::async_trait;
 use serde::Deserialize;
-use crate::postgres::PostgresAdapter;
+use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 
 pub enum DatabaseAdapterError {
     InvalidConnectionError(String),
@@ -84,11 +84,12 @@ pub trait AsyncDatabaseAdapter {
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
 }
 
-#[async_trait]                          // ← leave the default (Send) mode
+#[async_trait] // ← leave the default (Send) mode
 impl<T> AsyncDatabaseAdapter for &mut T
 where
     T: DatabaseAdapter + Send + ?Sized, //  ↑ ensure the captured &mut T _is_
-{                                       //    Send (it is, if T: Send)
+{
+    //    Send (it is, if T: Send)
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
         // if this call can block, wrap it in spawn_blocking!
         (**self).execute(sql)
@@ -112,29 +113,40 @@ pub struct AdapterConnectionDetails {
     adapter_type: DatabaseAdapterType,
 }
 impl AdapterConnectionDetails {
-    pub fn new(host: &str, user: &str, database: &str, password: &str, port: &str, adapter_type: DatabaseAdapterType) -> Self {
+    pub fn new(
+        host: &str,
+        user: &str,
+        database: &str,
+        password: &str,
+        port: &str,
+        adapter_type: DatabaseAdapterType,
+    ) -> Self {
         Self {
             host: host.to_string(),
             user: user.to_string(),
             database: database.to_string(),
             password: password.to_string(),
             port: port.to_string(),
-            adapter_type
+            adapter_type,
         }
     }
 }
 pub async fn create_db_adapter(
-    conn_details: AdapterConnectionDetails
+    conn_details: AdapterConnectionDetails,
 ) -> Result<AsyncDbAdapter, DatabaseAdapterError> {
     match conn_details.adapter_type {
-        DatabaseAdapterType::Postgres => {
-            Ok(Box::new(PostgresAdapter::new(
+        DatabaseAdapterType::Postgres => Ok(Box::new(
+            PostgresAdapter::new(
                 conn_details.host.as_str(),
-                conn_details.port.parse::<u16>().expect("failed to parse port"),
+                conn_details
+                    .port
+                    .parse::<u16>()
+                    .expect("failed to parse port"),
                 conn_details.database.as_str(),
                 conn_details.user.as_str(),
                 conn_details.password.as_str(),
-            ).await?))
-        }
+            )
+            .await?,
+        )),
     }
 }

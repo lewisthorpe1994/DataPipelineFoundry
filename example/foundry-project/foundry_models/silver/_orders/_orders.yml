@@ -1,0 +1,3 @@
+config:
+  name: silver_orders
+  materialization: materialized_view

@@ -1,13 +1,13 @@
 use crate::compiler;
-use crate::config::components::global::FoundryConfig;
+use common::config::components::global::FoundryConfig;
 use common::error::FFError;
 use common::types::sources::{SourceConnArgs, SourceType};
 use common::utils::read_sql_file;
 use dag::{DagError, IntoDagNodes, ModelsDag};
 use database_adapters::{create_db_adapter, AsyncDbAdapter};
 use engine::Engine;
-use logging::timeit;
 use log::info;
+use logging::timeit;
 use petgraph::Direction;
 use std::io;
 
@@ -90,7 +90,8 @@ async fn run_dag(
                     db_adapter,
                     source_conn_args,
                 )
-                .await.map_err(|e| FFError::Run(e.into()))?;
+                .await
+                .map_err(|e| FFError::Run(e.into()))?;
             } else {
                 let node = match dag.get_node_ref(&model) {
                     Some(idx) => idx,
@@ -109,7 +110,8 @@ async fn run_dag(
                     db_adapter,
                     source_conn_args,
                 )
-                .await.map_err(|e| FFError::Run(e.into()))?;
+                .await
+                .map_err(|e| FFError::Run(e.into()))?;
             }
         }
         None => {
@@ -124,60 +126,61 @@ async fn run_dag(
                 db_adapter,
                 source_conn_args,
             )
-                .await.map_err(|e| FFError::Run(e.into()))?;
+            .await
+            .map_err(|e| FFError::Run(e.into()))?;
         }
     }
 
     Ok(())
 }
-
-/// Compile models and execute them against the configured target database.
-///
-/// When `model` is `None` the entire DAG is executed. If a model name is
-/// supplied, the selection syntax from [`execute_model`] can be used to run a
-/// specific slice of the DAG.
-pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
-    // compile models and obtain the dependency graph
-    let dag = compiler::compile(config.project.compile_path.clone())?;
-    let engine = Engine::new();
-
-    // build postgres connection string from selected profile
-    let profile = config
-        .connections
-        .get(&config.connection_profile)
-        .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
-
-    let mut adapter = create_db_adapter(profile.clone()).await
-        .map_err(|e| FFError::Run(Box::new(io::Error::new(io::ErrorKind::Other, e.to_string()))))?;
-
-    let source_conn_args = if let Some(kafka_sources) = &config.kafka_source {
-        let kafka_source_name = config
-            .project
-            .paths
-            .sources
-            .iter()
-            .find(|s| s.kind == SourceType::Kafka)
-            .map(|s| s.name.clone());
-
-        if let Some(name) = kafka_source_name {
-            kafka_sources
-                .get(&name)
-                .map(|cfg| {
-                    let host = format!("http://{}:{}", cfg.connect.host, cfg.connect.port);
-                    SourceConnArgs {
-                        kafka_connect: Some(host),
-                    }
-                })
-                .unwrap_or(SourceConnArgs { kafka_connect: None })
-        } else {
-            SourceConnArgs { kafka_connect: None }
-        }
-    } else {
-        SourceConnArgs { kafka_connect: None }
-    };
-
-    run_dag(&dag, model, &config, engine, &mut adapter, source_conn_args).await
-}
+//
+// /// Compile models and execute them against the configured target database.
+// ///
+// /// When `model` is `None` the entire DAG is executed. If a model name is
+// /// supplied, the selection syntax from [`execute_model`] can be used to run a
+// /// specific slice of the DAG.
+// pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
+//     // compile models and obtain the dependency graph
+//     let dag = compiler::compile(config.project.compile_path.clone())?;
+//     let engine = Engine::new();
+//
+//     // build postgres connection string from selected profile
+//     let profile = config
+//         .connections
+//         .get(&config.connection_profile)
+//         .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
+//
+//     let mut adapter = create_db_adapter(profile.clone()).await
+//         .map_err(|e| FFError::Run(Box::new(io::Error::new(io::ErrorKind::Other, e.to_string()))))?;
+//
+//     let source_conn_args = if let Some(kafka_sources) = &config.kafka_source {
+//         let kafka_source_name = config
+//             .project
+//             .paths
+//             .sources
+//             .iter()
+//             .find(|s| s.kind == SourceType::Kafka)
+//             .map(|s| s.name.clone());
+//
+//         if let Some(name) = kafka_source_name {
+//             kafka_sources
+//                 .get(&name)
+//                 .map(|cfg| {
+//                     let host = format!("http://{}:{}", cfg.connect.host, cfg.connect.port);
+//                     SourceConnArgs {
+//                         kafka_connect: Some(host),
+//                     }
+//                 })
+//                 .unwrap_or(SourceConnArgs { kafka_connect: None })
+//         } else {
+//             SourceConnArgs { kafka_connect: None }
+//         }
+//     } else {
+//         SourceConnArgs { kafka_connect: None }
+//     };
+//
+//     run_dag(&dag, model, &config, engine, &mut adapter, source_conn_args).await
+// }
 //
 // #[cfg(test)]
 // mod tests {

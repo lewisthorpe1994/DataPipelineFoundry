@@ -21,16 +21,22 @@
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter, Write};
-use std::collections::HashMap;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[cfg(feature = "visitor")]
 use sqlparser_derive::{Visit, VisitMut};
 
-use crate::ast::value::escape_single_quote_string;
-use crate::ast::{display_comma_separated, display_separated, CommentDef, CreateFunctionBody, CreateFunctionUsing, CreateTable, DataType, Expr, FunctionBehavior, FunctionCalledOnNull, FunctionDeterminismSpecifier, FunctionParallel, Ident, KafkaConnectorType, MySQLColumnPosition, ObjectName, OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag, Value, ValueWithSpan};
 use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
+use crate::ast::value::escape_single_quote_string;
+use crate::ast::{
+    display_comma_separated, display_separated, CommentDef, CreateFunctionBody,
+    CreateFunctionUsing, CreateTable, DataType, Expr, FunctionBehavior, FunctionCalledOnNull,
+    FunctionDeterminismSpecifier, FunctionParallel, Ident, KafkaConnectorType, MySQLColumnPosition,
+    ObjectName, OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag,
+    Value, ValueWithSpan,
+};
 use crate::keywords::Keyword;
 use crate::tokenizer::Token;
 
@@ -2339,24 +2345,28 @@ impl fmt::Display for CreateConnector {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub struct CreateKafkaConnector {
     pub name: Ident,
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
     pub with_properties: Vec<(Ident, ValueWithSpan)>,
-    pub with_pipelines: Vec<Ident>
+    pub with_pipelines: Vec<Ident>,
 }
 
 impl fmt::Display for CreateKafkaConnector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // 1️⃣  pre-compute the optional bits
-        let if_not_exists = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let if_not_exists = if self.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
 
         let pipelines_clause = if self.with_pipelines.is_empty() {
             String::new()
         } else {
-            let list = self.with_pipelines
+            let list = self
+                .with_pipelines
                 .iter()
                 .map(|id| id.to_string())
                 .collect::<Vec<_>>()
@@ -2364,7 +2374,8 @@ impl fmt::Display for CreateKafkaConnector {
             format!(" WITH PIPELINES({})", list)
         };
 
-        let props = self.with_properties
+        let props = self
+            .with_properties
             .iter()
             .map(|(k, v)| format!("{} = {}", k, v))
             .collect::<Vec<_>>()
@@ -2393,7 +2404,11 @@ pub struct CreateSimpleMessageTransform {
 
 impl fmt::Display for CreateSimpleMessageTransform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ine = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let ine = if self.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
 
         let cfg = self
             .config
@@ -2402,8 +2417,13 @@ impl fmt::Display for CreateSimpleMessageTransform {
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(f, "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name} ({cfg})",
-               ine = ine, name = self.name, cfg = cfg)
+        write!(
+            f,
+            "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name} ({cfg})",
+            ine = ine,
+            name = self.name,
+            cfg = cfg
+        )
     }
 }
 
@@ -2411,7 +2431,7 @@ impl fmt::Display for CreateSimpleMessageTransform {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TransformCall {
     pub name: Ident,
-    pub args: Vec<(Ident, ValueWithSpan)>,   // may be empty
+    pub args: Vec<(Ident, ValueWithSpan)>, // may be empty
 }
 impl TransformCall {
     pub fn new(name: Ident, args: Vec<(Ident, ValueWithSpan)>) -> Self {
@@ -2435,7 +2455,6 @@ impl fmt::Display for TransformCall {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CreateSimpleMessageTransformPipeline {
@@ -2449,7 +2468,11 @@ pub struct CreateSimpleMessageTransformPipeline {
 
 impl fmt::Display for CreateSimpleMessageTransformPipeline {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ine = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let ine = if self.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
 
         let body = self
             .steps
@@ -2460,17 +2483,17 @@ impl fmt::Display for CreateSimpleMessageTransformPipeline {
 
         let pred_clause = match &self.pipe_predicate {
             Some(p) => format!(" WITH PIPELINE PREDICATE {}", p),
-            None    => String::new(),
+            None => String::new(),
         };
 
         write!(
             f,
             "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {ine}{name} {ctype} ({body}){pred}",
-            ine   = ine,
-            name  = self.name,
+            ine = ine,
+            name = self.name,
             ctype = self.connector_type,
-            body  = body,
-            pred  = pred_clause
+            body = body,
+            pred = pred_clause
         )
     }
 }
@@ -2484,8 +2507,8 @@ pub enum ModelDef {
 impl fmt::Display for ModelDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Table(table) => write!(f, "{}", table),
-            Self::View(view) => write!(f, "{}", view),
+            Self::Table(table) => write!(f, "{}", table.to_string()),
+            Self::View(view) => write!(f, "{}", view.to_string()),
         }
     }
 }
@@ -2493,9 +2516,10 @@ impl fmt::Display for ModelDef {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CreateModel {
+    pub schema: Ident,
     pub name: Ident,
     pub model: ModelDef,
-    pub drop: DropStmt
+    pub drop: DropStmt,
 }
 
 impl fmt::Display for CreateModel {
@@ -2508,18 +2532,18 @@ impl fmt::Display for CreateModel {
                 } else {
                     "VIEW"
                 }
-            },
+            }
         };
 
         write!(
             f,
-            "CREATE MODEL {name} AS\n\
-            DROP {model} IF EXISTS {name};\n\
+            "CREATE MODEL {schema}.{name} AS\n\
+            DROP {model} IF EXISTS {schema}.{name};\n\
             {statement}",
             name = self.name,
             model = model,
-            statement = self.model
+            statement = self.model,
+            schema = self.schema,
         )
     }
 }
-

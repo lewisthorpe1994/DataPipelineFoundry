@@ -1,15 +1,15 @@
 mod commands;
 
-use std::path::{Path, PathBuf};
-use clap::{Parser, Subcommand};
-use commands::{handle_init, handle_compile, handle_run};
 use crate::commands::init::InitArgs;
-use tracing_subscriber::{fmt};
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
+use crate::commands::run::RunArgs;
+use clap::{Parser, Subcommand};
+use commands::{handle_compile, handle_init, handle_run};
+use std::path::{Path, PathBuf};
 use time::format_description::FormatItem;
 use time::macros::format_description;
-use crate::commands::run::RunArgs;
+use tracing_subscriber::fmt;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "foundry")]
@@ -18,11 +18,11 @@ pub struct Cli {
         long = "config-path",
         short = 'c',
         help = "path to config file",
-        global = true,
+        global = true
     )]
     pub config_path: Option<PathBuf>,
     #[command(subcommand)]
-    pub command: Cmd
+    pub command: Cmd,
 }
 
 #[derive(Subcommand)]
@@ -39,13 +39,13 @@ pub enum Cmd {
     Clean,
 }
 
-
 fn main() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new("info") // fallback log level
     });
-    let time_format = format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]");
-    
+    let time_format =
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]");
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()
@@ -56,16 +56,20 @@ fn main() {
                 .with_line_number(false)
                 .with_file(false)
                 .with_span_events(fmt::format::FmtSpan::NONE) // 👈 Disable span name output
-                .compact() // 👈 Fancy pre-built output
+                .compact(), // 👈 Fancy pre-built output
         )
         .with(filter)
         .init();
     let cli = Cli::parse();
-    
+
     match cli.command {
         Cmd::Init(args) => {
             if let Err(e) = handle_init(&args.path, args.project_name, args.flow_arch) {
-                eprintln!("Failed to initialize project at {}: {}", args.path.display(), e);
+                eprintln!(
+                    "Failed to initialize project at {}: {}",
+                    args.path.display(),
+                    e
+                );
                 std::process::exit(1);
             }
         }

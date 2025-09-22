@@ -1,15 +1,15 @@
+mod errors;
 pub mod types;
 pub mod utils;
-mod errors;
 
-pub use types::*;
 pub use errors::*;
+pub use types::*;
 pub use utils::*;
 
-use async_trait::async_trait;
-use serde::{Deserialize};
-use reqwest::{Client, StatusCode};
 use crate::executor::ExecutorHost;
+use async_trait::async_trait;
+use reqwest::{Client, StatusCode};
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct ConnectErrorBody {
@@ -31,7 +31,7 @@ impl KafkaExecutor {
 pub trait KafkaDeploy: Send + Sync {
     async fn deploy_connector(
         &self,
-        cfg: &KafkaConnectorDeployConfig
+        cfg: &KafkaConnectorDeployConfig,
     ) -> Result<KafkaExecutorResponse, KafkaExecutorError>;
 }
 
@@ -39,23 +39,25 @@ pub trait KafkaDeploy: Send + Sync {
 impl KafkaDeploy for KafkaExecutor {
     async fn deploy_connector(
         &self,
-        cfg: &KafkaConnectorDeployConfig
+        cfg: &KafkaConnectorDeployConfig,
     ) -> Result<KafkaExecutorResponse, KafkaExecutorError> {
         let client = Client::new();
-        let resp = client.post(format!("{}/connectors", self.connect_host))
+        let resp = client
+            .post(format!("{}/connectors", self.connect_host))
             .json(cfg)
             .send()
             .await?;
 
         match resp.status() {
-            StatusCode::OK |
-            StatusCode::CREATED |
-            StatusCode::ACCEPTED |
-            StatusCode::NO_CONTENT => Ok(KafkaExecutorResponse::Ok),
+            StatusCode::OK
+            | StatusCode::CREATED
+            | StatusCode::ACCEPTED
+            | StatusCode::NO_CONTENT => Ok(KafkaExecutorResponse::Ok),
             StatusCode::BAD_REQUEST => {
-                let body: ConnectErrorBody = resp.json().await.unwrap_or_else(|_| ConnectErrorBody {
-                    message: "could not parse error body".into(),
-                });
+                let body: ConnectErrorBody =
+                    resp.json().await.unwrap_or_else(|_| ConnectErrorBody {
+                        message: "could not parse error body".into(),
+                    });
                 Err(KafkaExecutorError::IncorrectConfig(body.message))
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
@@ -71,7 +73,7 @@ impl KafkaDeploy for KafkaExecutor {
     //     let resp = client.delete(
     //         format!("{}/connectors/{}", connect_host, connector_name)
     //     ).send().await?;
-    // 
+    //
     //     Ok(())
     // }
 }
@@ -87,12 +89,14 @@ impl KafkaConnectClient for KafkaExecutor {}
 
 #[cfg(test)]
 mod test {
+    use crate::executor::kafka::{
+        KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor, KafkaExecutorError,
+        KafkaExecutorResponse,
+    };
     use serde_json::json;
     use uuid::Uuid;
-    use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor, KafkaExecutorError, KafkaExecutorResponse};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
     use wiremock::matchers::{method, path};
-
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
     async fn test_connector_deploy_fails_with_cfg_error() -> Result<(), KafkaExecutorError> {
@@ -124,9 +128,7 @@ mod test {
             }
         }))?;
         let executor = KafkaExecutor::new(&server.uri());
-        let res = executor.deploy_connector(
-            &config
-        ).await;
+        let res = executor.deploy_connector(&config).await;
 
         let expected_error_msg = "Connector configuration is invalid and contains the following 1 error(s):\nError while validating connector config: The connection attempt failed.\nYou can also find the above list of errors at the endpoint `/connector-plugins/{connectorType}/config/validate`";
         match res {
@@ -136,14 +138,13 @@ mod test {
                     assert_eq!(e.to_string(), expected_error_msg);
                 }
                 _ => panic!("an Unexpected error"),
-            }
+            },
         }
         Ok(())
     }
 
     #[tokio::test]
     async fn test_connector_deploy() -> Result<(), KafkaExecutorError> {
-
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
@@ -169,11 +170,10 @@ mod test {
                 "topic.prefix": "postgres-"
             }
         }))?;
-        
+
         let executor = KafkaExecutor::new(&server.uri());
 
-        let resp = executor.deploy_connector(&config)
-            .await?;
+        let resp = executor.deploy_connector(&config).await?;
 
         assert_eq!(resp, KafkaExecutorResponse::Ok);
         Ok(())

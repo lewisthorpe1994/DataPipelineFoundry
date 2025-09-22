@@ -1,12 +1,12 @@
+use engine::executor::kafka::KafkaConnectClient;
+use engine::executor::ExecutorHost;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use testcontainers::core::client::docker_client_instance;
 use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
+use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use uuid::Uuid;
-use engine::executor::ExecutorHost;
-use engine::executor::kafka::KafkaConnectClient;
 
 pub const PG_DB: &str = "foundry_dev";
 pub const PG_USER: &str = "postgres";
@@ -39,7 +39,7 @@ impl PgTestContainer {
 
         format!(
             "host={} user={} password={} dbname={} port={}",
-            host , self.user, self.password, self.db_name, self.port
+            host, self.user, self.password, self.db_name, self.port
         )
     }
 }
@@ -70,7 +70,7 @@ fn plugins_host_path() -> PathBuf {
     base_dir.join("tests").join("connect_plugins")
 }
 
-pub async fn setup_postgres() -> Result<PgTestContainer,  Box<dyn std::error::Error>> {
+pub async fn setup_postgres() -> Result<PgTestContainer, Box<dyn std::error::Error>> {
     let id = Uuid::new_v4();
     let name = format!("postgres-{}", id);
     let postgres = GenericImage::new("postgres", "16")
@@ -82,10 +82,7 @@ pub async fn setup_postgres() -> Result<PgTestContainer,  Box<dyn std::error::Er
         .with_env_var("POSTGRES_USER", PG_USER)
         .with_env_var("POSTGRES_PASSWORD", PG_PASSWORD)
         .with_network(NET)
-        .with_mapped_port(
-            0,
-            5432u16.tcp()
-        )
+        .with_mapped_port(0, 5432u16.tcp())
         .start()
         .await?;
 
@@ -113,12 +110,24 @@ pub async fn setup_kafka() -> Result<KafkaTestContainers, Box<dyn std::error::Er
         .with_env_var("KAFKA_PROCESS_ROLES", "broker,controller")
         .with_env_var(
             "KAFKA_LISTENERS",
-            format!("PLAINTEXT://{}:{KAFKA_BROKER_PORT},CONTROLLER://{}:9093", &broker_name, &broker_name
-            ))
-        .with_env_var("KAFKA_ADVERTISED_LISTENERS", format!("PLAINTEXT://{}:{KAFKA_BROKER_PORT}", &broker_name))
+            format!(
+                "PLAINTEXT://{}:{KAFKA_BROKER_PORT},CONTROLLER://{}:9093",
+                &broker_name, &broker_name
+            ),
+        )
+        .with_env_var(
+            "KAFKA_ADVERTISED_LISTENERS",
+            format!("PLAINTEXT://{}:{KAFKA_BROKER_PORT}", &broker_name),
+        )
         .with_env_var("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
-        .with_env_var("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT")
-        .with_env_var("KAFKA_CONTROLLER_QUORUM_VOTERS", format!("1@{}:9093", &broker_name))
+        .with_env_var(
+            "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP",
+            "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
+        )
+        .with_env_var(
+            "KAFKA_CONTROLLER_QUORUM_VOTERS",
+            format!("1@{}:9093", &broker_name),
+        )
         .with_env_var("KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR", "1")
         .with_env_var("KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR", "1")
         .with_env_var("KAFKA_TRANSACTION_STATE_LOG_MIN_ISR", "1")
@@ -134,10 +143,7 @@ pub async fn setup_kafka() -> Result<KafkaTestContainers, Box<dyn std::error::Er
         ))
         .with_startup_timeout(Duration::from_secs(120))
         .with_container_name(&connect_name)
-        .with_mapped_port(
-            0,
-            8083u16.tcp(),
-        )
+        .with_mapped_port(0, 8083u16.tcp())
         .with_network(NET)
         .with_mount(Mount::bind_mount(
             plugins_host_path().to_str().unwrap(),

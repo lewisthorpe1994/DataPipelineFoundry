@@ -1,16 +1,16 @@
-pub mod sql;
 pub mod kafka;
+pub mod sql;
 
-use std::error::Error;
-use std::fmt;
-use common::types::sources::SourceConnArgs;
-use sqlparser::dialect::GenericDialect;
-use sqlparser::parser::{Parser, ParserError};
-use crate::CatalogError;
 use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
 use crate::executor::sql::SqlExecutor;
 use crate::registry::MemoryCatalog;
+use crate::CatalogError;
+use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError};
+use sqlparser::dialect::GenericDialect;
+use sqlparser::parser::{Parser, ParserError};
+use std::error::Error;
+use std::fmt;
 
 pub trait ExecutorHost {
     fn host(&self) -> &str;
@@ -28,7 +28,7 @@ pub enum ExecutorError {
 
 #[derive(PartialEq, Debug)]
 pub enum ExecutorResponse {
-    Ok
+    Ok,
 }
 
 impl From<KafkaExecutorResponse> for ExecutorResponse {
@@ -55,8 +55,7 @@ impl fmt::Display for ExecutorError {
 
 impl Error for ExecutorError {}
 
-
-impl From<CatalogError> for ExecutorError { 
+impl From<CatalogError> for ExecutorError {
     fn from(e: CatalogError) -> ExecutorError {
         ExecutorError::FailedToExecute(e.to_string())
     }
@@ -68,7 +67,9 @@ impl From<KafkaExecutorError> for ExecutorError {
             KafkaExecutorError::IncorrectConfig(e) => ExecutorError::FailedToExecute(e.to_string()),
             KafkaExecutorError::IoError(e) => ExecutorError::IoError(e),
             KafkaExecutorError::UnexpectedError(e) => ExecutorError::UnexpectedError(e.to_string()),
-            KafkaExecutorError::InternalServerError(e) => ExecutorError::UnexpectedError(e.to_string()),
+            KafkaExecutorError::InternalServerError(e) => {
+                ExecutorError::UnexpectedError(e.to_string())
+            }
         }
     }
 }
@@ -82,7 +83,6 @@ impl From<DatabaseAdapterError> for ExecutorError {
     fn from(value: DatabaseAdapterError) -> Self {
         ExecutorError::UnexpectedError(value.to_string())
     }
-    
 }
 
 pub struct Executor {}
@@ -93,14 +93,14 @@ impl Executor {
 }
 impl Executor {
     pub async fn execute(
-        &self, 
-        sql: &str, 
-        catalog: &MemoryCatalog, 
+        &self,
+        sql: &str,
+        catalog: &MemoryCatalog,
         source_conn_args: &SourceConnArgs,
-        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>
+        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>,
     ) -> Result<ExecutorResponse, ExecutorError> {
         let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
-        
+
         Ok(SqlExecutor::execute(ast_vec, catalog, source_conn_args, target_db_adapter).await?)
     }
 }

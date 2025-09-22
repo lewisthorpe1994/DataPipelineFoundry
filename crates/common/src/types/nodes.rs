@@ -1,20 +1,26 @@
-use std::ops::Deref;
-use std::path::PathBuf;
+use crate::types::Materialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlparser::parser::Parser;
-use crate::types::Materialize;
+use std::ops::Deref;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SourceRef {
+    pub source_name: String,
+    pub source_table: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ModelRef {
     pub table: String,
-    pub schema: String
-    // todo - look at adding columns
+    pub schema: String,
 }
 impl ModelRef {
     pub fn new<S: Into<String>>(schema: S, table: S) -> Self {
         Self {
             schema: schema.into(),
-            table: table.into()
+            table: table.into(),
         }
     }
     pub fn to_string(&self) -> String {
@@ -26,7 +32,7 @@ impl ModelRef {
 pub enum RelationType {
     Source,
     Model,
-    Kafka
+    Kafka,
 }
 #[derive(Debug, Clone)]
 pub struct Relation {
@@ -37,7 +43,7 @@ impl Relation {
     pub fn new(relation_type: RelationType, name: String) -> Self {
         Self {
             relation_type,
-            name
+            name,
         }
     }
 }
@@ -66,42 +72,28 @@ impl Relations {
 
 pub trait CoreNodeFields {
     fn name(&self) -> String;
-    fn relations(&self) -> Relations;
     fn path(&self) -> PathBuf;
     fn config(&self) -> Value;
 }
 #[derive(Debug)]
 pub struct ModelNode {
-    pub schema: String,
-    pub model: String,
-    pub relations: Relations,
-    pub materialization: Option<Materialize>,
-    pub path: PathBuf
+    // represents the schema.model name
+    pub model_name: String,
+    pub materialization: Materialize,
+    pub path: PathBuf,
 }
 impl ModelNode {
-    pub fn new(
-        schema: String,
-        model: String,
-        materialization: Option<Materialize>,
-        relations:Relations,
-        path: PathBuf
-    ) -> Self {
+    pub fn new(model_name: String, materialization: Materialize, path: PathBuf) -> Self {
         Self {
-            schema,
-            model,
+            model_name,
             materialization,
-            relations,
-            path
+            path,
         }
     }
 }
 impl CoreNodeFields for ModelNode {
     fn name(&self) -> String {
-        self.model.clone()
-    }
-
-    fn relations(&self) -> Relations {
-        self.relations.clone()
+        self.model_name.clone()
     }
 
     fn path(&self) -> PathBuf {
@@ -109,7 +101,7 @@ impl CoreNodeFields for ModelNode {
     }
 
     fn config(&self) -> Value {
-        json!({"schema": self.schema.clone(), "materialization": self.materialization.clone()})
+        json!({"materialization": self.materialization.clone()})
     }
 }
 
@@ -118,12 +110,9 @@ pub struct KafkaNode {
     pub relations: Relations,
     pub path: PathBuf,
 }
-impl CoreNodeFields for  KafkaNode {
+impl CoreNodeFields for KafkaNode {
     fn name(&self) -> String {
         self.name.clone()
-    }
-    fn relations(&self) -> Relations {
-        self.relations.clone()
     }
     fn path(&self) -> PathBuf {
         self.path.clone()
@@ -137,7 +126,7 @@ impl KafkaNode {
         Self {
             name,
             relations,
-            path
+            path,
         }
     }
 }
@@ -151,9 +140,6 @@ impl CoreNodeFields for SourceNode {
     fn name(&self) -> String {
         self.name.clone()
     }
-    fn relations(&self) -> Relations {
-        self.relations.clone()
-    }
     fn path(&self) -> PathBuf {
         // No path for a source node as this represents a source db table and its downstream deps
         PathBuf::new()
@@ -163,14 +149,19 @@ impl CoreNodeFields for SourceNode {
     }
 }
 
+#[derive(Debug)]
 pub enum NodeTypes {
-    Sql,
-    Kafka,
-    Source
+    Model,
+    KafkaConnector,
+    KafkaSmt,
+    KafkaSmtPipeline,
+    Source,
 }
 
-pub struct ParsedNode<N: CoreNodeFields> {
-    pub node: N,
+#[derive(Debug)]
+pub struct ParsedNode {
+    pub name: String,
+    pub path: PathBuf,
     pub node_type: NodeTypes,
 }
 

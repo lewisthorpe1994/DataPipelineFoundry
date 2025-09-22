@@ -5,6 +5,5 @@ macro_rules! timeit {
         let res = { $block };
         let elapsed = start.elapsed();
         info!("{} in {:.2?}", $label, elapsed);
-    }}
+    }};
 }
-
