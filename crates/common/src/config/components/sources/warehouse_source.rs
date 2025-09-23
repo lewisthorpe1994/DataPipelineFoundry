@@ -63,19 +63,19 @@ impl From<HashMap<String, WarehouseSourceConfig>> for WarehouseSourceConfigs {
     }
 }
 
-impl From<Vec<SourcePaths>> for WarehouseSourceConfigs {
-    fn from(value: Vec<SourcePaths>) -> Self {
+impl From<SourcePaths> for WarehouseSourceConfigs {
+    fn from(value: SourcePaths) -> Self {
         let mut configs: WarehouseSourceConfigs = WarehouseSourceConfigs::empty();
         value
             .into_iter()
-            .filter(|t| t.kind == SourceType::Warehouse)
-            .for_each(|p| {
+            .filter(|(_, details)| details.kind == SourceType::Warehouse)
+            .for_each(|(_, details)| {
                 let c: WarehouseSourceConfigs = load_config::<
                     WarehouseSourceConfig,
                     WarehouseSourceFileConfigs,
                     WarehouseSourceConfigs,
-                >((&p.path).as_ref())
-                .expect("s");
+                >((&details.path).as_ref())
+                .expect("load warehouse source config");
                 configs.extend(c);
             });
 

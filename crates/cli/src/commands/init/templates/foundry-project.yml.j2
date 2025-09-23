@@ -16,8 +16,9 @@ paths:
     {%- endif %}
   sources:
     {% for source in sources -%}
-    - name: {{ source.name }}
+    {{ source.name }}:
       path: {{ source.path }}
+      source_root: {{ source.source_root }}
       kind: {{ source.kind }}
     {% endfor %}
   connections: connections.yml

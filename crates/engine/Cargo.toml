@@ -5,20 +5,20 @@ edition.workspace = true
 license.workspace = true
 
 [dev-dependencies]
-tempfile = { workspace = true }
-once_cell = { workspace = true }
 test_utils = { workspace = true }
 wiremock = { version = "0.6.4" }
 testcontainers = { version = "0.24.0" }
 tokio-postgres = { workspace = true }
 #dag = { workspace = true}
 anyhow = { version = "1.0.98" }
+walkdir = "2.5.0"
 
 [dependencies]
 thiserror = "2.0.12"
 serde_json = { workspace = true }
 chrono = { version = "0.4.41", features = ["serde"] }
 serde = { workspace = true }
+serde_yaml = "0.9.34+deprecated"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 parking_lot = "0.12.4"
 sqlparser = { workspace = true, features = ["json_example"]}
@@ -29,3 +29,4 @@ common = { workspace = true }
 database_adapters = { workspace = true }
 tracing-subscriber = "0.3.19"
 regex = { version = "1.11.1" }
+

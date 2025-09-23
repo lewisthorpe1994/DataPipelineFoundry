@@ -7,9 +7,13 @@ pub enum CatalogError {
     #[error("{0}")]
     NotFound(String),
     #[error("serde error: {0}")]
-    Serde(#[from] serde_json::Error),
+    SerdeJson(#[from] serde_json::Error),
+    #[error("serde yaml error: {0}")]
+    SerdeYaml(#[from] serde_yaml::Error),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Unsupported(String),
+    #[error("sql parser error: {0}")]
+    SqlParser(String),
 }

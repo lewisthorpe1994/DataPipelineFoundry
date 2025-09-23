@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
 pub fn read_sql_file(
@@ -11,4 +13,13 @@ pub fn read_sql_file(
     let sql_path = Path::new(compile_path).join(rel_path);
     let sql = std::fs::read_to_string(&sql_path)?;
     Ok(sql)
+}
+
+pub fn read_sql_file_from_path(path: &Path) -> Result<String, std::io::Error> {
+    let file = File::open(path)?;
+    let mut buf_reader = BufReader::new(file);
+    let mut contents = String::new();
+    buf_reader.read_to_string(&mut contents)?;
+
+    Ok(contents)
 }

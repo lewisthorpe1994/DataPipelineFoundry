@@ -20,6 +20,6 @@ pub struct FoundryProjectConfig {
 #[derive(Debug, Deserialize)]
 pub struct PathsConfig {
     pub models: ModelsPaths,
-    pub sources: Vec<SourcePaths>,
+    pub sources: SourcePaths,
     pub connections: String,
 }

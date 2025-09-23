@@ -1,3 +1,4 @@
+use crate::config::components::model::ModelConfig;
 use crate::types::Materialize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -151,18 +152,35 @@ impl CoreNodeFields for SourceNode {
 
 #[derive(Debug)]
 pub enum NodeTypes {
-    Model,
     KafkaConnector,
     KafkaSmt,
     KafkaSmtPipeline,
-    Source,
 }
 
 #[derive(Debug)]
-pub struct ParsedNode {
+pub struct ParsedInnerNode {
     pub name: String,
     pub path: PathBuf,
-    pub node_type: NodeTypes,
+}
+
+#[derive(Debug)]
+pub enum ParsedNode {
+    Model {
+        node: ParsedInnerNode,
+        config: Option<ModelConfig>,
+    },
+    KafkaConnector {
+        node: ParsedInnerNode,
+    },
+    KafkaSmt {
+        node: ParsedInnerNode,
+    },
+    KafkaSmtPipeline {
+        node: ParsedInnerNode,
+    },
+    Source {
+        node: ParsedInnerNode,
+    },
 }
 
 pub trait Identifier {

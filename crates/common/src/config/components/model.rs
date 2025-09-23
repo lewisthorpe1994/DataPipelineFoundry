@@ -32,7 +32,7 @@ impl IntoConfigVec<ModelConfig> for ModelsFileConfig {
 }
 
 // ---------------- Model Config  ----------------
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ModelConfig {
     pub name: String,
     pub description: Option<String>,
@@ -51,7 +51,7 @@ impl ConfigName for ModelConfig {
 }
 
 // ---------------- Models Config  --------------
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ModelsConfig(HashMap<String, ModelConfig>); // TODO - rename to ModelConfigs
 
 impl ModelsConfig {
