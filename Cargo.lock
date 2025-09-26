@@ -418,8 +418,12 @@ name = "dag"
 version = "0.1.0"
 dependencies = [
  "common",
+ "engine",
+ "ff_core",
+ "log",
  "minijinja",
  "petgraph",
+ "sqlparser",
  "tempfile",
  "test_utils",
 ]
@@ -566,6 +570,8 @@ dependencies = [
  "chrono",
  "common",
  "database_adapters",
+ "ff_core",
+ "log",
  "parking_lot",
  "regex",
  "reqwest",

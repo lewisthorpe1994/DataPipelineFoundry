@@ -19,6 +19,7 @@ use sqlparser::parser::Parser;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use uuid::Uuid;
+use log::info;
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -29,6 +30,20 @@ struct State {
     connectors: HashMap<String, KafkaConnectorMeta>,
     models: HashMap<String, ModelDecl>,
     sources: WarehouseSourceConfigs,
+}
+
+#[derive(Debug)]
+pub enum NodeDec {
+    KafkaSmt(TransformDecl),
+    KafkaSmtPipeline(PipelineDecl),
+    KafkaConnector(KafkaConnectorMeta),
+    Model(ModelDecl),
+}
+
+#[derive(Debug)]
+pub struct CatalogNode {
+    pub name: String,
+    pub declaration: NodeDec,
 }
 
 #[derive(Debug)]
@@ -74,7 +89,40 @@ impl MemoryCatalog {
         std::fs::rename(tmp, path)?;
         Ok(())
     }
+
+    pub fn collect_catalog_nodes(&self) -> Vec<CatalogNode> {
+        let g = self.inner.read();
+        let mut nodes = Vec::new();
+
+        for (name, dec) in g.models.iter() {
+            nodes.push(CatalogNode {
+                    name: name.to_owned(),
+                    declaration: NodeDec::Model(dec.clone())
+                });
+        }
+        for (name, dec) in g.connectors.iter() {
+            nodes.push(CatalogNode {
+                name: name.to_owned(),
+                declaration: NodeDec::KafkaConnector(dec.clone())
+            });
+        }
+        for (name, dec) in g.pipelines.iter() {
+            nodes.push(CatalogNode {
+                name: name.to_owned(),
+                declaration: NodeDec::KafkaSmtPipeline(dec.clone())
+            });
+        }
+        for (name, id) in g.transform_name_to_id.iter() {
+            let dec = g.transforms_by_id.get(id).unwrap();
+            nodes.push(CatalogNode {
+                name: name.to_owned(),
+                declaration: NodeDec::KafkaSmt(dec.clone())
+            });
+        }
+        nodes
+    }
 }
+
 
 fn collect_model_macros(query: &Query) -> (Option<Vec<ModelRef>>, Option<Vec<SourceRef>>) {
     let sql_text = query.to_string();
@@ -281,6 +329,18 @@ fn format_relation(schema: &str, table: &str) -> String {
     }
 }
 
+pub fn format_create_model_sql(sql: String, materialize: Materialize, model_name: &str) -> String {
+    let model = model_name.replacen("_", ".", 1);
+    let materialization = materialize.to_sql();
+
+    format!(
+        "CREATE MODEL {} AS
+      DROP {} IF EXISTS {} CASCADE;
+      CREATE {} {} AS {}",
+        model, materialization, model, materialization, model, sql
+    )
+}
+
 pub trait Register: Send + Sync + 'static {
     fn register_nodes(&self, parsed_nodes: Vec<ParsedNode>) -> Result<(), CatalogError>;
     fn register_object(&self, parsed_stmts: Vec<Statement>) -> Result<(), CatalogError>;
@@ -292,20 +352,66 @@ pub trait Register: Send + Sync + 'static {
     ) -> Result<(), CatalogError>;
     fn register_model(&self, ast: CreateModel) -> Result<(), CatalogError>;
 }
+
+fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
+    match a {
+        ParsedNode::KafkaSmtPipeline { node } => match b {
+            ParsedNode::KafkaSmt { node } => {
+                std::cmp::Ordering::Less
+            },
+            ParsedNode::KafkaConnector { node } => {
+                std::cmp::Ordering::Less
+            }
+            _ => std::cmp::Ordering::Equal,
+        }
+        ParsedNode::KafkaSmt { node } => {
+            match b {
+                ParsedNode::KafkaSmtPipeline { node } => {
+                    std::cmp::Ordering::Less
+                }
+                ParsedNode::KafkaConnector { node } => {
+                    std::cmp::Ordering::Less
+                }
+                _ => std::cmp::Ordering::Equal,
+            }
+        }
+        ParsedNode::KafkaConnector { node } => {
+            match b {
+                ParsedNode::KafkaSmt { node } => {
+                    std::cmp::Ordering::Greater
+                }
+                ParsedNode::KafkaSmtPipeline { node } => {
+                    std::cmp::Ordering::Greater
+                }
+                _ => std::cmp::Ordering::Equal,
+            }
+        }
+        _ => std::cmp::Ordering::Equal
+    }
+}
 impl Register for MemoryCatalog {
-    fn register_nodes(&self, parsed_nodes: Vec<ParsedNode>) -> Result<(), CatalogError> {
+    fn register_nodes(&self, mut parsed_nodes: Vec<ParsedNode>) -> Result<(), CatalogError> {
+        parsed_nodes.sort_by(compare_node);
         for node in parsed_nodes {
-            let path = match &node {
-                ParsedNode::Model { node, .. }
-                | ParsedNode::KafkaConnector { node }
+            let (path, config) = match &node {
+                ParsedNode::Model { node, config } => (&node.path, config.clone()),
+                ParsedNode::KafkaConnector { node }
                 | ParsedNode::KafkaSmt { node }
                 | ParsedNode::KafkaSmtPipeline { node }
-                | ParsedNode::Source { node } => &node.path,
+                | ParsedNode::Source { node } => (&node.path, None),
             };
-
+            info!("reading node from {}", path.display());
             let sql = read_sql_file_from_path(path)
                 .map_err(|_| CatalogError::NotFound(format!("{:?} not found", path)))?;
-            let parsed_sql = Parser::parse_sql(&GenericDialect, &sql)
+            // println!("model config {:?}", config);
+            let formatted_sql = if let Some(config) = config {
+                format_create_model_sql(sql, config.materialization, &config.name)
+            } else {
+                sql
+            };
+            // println!("{}", formatted_sql);
+
+            let parsed_sql = Parser::parse_sql(&GenericDialect, &formatted_sql)
                 .map_err(|e| CatalogError::SqlParser(format!("{}", e)))?;
 
             self.register_object(parsed_sql)?;
@@ -564,144 +670,6 @@ pub trait Compile: Send + Sync + 'static + Getter {
     fn compile_model_decl(&self, name: &str) -> Result<CompiledModelDecl, CatalogError>;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use common::config::components::foundry_project::ModelLayers;
-    use common::config::loader::read_config;
-    use common::types::sources::SourceType;
-    use common::types::{NodeTypes, ParsedNode};
-    use sqlparser::ast::Use::Catalog;
-    use std::collections::HashSet;
-    use std::path::{Path, PathBuf};
-    use test_utils::get_root_dir;
-    use walkdir::WalkDir;
-
-    fn collect_model_nodes(project_root: &Path, layers: Option<&ModelLayers>) -> Vec<ParsedNode> {
-        let mut nodes = Vec::new();
-
-        if let Some(layers) = layers {
-            for (_layer_name, dir) in layers {
-                let layer_root = project_root.join(dir);
-                for entry in WalkDir::new(&layer_root).into_iter().filter_map(Result::ok) {
-                    if !entry.file_type().is_file() {
-                        continue;
-                    }
-
-                    let path = entry.path();
-                    if path.extension().and_then(|s| s.to_str()) != Some("sql") {
-                        continue;
-                    }
-
-                    let schema_name = Path::new(dir)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or_default();
-                    let model_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or_default();
-                    let name = format!("{}_{}", schema_name, model_name.trim_start_matches('_'));
-
-                    nodes.push(ParsedNode::Model {
-                        node: ParsedInnerNode {
-                            name,
-                            path: path.to_path_buf(),
-                        },
-                        config: None,
-                    });
-                }
-            }
-        }
-
-        nodes
-    }
-
-    fn collect_kafka_nodes(
-        config: &common::config::components::global::FoundryConfig,
-    ) -> Vec<ParsedNode> {
-        let mut nodes = Vec::new();
-        let mut roots = HashSet::new();
-
-        for details in config.source_paths.values() {
-            if matches!(details.kind, SourceType::Kafka) {
-                if let Some(root) = details
-                    .source_root
-                    .as_ref()
-                    .map(PathBuf::from)
-                    .or_else(|| Path::new(&details.path).parent().map(Path::to_path_buf))
-                {
-                    roots.insert(root);
-                }
-            }
-        }
-
-        for root in roots {
-            for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
-                if !entry.file_type().is_file() {
-                    continue;
-                }
-
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) != Some("sql") {
-                    continue;
-                }
-
-                if let Some(node_type) = detect_kafka_type(path) {
-                    let name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or_default()
-                        .to_string();
-                    let inner = ParsedInnerNode {
-                        name,
-                        path: path.to_path_buf(),
-                    };
-                    let parsed = match node_type {
-                        NodeTypes::KafkaConnector => ParsedNode::KafkaConnector { node: inner },
-                        NodeTypes::KafkaSmt => ParsedNode::KafkaSmt { node: inner },
-                        NodeTypes::KafkaSmtPipeline => ParsedNode::KafkaSmtPipeline { node: inner },
-                    };
-                    nodes.push(parsed);
-                }
-            }
-        }
-
-        nodes
-    }
-
-    fn detect_kafka_type(path: &Path) -> Option<NodeTypes> {
-        for ancestor in path.ancestors().skip(1) {
-            let dir = ancestor.file_name().and_then(|s| s.to_str())?;
-            match dir {
-                "_smt" => return Some(NodeTypes::KafkaSmt),
-                "_smt_pipelines" => return Some(NodeTypes::KafkaSmtPipeline),
-                "_definition" => return Some(NodeTypes::KafkaConnector),
-                _ => {}
-            }
-        }
-        None
-    }
-
-    #[test]
-    fn test_register_nodes_ingests_example_project() {
-        let cat = MemoryCatalog::new();
-        let project_root = get_root_dir();
-        let config = read_config(Some(project_root.clone())).expect("load example project config");
-
-        let mut nodes: Vec<ParsedNode> = Vec::new();
-
-        nodes.extend(collect_model_nodes(
-            &project_root,
-            config.project.paths.models.layers.as_ref(),
-        ));
-        nodes.extend(collect_kafka_nodes(&config));
-
-        cat.register_nodes(nodes).expect("register nodes");
-        println!("{:#?}", cat.inner.read().models);
-    }
-}
-
 impl Compile for MemoryCatalog {
     fn compile_kafka_decl(&self, name: &str) -> Result<KafkaConnectorDecl, CatalogError> {
         let conn = self.get_kafka_connector(name)?;
@@ -794,12 +762,33 @@ impl Compile for MemoryCatalog {
 
 #[cfg(test)]
 mod test {
+    use common::config::loader::read_config;
     use super::*;
     use sqlparser::ast::Value::SingleQuotedString;
     use sqlparser::ast::{Ident, ValueWithSpan};
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
     use sqlparser::tokenizer::{Location, Span};
+    use test_utils::{get_root_dir, with_chdir};
+    use ff_core::parser::parse_nodes;
+
+    #[test]
+    fn test_register_nodes_ingests_example_project() -> std::io::Result<()> {
+        let cat = MemoryCatalog::new();
+        let project_root = get_root_dir();
+
+
+        with_chdir(&project_root, move || {
+            let config = read_config(None).expect("load example project config");
+            let nodes = parse_nodes(config).expect("parse example models");
+            // println!("{:#?}", nodes);
+            cat.register_nodes(nodes).expect("register nodes");
+            // println!("{:#?}", cat.inner.read().models);
+            println!("{:?}", cat.collect_catalog_nodes());
+        })?;
+
+        Ok(())
+    }
 
     #[test]
     fn test_register_transform() {

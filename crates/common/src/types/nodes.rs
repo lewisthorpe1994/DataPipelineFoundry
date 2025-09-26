@@ -157,7 +157,7 @@ pub enum NodeTypes {
     KafkaSmtPipeline,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ParsedInnerNode {
     pub name: String,
     pub path: PathBuf,

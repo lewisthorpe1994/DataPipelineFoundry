@@ -3,136 +3,136 @@ use common::config::components::global::FoundryConfig;
 use common::error::FFError;
 use common::types::sources::{SourceConnArgs, SourceType};
 use common::utils::read_sql_file;
-use dag::{DagError, IntoDagNodes, ModelsDag};
+// use dag::{DagError, IntoDagNodes, ModelsDag};
 use database_adapters::{create_db_adapter, AsyncDbAdapter};
 use engine::Engine;
 use log::info;
 use logging::timeit;
 use petgraph::Direction;
 use std::io;
-
-/// Execute the compiled SQL in dependency order using the provided executor.
-async fn execute_dag_nodes<'a, T>(
-    nodes: T,
-    compile_path: &str,
-    models_dir: &str,
-    engine: Engine,
-    db_adapter: &mut AsyncDbAdapter,
-    source_conn_args: SourceConnArgs,
-) -> Result<(), FFError>
-where
-    T: IntoDagNodes<'a>,
-{
-    timeit!("Executed all models", {
-        for node in nodes.into_vec() {
-            timeit!(format!("Executed model {}", &node.path.display()), {
-                let sql = read_sql_file(models_dir, &node.path, compile_path)
-                    .map_err(|e| FFError::Run(Box::new(e)))?;
-                engine
-                    .execute(&sql, &source_conn_args, Some(db_adapter))
-                    .await
-                    .map_err(|e| FFError::Run(Box::new(e)))?;
-            });
-        }
-    });
-
-    Ok(())
-}
-
-/// Execute a single model or a slice of the DAG depending on the provided
-/// selector syntax.
-///
-/// A model name can be prefixed and/or suffixed with `<` / `>` to select
-/// additional nodes:
-///
-/// * `"<model"` - execute all upstream dependencies of `model`.
-/// * `"model>"` - execute all downstream dependents of `model`.
-/// * `"<model>"` - execute both upstream and downstream nodes as well as the
-///   model itself.
-async fn run_dag(
-    dag: &ModelsDag,
-    model: Option<String>,
-    config: &FoundryConfig,
-    engine: Engine,
-    db_adapter: &mut AsyncDbAdapter,
-    source_conn_args: SourceConnArgs,
-) -> Result<(), FFError> {
-    match model {
-        Some(model) => {
-            let exec_order = if model.starts_with('<') && model.ends_with('>') {
-                let name = model.trim_start_matches('<').trim_end_matches('>');
-                Some(
-                    dag.get_model_execution_order(name)
-                        .map_err(|e| FFError::Run(e.into()))?,
-                )
-            } else if model.starts_with('<') {
-                let name = model.trim_start_matches('<');
-                Some(
-                    dag.transitive_closure(name, Direction::Incoming)
-                        .map_err(|e| FFError::Run(e.into()))?,
-                )
-            } else if model.ends_with('>') {
-                let name = model.trim_end_matches('>');
-                Some(
-                    dag.transitive_closure(name, Direction::Outgoing)
-                        .map_err(|e| FFError::Run(e.into()))?,
-                )
-            } else {
-                None
-            };
-
-            if let Some(exec_order) = exec_order {
-                execute_dag_nodes(
-                    exec_order,
-                    &config.project.compile_path,
-                    &config.project.paths.models.dir,
-                    engine,
-                    db_adapter,
-                    source_conn_args,
-                )
-                .await
-                .map_err(|e| FFError::Run(e.into()))?;
-            } else {
-                let node = match dag.get_node_ref(&model) {
-                    Some(idx) => idx,
-                    None => {
-                        return Err(FFError::Compile(
-                            format!("model {} not found", model).into(),
-                        ))
-                    }
-                };
-
-                execute_dag_nodes(
-                    node,
-                    &config.project.compile_path,
-                    &config.project.paths.models.dir,
-                    engine,
-                    db_adapter,
-                    source_conn_args,
-                )
-                .await
-                .map_err(|e| FFError::Run(e.into()))?;
-            }
-        }
-        None => {
-            let ordered_nodes = dag
-                .get_included_dag_nodes(None)
-                .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
-            execute_dag_nodes(
-                ordered_nodes,
-                &config.project.compile_path,
-                &config.project.paths.models.dir,
-                engine,
-                db_adapter,
-                source_conn_args,
-            )
-            .await
-            .map_err(|e| FFError::Run(e.into()))?;
-        }
-    }
-
-    Ok(())
-}
+// 
+// /// Execute the compiled SQL in dependency order using the provided executor.
+// async fn execute_dag_nodes<'a, T>(
+//     nodes: T,
+//     compile_path: &str,
+//     models_dir: &str,
+//     engine: Engine,
+//     db_adapter: &mut AsyncDbAdapter,
+//     source_conn_args: SourceConnArgs,
+// ) -> Result<(), FFError>
+// where
+//     T: IntoDagNodes<'a>,
+// {
+//     timeit!("Executed all models", {
+//         for node in nodes.into_vec() {
+//             timeit!(format!("Executed model {}", &node.path.display()), {
+//                 let sql = read_sql_file(models_dir, &node.path, compile_path)
+//                     .map_err(|e| FFError::Run(Box::new(e)))?;
+//                 engine
+//                     .execute(&sql, &source_conn_args, Some(db_adapter))
+//                     .await
+//                     .map_err(|e| FFError::Run(Box::new(e)))?;
+//             });
+//         }
+//     });
+// 
+//     Ok(())
+// }
+// 
+// /// Execute a single model or a slice of the DAG depending on the provided
+// /// selector syntax.
+// ///
+// /// A model name can be prefixed and/or suffixed with `<` / `>` to select
+// /// additional nodes:
+// ///
+// /// * `"<model"` - execute all upstream dependencies of `model`.
+// /// * `"model>"` - execute all downstream dependents of `model`.
+// /// * `"<model>"` - execute both upstream and downstream nodes as well as the
+// ///   model itself.
+// async fn run_dag(
+//     dag: &ModelsDag,
+//     model: Option<String>,
+//     config: &FoundryConfig,
+//     engine: Engine,
+//     db_adapter: &mut AsyncDbAdapter,
+//     source_conn_args: SourceConnArgs,
+// ) -> Result<(), FFError> {
+//     match model {
+//         Some(model) => {
+//             let exec_order = if model.starts_with('<') && model.ends_with('>') {
+//                 let name = model.trim_start_matches('<').trim_end_matches('>');
+//                 Some(
+//                     dag.get_model_execution_order(name)
+//                         .map_err(|e| FFError::Run(e.into()))?,
+//                 )
+//             } else if model.starts_with('<') {
+//                 let name = model.trim_start_matches('<');
+//                 Some(
+//                     dag.transitive_closure(name, Direction::Incoming)
+//                         .map_err(|e| FFError::Run(e.into()))?,
+//                 )
+//             } else if model.ends_with('>') {
+//                 let name = model.trim_end_matches('>');
+//                 Some(
+//                     dag.transitive_closure(name, Direction::Outgoing)
+//                         .map_err(|e| FFError::Run(e.into()))?,
+//                 )
+//             } else {
+//                 None
+//             };
+// 
+//             if let Some(exec_order) = exec_order {
+//                 execute_dag_nodes(
+//                     exec_order,
+//                     &config.project.compile_path,
+//                     &config.project.paths.models.dir,
+//                     engine,
+//                     db_adapter,
+//                     source_conn_args,
+//                 )
+//                 .await
+//                 .map_err(|e| FFError::Run(e.into()))?;
+//             } else {
+//                 let node = match dag.get_node_ref(&model) {
+//                     Some(idx) => idx,
+//                     None => {
+//                         return Err(FFError::Compile(
+//                             format!("model {} not found", model).into(),
+//                         ))
+//                     }
+//                 };
+// 
+//                 execute_dag_nodes(
+//                     node,
+//                     &config.project.compile_path,
+//                     &config.project.paths.models.dir,
+//                     engine,
+//                     db_adapter,
+//                     source_conn_args,
+//                 )
+//                 .await
+//                 .map_err(|e| FFError::Run(e.into()))?;
+//             }
+//         }
+//         None => {
+//             let ordered_nodes = dag
+//                 .get_included_dag_nodes(None)
+//                 .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
+//             execute_dag_nodes(
+//                 ordered_nodes,
+//                 &config.project.compile_path,
+//                 &config.project.paths.models.dir,
+//                 engine,
+//                 db_adapter,
+//                 source_conn_args,
+//             )
+//             .await
+//             .map_err(|e| FFError::Run(e.into()))?;
+//         }
+//     }
+// 
+//     Ok(())
+// }
 //
 // /// Compile models and execute them against the configured target database.
 // ///

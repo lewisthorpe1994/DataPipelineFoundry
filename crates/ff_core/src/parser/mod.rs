@@ -8,18 +8,6 @@ use std::io::Error;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub fn parse_create_model_sql(sql: String, materialize: Materialize, model_name: &str) -> String {
-    let model = model_name.replace("_", ".");
-    let materialization = materialize.to_sql();
-
-    format!(
-        "CREATE MODEL {} AS
-      DROP {} IF EXISTS {} CASCADE;
-      CREATE {} {} AS {}",
-        model, materialization, model, materialization, model, sql
-    )
-}
-
 pub fn parse_nodes(config: FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
     if let Some(model_layers_path) = &config.project.paths.models.layers {
@@ -37,6 +25,7 @@ pub fn parse_models(
 ) -> Result<Vec<ParsedNode>, Error> {
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for dir in dirs.values() {
+        println!("{:#?}", dir);
         for entry in WalkDir::new(dir) {
             let path = entry?.into_path();
 

@@ -1,6 +1,6 @@
 pub mod executor;
 pub mod registry;
-mod types;
+pub mod types;
 
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};

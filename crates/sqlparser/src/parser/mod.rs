@@ -15374,7 +15374,7 @@ impl<'a> Parser<'a> {
             ObjectType::View
         } else {
             return Err(ParserError::ParserError(
-                "Expected TABLE, MATERIALISED VIEW or VIEW for DropStmt".to_string(),
+                "Expected TABLE, MATERIALIZED VIEW or VIEW for DropStmt got".to_string(),
             ));
         };
 

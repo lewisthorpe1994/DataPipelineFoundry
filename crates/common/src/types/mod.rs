@@ -21,7 +21,7 @@ impl Materialize {
         let materialised = match self {
             Self::View => "VIEW",
             Self::Table => "TABLE",
-            Self::MaterializedView => "MATERIALISED VIEW",
+            Self::MaterializedView => "MATERIALIZED VIEW",
         };
 
         materialised.to_string().to_uppercase()
