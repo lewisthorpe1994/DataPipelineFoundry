@@ -156,186 +156,6 @@ impl Resolve for MemoryCatalog {
     }
 }
 
-fn collect_model_macros(query: &Query) -> (Option<Vec<ModelRef>>, Option<Vec<SourceRef>>) {
-    let sql_text = query.to_string();
-
-    let refs_re =
-        Regex::new(r#"(?i)\bref\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?\s*\)"#)
-            .expect("valid ref regex");
-    let sources_re =
-        Regex::new(r#"(?i)\bsource\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?\s*\)"#)
-            .expect("valid source regex");
-
-    let refs: BTreeSet<(String, String)> = refs_re
-        .captures_iter(&sql_text)
-        .filter_map(|cap| {
-            let first = cap.get(1)?.as_str().to_string();
-            let second = cap.get(2).map(|m| m.as_str().to_string());
-
-            let (schema, table) = match second {
-                Some(table) => (first, table),
-                None => {
-                    if let Some((schema, table)) = first.split_once('.') {
-                        (schema.to_string(), table.to_string())
-                    } else {
-                        (String::new(), first)
-                    }
-                }
-            };
-
-            Some((schema, table))
-        })
-        .collect();
-
-    let sources: BTreeSet<(String, String)> = sources_re
-        .captures_iter(&sql_text)
-        .filter_map(|cap| {
-            let first = cap.get(1)?.as_str().to_string();
-            let second = cap.get(2).map(|m| m.as_str().to_string());
-
-            let (source_name, source_table) = match second {
-                Some(table) => (first, table),
-                None => {
-                    if let Some((schema, table)) = first.split_once('.') {
-                        (schema.to_string(), table.to_string())
-                    } else {
-                        (String::new(), first)
-                    }
-                }
-            };
-
-            Some((source_name, source_table))
-        })
-        .collect();
-
-    let refs = (!refs.is_empty()).then(|| {
-        refs.into_iter()
-            .map(|(schema, table)| ModelRef::new(schema, table))
-            .collect()
-    });
-    let sources = (!sources.is_empty()).then(|| {
-        sources
-            .into_iter()
-            .map(|(source_name, source_table)| SourceRef {
-                source_name,
-                source_table,
-            })
-            .collect()
-    });
-
-    (refs, sources)
-}
-
-fn resolve_model_macros(sql: String, refs: &[ModelRef], sources: &[SourceRef]) -> String {
-    use std::collections::HashMap;
-
-    let mut ref_by_key: HashMap<(String, String), ModelRef> = HashMap::new();
-    let mut ref_by_table: HashMap<String, ModelRef> = HashMap::new();
-    for r in refs.iter().cloned() {
-        ref_by_key.insert((r.schema.to_lowercase(), r.table.to_lowercase()), r.clone());
-        ref_by_table.insert(r.table.to_lowercase(), r);
-    }
-
-    let mut source_by_key: HashMap<(String, String), SourceRef> = HashMap::new();
-    let mut source_by_table: HashMap<String, SourceRef> = HashMap::new();
-    for s in sources.iter().cloned() {
-        source_by_key.insert(
-            (s.source_name.to_lowercase(), s.source_table.to_lowercase()),
-            s.clone(),
-        );
-        source_by_table.insert(s.source_table.to_lowercase(), s);
-    }
-
-    let patterns = [
-        Regex::new(
-            "(?i)\\{\\{\\s*(?P<func>ref|source)\\s*\\(\\s*['\"](?P<arg1>[^'\"]+)['\"](?:\\s*,\\s*['\"](?P<arg2>[^'\"]+)['\"])?\\s*\\)\\s*\\}\\}"
-        )
-        .expect("valid macro regex"),
-        Regex::new(
-            "(?i)\\b(?P<func>ref|source)\\s*\\(\\s*['\"](?P<arg1>[^'\"]+)['\"](?:\\s*,\\s*['\"](?P<arg2>[^'\"]+)['\"])?\\s*\\)"
-        )
-        .expect("valid macro regex"),
-    ];
-
-    let mut out = sql;
-    for regex in &patterns {
-        out = regex
-            .replace_all(&out, |caps: &Captures| {
-                let func = caps.name("func").unwrap().as_str().to_ascii_lowercase();
-                let arg1 = caps.name("arg1").unwrap().as_str();
-                let arg2 = caps.name("arg2").map(|m| m.as_str());
-
-                let replacement = match func.as_str() {
-                    "ref" => resolve_relation(
-                        arg1,
-                        arg2,
-                        |schema, table| {
-                            if let Some(table) = table {
-                                let key = (schema.to_lowercase(), table.to_lowercase());
-                                ref_by_key.get(&key).cloned()
-                            } else {
-                                None
-                            }
-                        },
-                        |table| ref_by_table.get(&table.to_lowercase()).cloned(),
-                    ),
-                    "source" => resolve_relation(
-                        arg1,
-                        arg2,
-                        |schema, table| {
-                            if let Some(table) = table {
-                                let key = (schema.to_lowercase(), table.to_lowercase());
-                                source_by_key.get(&key).cloned()
-                            } else {
-                                None
-                            }
-                        },
-                        |table| source_by_table.get(&table.to_lowercase()).cloned(),
-                    ),
-                    _ => None,
-                };
-
-                replacement.unwrap_or_else(|| caps.get(0).unwrap().as_str().to_string())
-            })
-            .to_string();
-    }
-
-    let table_wrapper =
-        Regex::new(r"(?i)\bTABLE\(\s*([A-Za-z0-9_\.]+)\s*\)").expect("valid table wrapper regex");
-    table_wrapper.replace_all(&out, "$1").to_string()
-}
-
-fn resolve_relation<F, G, T>(
-    first: &str,
-    second: Option<&str>,
-    lookup_pair: F,
-    lookup_table: G,
-) -> Option<String>
-where
-    F: Fn(&str, Option<&str>) -> Option<T>,
-    G: Fn(&str) -> Option<T>,
-    T: IntoRelation,
-{
-    if let Some(second) = second {
-        if let Some(found) = lookup_pair(first, Some(second)) {
-            return Some(found.into_relation());
-        }
-        return Some(format_relation(first, second));
-    }
-
-    if let Some((schema, table)) = first.split_once('.') {
-        if let Some(found) = lookup_pair(schema, Some(table)) {
-            return Some(found.into_relation());
-        }
-        return Some(format_relation(schema, table));
-    }
-
-    if let Some(found) = lookup_table(first) {
-        return Some(found.into_relation());
-    }
-
-    Some(first.to_string())
-}
 
 pub trait IntoRelation {
     fn into_relation(self) -> String;
@@ -347,11 +167,6 @@ impl IntoRelation for ModelRef {
     }
 }
 
-impl IntoRelation for SourceRef {
-    fn into_relation(self) -> String {
-        format_relation(&self.source_name, &self.source_table)
-    }
-}
 
 fn format_relation(schema: &str, table: &str) -> String {
     if schema.is_empty() {
@@ -563,7 +378,7 @@ impl Register for MemoryCatalog {
             .into_iter()
             .partition(|call| matches!(call.m_type, MacroFnCallType::Ref)
         );
-        
+
         let refs = r
             .iter()
             .map(|call| {
@@ -573,12 +388,12 @@ impl Register for MemoryCatalog {
                 }
             })
             .collect::<Vec<ModelRef>>();
-        
+
         let sources = s
             .iter()
             .map(|call| {
                 SourceRef {
-                    source_table: call.args[1].clone(), 
+                    source_table: call.args[1].clone(),
                     source_name: call.args[0].clone()
                 }
             })

@@ -1,7 +1,7 @@
 warehouse_sources:
   - name: some_orders
     database:
-      name: some_database
+      name: postgres
       schemas:
         - name: bronze
           description: some schema for raw ingested data

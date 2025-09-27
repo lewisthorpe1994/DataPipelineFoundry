@@ -1,23 +1,22 @@
-pub mod types;
 mod error;
+pub mod types;
 
+use crate::error::DagError;
+use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst};
 use common::types::{
-  Materialize, ModelNode, ModelRef, ParsedNode, Relation, RelationType, Relations,
+    Materialize, ModelNode, ModelRef, ParsedNode, Relation, RelationType, Relations,
 };
+use engine::registry::{CatalogNode, Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
+use engine::types::KafkaConnectorType;
+use log::warn;
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::{Direction, Graph};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
+use std::io;
 use std::path::Path;
-use std::{io};
-use engine::registry::{CatalogNode, IntoRelation, MemoryCatalog, NodeDec, Resolve};
-use engine::types::KafkaConnectorType;
-use log::warn;
-use crate::error::DagError;
-use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst};
-
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -62,7 +61,6 @@ pub struct ModelsDag {
     pub ref_to_index: HashMap<String, NodeIndex>,
 }
 
-
 impl ModelsDag {
     pub fn new() -> Self {
         Self {
@@ -70,68 +68,59 @@ impl ModelsDag {
             ref_to_index: HashMap::new(),
         }
     }
+
+    fn database_from_jdbc_url(url: &str) -> Option<String> {
+        let trimmed = url.strip_prefix("jdbc:").unwrap_or(url);
+        let core = trimmed.split(['?', ';']).next()?;
+        let idx = core.rfind('/')?;
+        let db = &core[idx + 1..];
+        if db.is_empty() {
+            None
+        } else {
+            Some(db.to_string())
+        }
+    }
     pub fn build(&mut self, registry: &MemoryCatalog) -> DagResult<()> {
         // First Pass - build all the nodes
         for c_node in registry.collect_catalog_nodes().iter() {
             match &c_node.declaration {
                 NodeDec::WarehouseSource(source) => {
-                    self.add_node(
+                    self.upsert_node(
                         source.identifier(),
-                        true,
+                        false,
                         DagNode {
                             name: source.identifier(),
                             ast: None,
                             node_type: DagNodeType::WarehouseSourceDb,
                             is_executable: false,
-                            relations: None
-                        }
+                            relations: None,
+                        },
                     )?;
                 }
                 NodeDec::Model(model) => {
                     let mut rels = HashSet::new();
 
-                    let refs = model.refs
+                    let refs = model
+                        .refs
                         .iter()
                         .map(|r| r.clone().into_relation())
                         .collect::<HashSet<String>>();
 
                     let mut resolved_srcs = HashSet::new();
                     for src in model.sources.iter() {
-                        resolved_srcs.insert(registry.resolve_warehouse_source(src)
-                            .map_err(|_| DagError::RefNotFound(format!("Source {} not found", src.source_name)))?
-                        );
+                        resolved_srcs.insert(registry.resolve_warehouse_source(src).map_err(
+                            |_| {
+                                DagError::RefNotFound(format!(
+                                    "Source {} not found",
+                                    src.source_name
+                                ))
+                            },
+                        )?);
                     }
                     rels.extend(refs);
                     rels.extend(resolved_srcs);
 
-                    // let rels = match (&model.refs, &model.sources) {
-                    //     (Some(refs), Some(sources)) => {
-                    //         let mut rels = HashSet::new();
-                    //         rels.extend(refs.iter().map(|rel| rel.clone().into_relation()));
-                    //         let mut resolved_srcs = HashSet::new();
-                    //         for src in sources.iter() {
-                    //             resolved_srcs.insert(registry.resolve_warehouse_source(src)
-                    //                 .map_err(|_| DagError::RefNotFound(format!("Source {} not found", src.source_name)))?
-                    //             );
-                    //         }
-                    //         rels.extend(resolved_srcs);
-                    //         Some(rels)
-                    //     }
-                    //     (Some(refs), None) => {
-                    //         Some(refs.iter().map(|rel| rel.clone().into_relation()).collect())
-                    //     }
-                    //     (None, Some(sources)) => {
-                    //         let mut resolved_srcs = HashSet::new();
-                    //         for src in sources.iter() {
-                    //             resolved_srcs.insert(registry.resolve_warehouse_source(src)
-                    //                 .map_err(|_| DagError::RefNotFound(format!("Source {} not found", src.source_name)))?
-                    //             );
-                    //         }
-                    //         Some(resolved_srcs)
-                    //     }
-                    //     (None, None) => None
-                    // };
-                    self.add_node(
+                    self.upsert_node(
                         c_node.name.clone(),
                         true,
                         DagNode {
@@ -139,16 +128,19 @@ impl ModelsDag {
                             ast: Some(NodeAst::Model(model.sql.clone())),
                             node_type: DagNodeType::Model,
                             is_executable: true,
-                            relations: Some(rels)
-                        }
+                            relations: Some(rels),
+                        },
                     )?;
                 }
                 NodeDec::KafkaSmtPipeline(pipe) => {
-                    let rels = pipe.sql.steps.iter()
+                    let rels = pipe
+                        .sql
+                        .steps
+                        .iter()
                         .map(|s| s.name.to_string())
                         .collect::<HashSet<String>>();
 
-                    self.add_node(
+                    self.upsert_node(
                         c_node.name.clone(),
                         true,
                         DagNode {
@@ -156,39 +148,48 @@ impl ModelsDag {
                             ast: Some(NodeAst::KafkaSmtPipeline(pipe.sql.clone())),
                             node_type: DagNodeType::KafkaPipeline,
                             is_executable: false,
-                            relations: Some(rels)
-                        }
+                            relations: Some(rels),
+                        },
                     )?;
                 }
                 NodeDec::KafkaSmt(smt) => {
-                    self.add_node(
+                    self.upsert_node(
                         c_node.name.clone(),
-                        true,
+                        false,
                         DagNode {
                             name: c_node.name.clone(),
                             ast: Some(NodeAst::KafkaSmt(smt.sql.clone())),
                             node_type: DagNodeType::KafkaSmt,
                             is_executable: false,
-                            relations: None // TODO - needs revisiting
-                        }
+                            relations: None, // TODO - needs revisiting
+                        },
                     )?;
                 }
                 NodeDec::KafkaConnector(conn) => {
                     match conn.con_type {
                         KafkaConnectorType::Source => {
-                            let mut rels = if let Some(src) = conn.config.get("table.include.list") {
+                            let mut conn_rels: HashSet<String> = HashSet::new();
+                            let mut src_db_rels = if let Some(src) = conn.config.get("table.include.list")
+                            {
                                 if let Some(src_str) = src.as_str() {
-                                    src_str.split(",").map(|s| s.to_string()).collect::<HashSet<String>>()
+                                    src_str
+                                        .split(",")
+                                        .map(|s| s.to_string())
+                                        .collect::<HashSet<String>>()
                                 } else {
-                                    return Err(DagError::MissingExpectedDependency(conn.name.clone()));
+                                    return Err(DagError::MissingExpectedDependency(
+                                        conn.name.clone(),
+                                    ));
                                 }
                             } else {
                                 return Err(DagError::MissingExpectedDependency(conn.name.clone()));
                             };
+                            conn_rels.extend(src_db_rels.clone());
+
 
                             // build some source db nodes so they can be shown in graph lineage
-                            for x in rels.clone() {
-                                self.add_node(
+                            for x in src_db_rels.clone() {
+                                self.upsert_node(
                                     x.to_string(),
                                     false,
                                     DagNode {
@@ -197,31 +198,39 @@ impl ModelsDag {
                                         node_type: DagNodeType::SourceDb,
                                         is_executable: false,
                                         relations: None,
-                                    }
+                                    },
                                 )?;
-                            };
+                            }
 
                             let topics = if let Some(prefix) = conn.config.get("topic.prefix") {
-                                let reroute_topics = if let Some(config_map) = conn.config.as_object() {
-                                    let t = config_map.iter().filter_map(|(k, v)| {
-                                        if k.ends_with(".topic.replacement") {
-                                            Some(v.as_str().unwrap().to_string())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                        .collect::<Vec<String>>();
-                                    t
-                                } else {
-                                    return Err(DagError::AstSyntax(format!("Unexpected error processing topics from {}", conn.config)))
-                                };
+                                let reroute_topics =
+                                    if let Some(config_map) = conn.config.as_object() {
+                                        let t = config_map
+                                            .iter()
+                                            .filter_map(|(k, v)| {
+                                                if k.ends_with(".topic.replacement") {
+                                                    Some(v.as_str().unwrap().to_string())
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect::<Vec<String>>();
+                                        t
+                                    } else {
+                                        return Err(DagError::AstSyntax(format!(
+                                            "Unexpected error processing topics from {}",
+                                            conn.config
+                                        )));
+                                    };
                                 if reroute_topics.is_empty() {
                                     if let Some(src_str) = prefix.as_str() {
-                                        rels.iter()
+                                        src_db_rels.iter()
                                             .map(|r| format!("{}.{}", src_str, r))
                                             .collect::<Vec<String>>()
                                     } else {
-                                        return Err(DagError::MissingExpectedDependency(conn.name.clone()));
+                                        return Err(DagError::MissingExpectedDependency(
+                                            conn.name.clone(),
+                                        ));
                                     }
                                 } else {
                                     reroute_topics
@@ -230,7 +239,7 @@ impl ModelsDag {
                                 return Err(DagError::MissingExpectedDependency(conn.name.clone()));
                             };
                             for topic in topics {
-                                self.add_node(
+                                self.upsert_node(
                                     topic.to_string(),
                                     false,
                                     DagNode {
@@ -239,14 +248,37 @@ impl ModelsDag {
                                         node_type: DagNodeType::KafkaTopic,
                                         is_executable: false,
                                         relations: Some(HashSet::from([conn.name.clone()])),
-                                    }
+                                    },
                                 )?;
                             }
+
                             if let Some(pipelines) = conn.pipelines.clone() {
-                                rels.extend(pipelines)
-                            }
+                                conn_rels.extend(pipelines.clone());
+                                for p in pipelines {
+                                    let pipe_dec = registry.get_smt_pipeline(&p)
+                                        .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                    let pipe_name = pipe_dec.name.clone();
+                                    for t_id in pipe_dec.transforms {
+                                        let t = registry.get_kafka_smt(t_id)
+                                            .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                        ;
+                                        self.upsert_node(
+                                            t.name.to_string(),
+                                            false,
+                                            DagNode {
+                                                name: t.name.to_string(),
+                                                ast: Some(NodeAst::KafkaSmt(t.sql.clone())),
+                                                node_type: DagNodeType::KafkaSmt,
+                                                is_executable: false,
+                                                relations: Some(src_db_rels.clone()),
+                                            },
+                                        )?
+                                    }
+                                }
+                            };
+
                             // Add connector
-                            self.add_node(
+                            self.upsert_node(
                                 c_node.name.clone(),
                                 true,
                                 DagNode {
@@ -254,19 +286,18 @@ impl ModelsDag {
                                     ast: Some(NodeAst::KafkaConnector(conn.sql.clone())),
                                     node_type: DagNodeType::KafkaSourceConnector,
                                     is_executable: true,
-                                    relations: Some(rels.clone()),
-                                }
+                                    relations: Some(conn_rels.clone()),
+                                },
                             )?;
                         }
                         KafkaConnectorType::Sink => {
                             let topic_prefix = conn.config.get("topic.prefix");
                             let topics = conn.config.get("topics");
                             let mut rels = match (topic_prefix, topics) {
-                                (Some(tp), Some(t)) => {
-                                    return Err(DagError::AstSyntax(
-                                        format!("Expected either topic.prefix or topics to be declared in {}", conn.name.clone()))
-                                    )
-                                }
+                                (Some(tp), Some(t)) => return Err(DagError::AstSyntax(format!(
+                                    "Expected either topic.prefix or topics to be declared in {}",
+                                    conn.name.clone()
+                                ))),
                                 (Some(tp), _) => {
                                     let rels = tp
                                         .as_str()
@@ -286,47 +317,77 @@ impl ModelsDag {
                                     rels
                                 }
                                 (None, None) => return Err(DagError::MissingExpectedDependency(
-                                    "Expected either topic.prefix or topics to be declared in {}".to_string())
-                                ),
+                                    "Expected either topic.prefix or topics to be declared in {}"
+                                        .to_string(),
+                                )),
                             };
 
                             if let Some(pipelines) = conn.pipelines.clone() {
+                                if let Some(pipelines) = conn.pipelines.clone() {
+                                    for p in pipelines {
+                                        let pipe_dec = registry.get_smt_pipeline(&p)
+                                            .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                        let pipe_name = pipe_dec.name.clone();
+                                        for t_id in pipe_dec.transforms {
+                                            let t = registry.get_kafka_smt(t_id)
+                                                .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                            ;
+                                            self.upsert_node(
+                                                t.name.to_string(),
+                                                false,
+                                                DagNode {
+                                                    name: t.name.to_string(),
+                                                    ast: Some(NodeAst::KafkaSmt(t.sql.clone())),
+                                                    node_type: DagNodeType::KafkaSmt,
+                                                    is_executable: false,
+                                                    relations: Some(rels.clone()),
+                                                },
+                                            )?
+                                        }
+                                    }
+                                };
                                 rels.extend(pipelines)
                             }
 
-
-                            let warehouse_src = match conn.config.get("table.name.format") {
-                                Some(warehouse_src) => warehouse_src
-                                    .as_str()
-                                    .unwrap()
-                                    .to_string(),
-                                None => return Err(DagError::AstSyntax(
-                                    format!("Unexpected issue with table.name.format in kafka connector {}", conn.name))
-                                )
+                            let mut warehouse_src = match conn.config.get("table.name.format") {
+                                Some(warehouse_src) => warehouse_src.as_str().unwrap().to_string(),
+                                None => return Err(DagError::AstSyntax(format!(
+                                    "Unexpected issue with table.name.format in kafka connector {}",
+                                    conn.name
+                                ))),
                             };
 
-                            self.add_node(
-                                conn.name.clone(),
-                                true,
-                                DagNode {
+                            if let Some(db_name) = conn
+                                .config
+                                .get("connection.url")
+                                .and_then(|url| url.as_str())
+                                .and_then(Self::database_from_jdbc_url)
+                            {
+                                warehouse_src = format!("{}.{}", db_name, warehouse_src);
+                            }
+
+                                self.upsert_node(
+                                    conn.name.clone(),
+                                    true,
+                                    DagNode {
                                     name: conn.name.clone(),
                                     ast: Some(NodeAst::KafkaConnector(conn.sql.clone())),
                                     node_type: DagNodeType::KafkaSinkConnector,
                                     is_executable: true,
                                     relations: Some(rels),
-                                }
+                                },
                             )?;
 
-                            self.add_node(
-                                warehouse_src.clone(),
-                                false,
-                                DagNode {
+                                self.upsert_node(
+                                    warehouse_src.clone(),
+                                    false,
+                                    DagNode {
                                     name: warehouse_src,
                                     ast: None,
                                     node_type: DagNodeType::WarehouseSourceDb,
                                     is_executable: false,
                                     relations: Some(HashSet::from([conn.name.clone()])),
-                                }
+                                },
                             )?;
                         }
                     }
@@ -346,9 +407,11 @@ impl ModelsDag {
                         let from_idx = match self.ref_to_index.get(rel) {
                             Some(idx) => *idx,
                             None => {
-                                return Err(DagError::MissingExpectedDependency(
-                                    format!("missing deps for {}. Expecting {} to exist", node.name.clone(), rel)
-                                ))
+                                return Err(DagError::MissingExpectedDependency(format!(
+                                    "missing deps for {}. Expecting {} to exist",
+                                    node.name.clone(),
+                                    rel
+                                )))
                             }
                         };
                         self.graph.add_edge(from_idx, idx, EmtpyEdge);
@@ -358,7 +421,6 @@ impl ModelsDag {
                     warn!("No dependencies found for node {} ", node.name);
                 }
             }
-
         }
 
         if petgraph::algo::is_cyclic_directed(&self.graph) {
@@ -375,24 +437,38 @@ impl ModelsDag {
         Ok(())
     }
 
-    fn add_node(
+    fn upsert_node(
         &mut self,
         node_key: String,
         raise_duplicate_error: bool,
-        node: DagNode
+        node: DagNode,
     ) -> DagResult<()> {
         let exists = self.check_node_exists(&node_key, raise_duplicate_error)?;
-        if exists && node.node_type == DagNodeType::KafkaTopic {
-            let existing_node = self.get_mut(&node.name).unwrap();
+        if exists {
+            let existing_node = self
+                .get_mut(&node_key)
+                .expect("ref_to_index and graph out of sync");
+
+            if raise_duplicate_error {
+                return Err(DagError::DuplicateNode(node_key));
+            }
+
             if let Some(new_rels) = node.relations {
                 match existing_node.relations {
-                    Some(ref mut existing_rels) => existing_rels.extend(new_rels),
+                    Some(ref mut existing) => existing.extend(new_rels),
                     None => existing_node.relations = Some(new_rels),
                 }
             }
-        } else if !exists {
-            let from_idx = self.graph.add_node(node);
-            self.ref_to_index.insert(node_key, from_idx);
+
+            if node.ast.is_some() {
+                existing_node.ast = node.ast;
+            }
+
+            existing_node.node_type = node.node_type;
+            existing_node.is_executable = node.is_executable;
+        } else {
+            let idx = self.graph.add_node(node);
+            self.ref_to_index.insert(node_key, idx);
         }
         Ok(())
     }
@@ -418,7 +494,7 @@ impl ModelsDag {
     pub fn get_mut(&mut self, model_ref: &str) -> Option<&mut DagNode> {
         self.ref_to_index
             .get_mut(model_ref)
-        .map(|&mut idx| &mut self.graph[idx])
+            .map(|&mut idx| &mut self.graph[idx])
     }
 
     pub fn get_index(&self, model_ref: &str) -> Option<NodeIndex> {
@@ -573,23 +649,6 @@ impl ModelsDag {
         Ok(plan)
     }
 
-    /// Resolve a model reference to its fully-qualified name.
-    ///
-    /// # Arguments
-    /// * `model_name` - Table name of the model to resolve.
-    ///
-    /// # Errors
-    /// Returns [`DagError::RefNotFound`] if the model is not present in the DAG.
-    pub fn resolve_ref(&self, model_name: &str) -> DagResult<String> {
-        match self.ref_to_index.get(model_name) {
-            Some(idx) => {
-                let node = &self.graph[idx.clone()];
-                Ok(node.name.to_string())
-            }
-            None => Err(DagError::RefNotFound(model_name.to_string())),
-        }
-    }
-
     /// Exports the underlying graph structure to a DOT file.
     ///
     /// This function serializes the graph associated with the struct into the DOT
@@ -643,8 +702,8 @@ impl ModelsDag {
             writeln!(
                 dot,
                 "    {} -> {};",
+                edge.source().index(),
                 edge.target().index(),
-                edge.source().index()
             )
             .unwrap();
         }
@@ -661,11 +720,11 @@ impl ModelsDag {
 
 #[cfg(test)]
 mod tests {
-    use common::config::loader::read_config;
     use super::*;
+    use common::config::loader::read_config;
     use engine::registry::Register;
-    use test_utils::{get_root_dir, with_chdir};
     use ff_core::parser::parse_nodes;
+    use test_utils::{get_root_dir, with_chdir};
 
     #[test]
     fn test_graph() -> Result<(), DagError> {
@@ -676,7 +735,8 @@ mod tests {
             let wh_config = config.warehouse_source.clone();
             let nodes = parse_nodes(&config).expect("parse example models");
             // println!("{:#?}", nodes);
-            cat.register_nodes(nodes, wh_config).expect("register nodes");
+            cat.register_nodes(nodes, wh_config)
+                .expect("register nodes");
 
             let mut dag = ModelsDag::new();
             dag.build(&cat).expect("build models");
