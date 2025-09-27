@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, Select, Statement,
+    CreateSimpleMessageTransformPipeline,
 };
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;

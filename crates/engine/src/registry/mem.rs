@@ -1,26 +1,22 @@
 use crate::executor::sql::AstValueFormatter;
 use crate::{
-    CatalogError, CompiledModelDecl, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl,
+    CatalogError, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl,
     PipelineDecl, TransformDecl, WarehouseSourceDec,
 };
-use common::config::components::sources::warehouse_source::{
-    WarehouseSourceConfig, WarehouseSourceConfigs,
-};
-use common::types::{Materialize, ModelRef, ParsedInnerNode, ParsedNode, SourceRef};
+use common::config::components::sources::warehouse_source::WarehouseSourceConfigs;
+use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
-use log::info;
 use parking_lot::RwLock;
-use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, Value};
 use sqlparser::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, ModelDef, ObjectName, ObjectNamePart, Query, Statement,
+    CreateSimpleMessageTransformPipeline, ModelDef, ObjectName, ObjectNamePart, Statement,
 };
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 

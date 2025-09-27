@@ -1,4 +1,3 @@
-use common::types::ModelRef;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use std::fmt::Display;
 use std::{fmt, io};

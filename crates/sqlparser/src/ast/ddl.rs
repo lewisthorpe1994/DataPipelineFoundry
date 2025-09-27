@@ -2651,9 +2651,13 @@ mod tests {
             args: vec!["warehouse".into(), "raw_orders".into()],
             call_def: "source('warehouse', 'raw_orders')".into(),
         }];
+        
+        fn resolver(name: &str, table: &str) -> Result<String, ModelSqlCompileError> {
+            Ok(format!("{}.{}", name, table))
+        }
 
         let compiled = model
-            .compile(|schema, table| format!("{}.{}", schema, table))
+            .compile(|schema, table| resolver(schema, table))
             .expect("compile");
 
         assert!(compiled.contains("bronze.orders"));

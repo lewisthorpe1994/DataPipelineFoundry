@@ -3,7 +3,7 @@ use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline,
 };
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
 
 /// Represents an empty edge structure in a graph or similar data structure.

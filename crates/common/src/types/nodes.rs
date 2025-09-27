@@ -2,7 +2,6 @@ use crate::config::components::model::ModelConfig;
 use crate::types::Materialize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlparser::parser::Parser;
 use std::ops::Deref;
 use std::path::PathBuf;
 

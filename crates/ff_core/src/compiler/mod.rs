@@ -1,14 +1,12 @@
-use crate::parser::{parse_models, parse_nodes};
+use crate::parser::parse_nodes;
 use common::config::loader::read_config;
 use common::error::FFError;
-use common::types::{Identifier, RelationType};
-use dag::types::{DagNodeType, NodeAst};
+use dag::types::NodeAst;
 use dag::ModelsDag;
-use engine::registry;
 use engine::registry::{Compile, Register};
 use serde::Serialize;
 use sqlparser::ast::ModelSqlCompileError;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;

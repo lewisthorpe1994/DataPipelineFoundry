@@ -4,7 +4,6 @@ pub mod sources;
 
 pub use nodes::*;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]

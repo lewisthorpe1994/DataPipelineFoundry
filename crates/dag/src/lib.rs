@@ -3,19 +3,14 @@ pub mod types;
 
 use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst};
-use common::types::{
-    Materialize, ModelNode, ModelRef, ParsedNode, Relation, RelationType, Relations,
-};
-use engine::registry::{CatalogNode, Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
+use engine::registry::{Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
 use engine::types::KafkaConnectorType;
 use log::{info, warn};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
-use petgraph::{Direction, Graph};
+use petgraph::Direction;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
-use std::fmt::{Display, Formatter};
-use std::io;
 use std::path::Path;
 use std::time::Instant;
 
@@ -171,7 +166,7 @@ impl ModelsDag {
                     match conn.con_type {
                         KafkaConnectorType::Source => {
                             let mut conn_rels: BTreeSet<String> = BTreeSet::new();
-                            let mut src_db_rels = if let Some(src) =
+                            let src_db_rels = if let Some(src) =
                                 conn.config.get("table.include.list")
                             {
                                 if let Some(src_str) = src.as_str() {

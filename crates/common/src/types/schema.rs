@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct Table {
     pub name: String,

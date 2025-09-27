@@ -1,9 +1,9 @@
 use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
 use crate::executor::{ExecutorError, ExecutorResponse};
-use crate::registry::{Compile, MemoryCatalog, Register};
+use crate::registry::{Compile, MemoryCatalog};
 use crate::{CatalogError, PipelineDecl, TransformDecl};
 use common::types::sources::SourceConnArgs;
-use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
+use database_adapters::{AsyncDatabaseAdapter};
 use serde_json::Value as Json;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
@@ -128,7 +128,7 @@ impl SqlExecutor {
 mod tests {
     use super::*;
     use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
-    use crate::registry::Getter;
+    use crate::registry::Register;
     use async_trait::async_trait;
     use database_adapters::DatabaseAdapterError;
     use sqlparser::ast::Value::SingleQuotedString;
@@ -397,7 +397,6 @@ mod tests {
             ],
         };
 
-        let connect_host = "http://localhost:8083";
         let mock_exec = MockKafkaExecutor {
             called: Mutex::new(vec![]),
         };

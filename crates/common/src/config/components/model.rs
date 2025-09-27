@@ -1,7 +1,7 @@
 use crate::config::components::foundry_project::ModelLayers;
 use crate::config::error::ConfigError;
 use crate::config::loader::load_config;
-use crate::config::traits::{ConfigName, FromFileConfigList, IntoConfigVec};
+use crate::config::traits::{ConfigName, IntoConfigVec};
 use crate::traits::IsFileExtension;
 use crate::types::schema::Column;
 use crate::types::Materialize;
@@ -9,7 +9,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
 use walkdir::WalkDir;
 
 // ---------------- Models Paths  ----------------

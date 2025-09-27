@@ -3,7 +3,7 @@ use common::config::components::global::FoundryConfig;
 use common::config::components::model::ModelsConfig;
 use common::config::components::sources::SourcePaths;
 use common::traits::IsFileExtension;
-use common::types::{Materialize, NodeTypes, ParsedInnerNode, ParsedNode};
+use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use std::io::Error;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
