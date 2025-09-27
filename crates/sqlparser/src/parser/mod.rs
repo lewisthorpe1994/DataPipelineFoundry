@@ -37,7 +37,7 @@ use crate::ast::helpers::{
     stmt_create_table::{CreateTableBuilder, CreateTableConfiguration},
 };
 
-use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
+use crate::ast::helpers::foundry_helpers::{collect_ref_source_calls, CreateModelView, DropStmt};
 use crate::ast::Statement::CreatePolicy;
 use crate::ast::*;
 use crate::dialect::*;
@@ -15393,15 +15393,26 @@ impl<'a> Parser<'a> {
         self.expect_token(&Token::SemiColon)?;
         self.expect_keyword(Keyword::CREATE)?;
         let create_model = self.parse_create()?;
-        let model_def = match create_model {
-            Statement::CreateTable(tbl) => ModelDef::Table(tbl),
-            _ => ModelDef::View(CreateModelView::try_from(create_model)?),
+
+        let (model_def, macro_call) = match create_model {
+            Statement::CreateTable(tbl) => {
+                let call = collect_ref_source_calls(&tbl.query.clone().unwrap());
+                (ModelDef::Table(tbl), call)
+            },
+            _ => {
+                let view = CreateModelView::try_from(create_model)?;
+                let call = collect_ref_source_calls(&view.query.clone());
+                (ModelDef::View(view), call)
+            },
         };
+        // let func = self.parse_function(
+        //     vec![ObjectNamePart::Identifier(Ident {}])
         let stmt = Statement::CreateModel(CreateModel {
             schema,
             name,
             model: model_def,
             drop: drop_stmt,
+            macro_fn_call: macro_call
         });
 
         Ok(stmt)

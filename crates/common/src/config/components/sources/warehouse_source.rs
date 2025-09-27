@@ -10,7 +10,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
 // ---------------- Source Config ----------------
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct WarehouseSourceConfig {
     pub name: String,
     pub database: Database,
@@ -22,7 +22,7 @@ impl ConfigName for WarehouseSourceConfig {
 }
 
 //  ---------------- WarehouseSource Configs ----------------
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct WarehouseSourceConfigs(HashMap<String, WarehouseSourceConfig>);
 
 impl Deref for WarehouseSourceConfigs {
@@ -97,6 +97,7 @@ impl WarehouseSourceConfigs {
     }
 
     pub fn resolve(&self, name: &str, table: &str) -> Result<String, WarehouseSourceConfigError> {
+        println!("{:?}", self);
         let config = self
             .get(name)
             .ok_or_else(|| WarehouseSourceConfigError::SourceNotFound(name.to_string()))?;
@@ -105,11 +106,11 @@ impl WarehouseSourceConfigs {
             .database
             .schemas
             .iter()
-            .flat_map(|schema| schema.tables.iter().map(move |t| (schema, t.name.clone())))
-            .find(|(_, t)| t == table);
+            .flat_map(|schema| schema.tables.iter().map(move |t| (config.database.name.clone(), schema, t.name.clone())))
+            .find(|(_, _, t)| t == table);
 
         match resolved {
-            Some((schema, table)) => Ok(format!("{}.{}", schema.name, table)),
+            Some((database, schema, table)) => Ok(format!("{}.{}.{}", database, schema.name, table)),
             None => Err(WarehouseSourceConfigError::TableNotFound(table.to_string())),
         }
     }

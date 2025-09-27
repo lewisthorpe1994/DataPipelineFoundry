@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline};
 use crate::error::DagError;
 
@@ -36,8 +36,18 @@ pub enum NodeAst {
     KafkaSmtPipeline(CreateSimpleMessageTransformPipeline),
     KafkaConnector(CreateKafkaConnector),
 }
+impl Display for NodeAst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeAst::Model(m) => write!(f, "{}", m),
+            NodeAst::KafkaSmt(m) => write!(f, "{}", m),
+            NodeAst::KafkaSmtPipeline(m) => write!(f, "{}", m),
+            NodeAst::KafkaConnector(m) => write!(f, "{}", m),
+        }
+    }
+}
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DagNode {
     pub name: String,
     pub ast: Option<NodeAst>,
@@ -45,4 +55,15 @@ pub struct DagNode {
     pub is_executable: bool,
     pub relations: Option<HashSet<String>>,
     //source: Option<String>,
+}
+impl Debug for DagNode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\
+        DagNode {{ \
+            name: {}, \
+            node_type: {:?}, \
+            is_executable: {}, \
+            relations: {:?} \
+        }}", self.name, self.node_type, self.is_executable, self.relations)
+    }
 }

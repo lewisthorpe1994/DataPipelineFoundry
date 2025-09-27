@@ -9,7 +9,8 @@ members = [
     "crates/test_utils",
     "crates/engine",
     "crates/dag",
-    "crates/database_adapters"
+    "crates/database_adapters",
+    "foundry_web/backend"
 ]
 
 [workspace.package]

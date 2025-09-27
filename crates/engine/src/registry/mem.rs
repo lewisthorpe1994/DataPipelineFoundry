@@ -1,9 +1,6 @@
 use crate::executor::sql::AstValueFormatter;
-use crate::{
-    CatalogError, CompiledModelDecl, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl,
-    PipelineDecl, TransformDecl,
-};
-use common::config::components::sources::warehouse_source::WarehouseSourceConfigs;
+use crate::{CatalogError, CompiledModelDecl, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl, PipelineDecl, TransformDecl, WarehouseSourceDec};
+use common::config::components::sources::warehouse_source::{WarehouseSourceConfig, WarehouseSourceConfigs};
 use common::types::{Materialize, ModelRef, ParsedInnerNode, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
@@ -20,6 +17,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use uuid::Uuid;
 use log::info;
+use sqlparser::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -38,6 +36,7 @@ pub enum NodeDec {
     KafkaSmtPipeline(PipelineDecl),
     KafkaConnector(KafkaConnectorMeta),
     Model(ModelDecl),
+    WarehouseSource(WarehouseSourceDec)
 }
 
 #[derive(Debug)]
@@ -119,10 +118,43 @@ impl MemoryCatalog {
                 declaration: NodeDec::KafkaSmt(dec.clone())
             });
         }
+
+        for (name, dec) in g.sources.iter() {
+            for schema in &dec.database.schemas {
+                for table in &schema.tables {
+                    nodes.push(CatalogNode {
+                        name: name.clone(),
+                        declaration: NodeDec::WarehouseSource(WarehouseSourceDec {
+                            schema: schema.name.clone(),
+                            table: table.name.clone(),
+                            database: dec.database.name.clone()
+                        })
+                    })
+                }
+            }
+        }
         nodes
     }
 }
 
+pub trait Resolve {
+    fn resolve_warehouse_source(&self, src: &SourceRef) -> Result<String, CatalogError>;
+    fn resolve_model(&self, model: ModelRef) -> Result<String, CatalogError>;
+}
+impl Resolve for MemoryCatalog {
+    fn resolve_warehouse_source(&self, src: &SourceRef) -> Result<String, CatalogError> {
+        let g = self.inner.read();
+        g.sources.resolve(&src.source_name, &src.source_table).map_err(|e| {
+            CatalogError::NotFound(format!(
+                "Source {} not found: {}",
+                src.source_name, e
+            ))
+        })
+    }
+    fn resolve_model(&self, model: ModelRef) -> Result<String, CatalogError> {
+        todo!()
+    }
+}
 
 fn collect_model_macros(query: &Query) -> (Option<Vec<ModelRef>>, Option<Vec<SourceRef>>) {
     let sql_text = query.to_string();
@@ -305,7 +337,7 @@ where
     Some(first.to_string())
 }
 
-trait IntoRelation {
+pub trait IntoRelation {
     fn into_relation(self) -> String;
 }
 
@@ -342,7 +374,11 @@ pub fn format_create_model_sql(sql: String, materialize: Materialize, model_name
 }
 
 pub trait Register: Send + Sync + 'static {
-    fn register_nodes(&self, parsed_nodes: Vec<ParsedNode>) -> Result<(), CatalogError>;
+    fn register_nodes(
+        &self, 
+        parsed_nodes: Vec<ParsedNode>, 
+        warehouse_sources: WarehouseSourceConfigs
+    ) -> Result<(), CatalogError>;
     fn register_object(&self, parsed_stmts: Vec<Statement>) -> Result<(), CatalogError>;
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError>;
     fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError>;
@@ -351,56 +387,42 @@ pub trait Register: Send + Sync + 'static {
         ast: CreateSimpleMessageTransformPipeline,
     ) -> Result<(), CatalogError>;
     fn register_model(&self, ast: CreateModel) -> Result<(), CatalogError>;
+    fn register_warehouse_sources(
+        &self,
+        warehouse_sources: WarehouseSourceConfigs
+    ) -> Result<(), CatalogError>;
 }
 
 fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
-    match a {
-        ParsedNode::KafkaSmtPipeline { node } => match b {
-            ParsedNode::KafkaSmt { node } => {
-                std::cmp::Ordering::Less
-            },
-            ParsedNode::KafkaConnector { node } => {
-                std::cmp::Ordering::Less
-            }
-            _ => std::cmp::Ordering::Equal,
+    fn priority(node: &ParsedNode) -> Option<u8> {
+        match node {
+            ParsedNode::KafkaSmt { .. } => Some(0),
+            ParsedNode::KafkaSmtPipeline { .. } => Some(1),
+            ParsedNode::KafkaConnector { .. } => Some(2),
+            _ => None,
         }
-        ParsedNode::KafkaSmt { node } => {
-            match b {
-                ParsedNode::KafkaSmtPipeline { node } => {
-                    std::cmp::Ordering::Less
-                }
-                ParsedNode::KafkaConnector { node } => {
-                    std::cmp::Ordering::Less
-                }
-                _ => std::cmp::Ordering::Equal,
-            }
-        }
-        ParsedNode::KafkaConnector { node } => {
-            match b {
-                ParsedNode::KafkaSmt { node } => {
-                    std::cmp::Ordering::Greater
-                }
-                ParsedNode::KafkaSmtPipeline { node } => {
-                    std::cmp::Ordering::Greater
-                }
-                _ => std::cmp::Ordering::Equal,
-            }
-        }
-        _ => std::cmp::Ordering::Equal
+    }
+
+    match (priority(a), priority(b)) {
+        (Some(pa), Some(pb)) => pa.cmp(&pb),
+        _ => std::cmp::Ordering::Equal,
     }
 }
 impl Register for MemoryCatalog {
-    fn register_nodes(&self, mut parsed_nodes: Vec<ParsedNode>) -> Result<(), CatalogError> {
+    fn register_nodes(
+        &self, 
+        mut parsed_nodes: Vec<ParsedNode>,
+        warehouse_sources: WarehouseSourceConfigs
+    ) -> Result<(), CatalogError> {
         parsed_nodes.sort_by(compare_node);
+        self.register_warehouse_sources(warehouse_sources)?;
         for node in parsed_nodes {
-            let (path, config) = match &node {
-                ParsedNode::Model { node, config } => (&node.path, config.clone()),
+            let (path, config, node_name) = match &node {
+                ParsedNode::Model { node, config } => (&node.path, config.clone(), node.name.clone()),
                 ParsedNode::KafkaConnector { node }
                 | ParsedNode::KafkaSmt { node }
-                | ParsedNode::KafkaSmtPipeline { node }
-                | ParsedNode::Source { node } => (&node.path, None),
+                | ParsedNode::KafkaSmtPipeline { node } => (&node.path, None, node.name.clone()),
             };
-            info!("reading node from {}", path.display());
             let sql = read_sql_file_from_path(path)
                 .map_err(|_| CatalogError::NotFound(format!("{:?} not found", path)))?;
             // println!("model config {:?}", config);
@@ -412,7 +434,12 @@ impl Register for MemoryCatalog {
             // println!("{}", formatted_sql);
 
             let parsed_sql = Parser::parse_sql(&GenericDialect, &formatted_sql)
-                .map_err(|e| CatalogError::SqlParser(format!("{}", e)))?;
+                .map_err(|e| CatalogError::SqlParser(format!(
+                    "{} (node: {}, file: {})",
+                    e,
+                    node_name,
+                    path.display()
+                )))?;
 
             self.register_object(parsed_sql)?;
         }
@@ -435,6 +462,7 @@ impl Register for MemoryCatalog {
                 _ => (),
             }
         } else if parsed_stmts.len() == 2 {
+
         } else {
             return Err(CatalogError::Unsupported(
                 "Cannot register more then two statements".to_string(),
@@ -508,10 +536,10 @@ impl Register for MemoryCatalog {
             (schema, table)
         }
 
-        let (schema, table_name, materialize, query_for_refs) = match &ast.model {
+        let (schema, table_name, materialize) = match &ast.model {
             ModelDef::Table(tbl) => {
                 let (s, t) = split_schema_table(&tbl.name);
-                (s, t, Some(Materialize::Table), tbl.query.as_deref())
+                (s, t, Some(Materialize::Table))
             }
             ModelDef::View(v) => {
                 let (s, t) = split_schema_table(&v.name);
@@ -520,19 +548,41 @@ impl Register for MemoryCatalog {
                 } else {
                     Materialize::View
                 };
-                (s, t, Some(m), None)
+                (s, t, Some(m))
             }
         };
-
-        let (refs, sources) = query_for_refs
-            .map(collect_model_macros)
-            .unwrap_or((None, None));
 
         let key = if schema.is_empty() {
             table_name.clone()
         } else {
             format!("{}.{}", schema, table_name)
         };
+        let (r, s): (Vec<MacroFnCall>, Vec<MacroFnCall>) = ast
+            .macro_fn_call
+            .clone()
+            .into_iter()
+            .partition(|call| matches!(call.m_type, MacroFnCallType::Ref)
+        );
+        
+        let refs = r
+            .iter()
+            .map(|call| {
+                ModelRef {
+                    table: call.args[1].clone(),
+                    schema: call.args[0].clone()
+                }
+            })
+            .collect::<Vec<ModelRef>>();
+        
+        let sources = s
+            .iter()
+            .map(|call| {
+                SourceRef {
+                    source_table: call.args[1].clone(), 
+                    source_name: call.args[0].clone()
+                }
+            })
+            .collect::<Vec<SourceRef>>();
 
         let model_dec = ModelDecl {
             schema,
@@ -548,6 +598,15 @@ impl Register for MemoryCatalog {
             return Err(CatalogError::Duplicate);
         }
         g.models.insert(key, model_dec);
+        Ok(())
+    }
+
+    fn register_warehouse_sources(
+        &self,
+        warehouse_sources: WarehouseSourceConfigs
+    ) -> Result<(), CatalogError> {
+        let mut g = self.inner.write();
+        g.sources = warehouse_sources;
         Ok(())
     }
 }
@@ -667,7 +726,6 @@ impl Macro for MemoryCatalog {
 
 pub trait Compile: Send + Sync + 'static + Getter {
     fn compile_kafka_decl(&self, name: &str) -> Result<KafkaConnectorDecl, CatalogError>;
-    fn compile_model_decl(&self, name: &str) -> Result<CompiledModelDecl, CatalogError>;
 }
 
 impl Compile for MemoryCatalog {
@@ -723,41 +781,6 @@ impl Compile for MemoryCatalog {
         };
         Ok(dec)
     }
-
-    fn compile_model_decl(&self, name: &str) -> Result<CompiledModelDecl, CatalogError> {
-        let model = self.get_model(name)?;
-
-        let refs_slice = model.refs.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
-        let sources_slice = model.sources.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
-
-        let schema = model.schema.clone();
-        let model_name = model.name.clone();
-        let materialize = model.materialize.clone();
-
-        let drop_sql = model.sql.drop.to_string().trim().to_string();
-
-        let mut create_sql = match &model.sql.model {
-            ModelDef::Table(tbl) => tbl.to_string(),
-            ModelDef::View(view) => view.to_string(),
-        };
-
-        create_sql = resolve_model_macros(create_sql, refs_slice, sources_slice);
-
-        if !create_sql.trim_end().ends_with(';') {
-            create_sql.push(';');
-        }
-
-        let create_sql = create_sql.trim().to_string();
-
-        let compiled_sql = format!("{}\n{}", drop_sql, create_sql);
-
-        Ok(CompiledModelDecl {
-            schema,
-            name: model_name,
-            sql: compiled_sql,
-            materialize,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -780,11 +803,13 @@ mod test {
 
         with_chdir(&project_root, move || {
             let config = read_config(None).expect("load example project config");
-            let nodes = parse_nodes(config).expect("parse example models");
+            let wh_config = config.warehouse_source.clone();
+            let nodes = parse_nodes(&config).expect("parse example models");
+            println!("{:#?}", nodes);
             // println!("{:#?}", nodes);
-            cat.register_nodes(nodes).expect("register nodes");
+            cat.register_nodes(nodes, wh_config).expect("register nodes");
             // println!("{:#?}", cat.inner.read().models);
-            println!("{:?}", cat.collect_catalog_nodes());
+            // println!("{:?}", cat.collect_catalog_nodes());
         })?;
 
         Ok(())
@@ -852,64 +877,6 @@ mod test {
             "${predicate}"
         );
         println!("{:?}", cat_smt)
-    }
-
-    #[test]
-    fn register_model_parses_table_and_inserts() {
-        let sql = r#"
-      create model schema.some_model as
-      drop view if exists some_model cascade;
-      create table some_model as
-      with test as (
-        select *
-        from {{ ref('schema','stg_orders') }} as o
-        join {{ source('raw','stg_customers') }} as c
-          on o.customer_id = c.id
-      )
-      select * from test;
-        "#;
-
-        let dialect = GenericDialect {};
-        let stmts = Parser::parse_sql(&dialect, sql).expect("parse should succeed");
-        assert_eq!(stmts.len(), 1);
-        let cm = match stmts.into_iter().next().unwrap() {
-            Statement::CreateModel(cm) => cm,
-            other => panic!("expected CreateModel, got {:?}", other),
-        };
-
-        let cat = MemoryCatalog::new();
-        cat.register_model(cm).expect("register model");
-
-        // Assert model stored
-        let g = cat.inner.read();
-        assert_eq!(g.models.len(), 1);
-        let (k, m) = g.models.iter().next().unwrap();
-        assert_eq!(k, "some_model");
-        assert_eq!(m.schema, "");
-        assert_eq!(m.name, "some_model");
-        assert!(matches!(m.materialize, Some(Materialize::Table)));
-        assert_eq!(
-            m.refs.as_deref(),
-            Some(&[ModelRef::new("schema", "stg_orders")][..])
-        );
-        assert_eq!(
-            m.sources.as_deref(),
-            Some(
-                &[SourceRef {
-                    source_name: "raw".to_string(),
-                    source_table: "stg_customers".to_string(),
-                }][..]
-            )
-        );
-        let compiled = cat.compile_model_decl("some_model").expect("compile model");
-        assert_eq!(compiled.name, "some_model");
-        assert!(compiled
-            .sql
-            .contains("DROP VIEW IF EXISTS some_model CASCADE;"));
-        assert!(compiled.sql.contains("CREATE TABLE some_model AS"));
-        assert!(compiled.sql.contains("FROM schema.stg_orders AS o"));
-        assert!(compiled.sql.contains("JOIN raw.stg_customers AS c"));
-        println!("{:?}", compiled.sql);
     }
 
     #[test]

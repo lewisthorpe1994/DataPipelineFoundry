@@ -6,4 +6,4 @@
     o.customer_id,
     o.order_date,
     o.total_amount
-  from {{ ref('bronze','bronze_orders') }} as o;
+  from {{ ref('bronze','orders') }} as o;

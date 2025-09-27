@@ -178,9 +178,6 @@ pub enum ParsedNode {
     KafkaSmtPipeline {
         node: ParsedInnerNode,
     },
-    Source {
-        node: ParsedInnerNode,
-    },
 }
 
 pub trait Identifier {

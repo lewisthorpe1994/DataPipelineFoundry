@@ -6,11 +6,14 @@ use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs
 use crate::config::components::sources::{SourcePathConfig, SourcePaths};
 use crate::config::error::ConfigError;
 use crate::config::traits::{ConfigName, FromFileConfigList, IntoConfigVec};
-use database_adapters::AdapterConnectionDetails;
-use serde::de::DeserializeOwned;
+use database_adapters::{AdapterConnectionDetails, DatabaseAdapterType};
+use serde::de::{DeserializeOwned, Error};
+use serde::Deserialize;
+use serde_yaml::{self, Error as YamlError, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::fmt;
 
 pub fn load_config<T, V, Wrapper>(path: &Path) -> Result<Wrapper, ConfigError>
 where
@@ -45,8 +48,14 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         ));
     }
     let conn_file = fs::File::open(connections_path)?;
-    let connections: HashMap<String, AdapterConnectionDetails> =
-        serde_yaml::from_reader(conn_file)?;
+    let raw_connections: HashMap<String, Value> = serde_yaml::from_reader(conn_file)?;
+    let mut connections: HashMap<String, HashMap<String, AdapterConnectionDetails>> = HashMap::new();
+
+    for (profile, value) in raw_connections.into_iter() {
+        let profile_connections = parse_connection_profile(value)
+            .map_err(|err| ConfigError::ParseError(format!("profile {}: {}", profile, err)))?;
+        connections.insert(profile, profile_connections);
+    }
 
     let resolved_sources: SourcePaths = proj_config
         .paths
@@ -115,6 +124,106 @@ fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     }
 }
 
+fn parse_connection_profile(value: Value) -> Result<HashMap<String, AdapterConnectionDetails>, YamlError> {
+    // First try to interpret as a single connection definition.
+    if let Ok(single) = serde_yaml::from_value::<RawConnectionDetails>(value.clone()) {
+        let mut map = HashMap::new();
+        map.insert(
+            "default".to_string(),
+            single.into_adapter_details()?,
+        );
+        return Ok(map);
+    }
+
+    // Otherwise expect a map of named connections.
+    let nested: HashMap<String, RawConnectionDetails> = serde_yaml::from_value(value)?;
+    let mut profile = HashMap::new();
+    for (name, raw) in nested.into_iter() {
+        profile.insert(name, raw.into_adapter_details()?);
+    }
+    Ok(profile)
+}
+
+#[derive(Debug, Deserialize)]
+struct RawConnectionDetails {
+    #[serde(default)]
+    adapter: Option<DatabaseAdapterType>,
+    #[serde(default)]
+    adapter_type: Option<DatabaseAdapterType>,
+    host: String,
+    user: String,
+    database: String,
+    password: String,
+    #[serde(deserialize_with = "deserialize_port_to_string")]
+    port: String,
+}
+
+impl RawConnectionDetails {
+    fn into_adapter_details(self) -> Result<AdapterConnectionDetails, YamlError> {
+        let adapter_type = self
+            .adapter_type
+            .or(self.adapter)
+            .ok_or_else(|| YamlError::custom("missing `adapter` or `adapter_type`"))?;
+
+        Ok(AdapterConnectionDetails::new(
+            self.host.as_str(),
+            self.user.as_str(),
+            self.database.as_str(),
+            self.password.as_str(),
+            self.port.as_str(),
+            adapter_type,
+        ))
+    }
+}
+
+fn deserialize_port_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct PortVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for PortVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or integer port value")
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if value < 0 {
+                return Err(E::custom("port cannot be negative"));
+            }
+            Ok(value.to_string())
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value.to_owned())
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value)
+        }
+    }
+
+    deserializer.deserialize_any(PortVisitor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +252,9 @@ mod tests {
         assert_eq!(layers["gold"], "foundry_models/gold");
 
         assert!(config.connections.contains_key("dev"));
+        let dev_connections = &config.connections["dev"];
+        assert!(dev_connections.contains_key("warehouse_source"));
+        assert!(dev_connections.contains_key("db_source"));
 
         let warehouse_cfg = &config.warehouse_source;
         assert!(warehouse_cfg.contains_key("some_orders"));
@@ -182,5 +294,27 @@ mod tests {
             silver_orders.materialization,
             crate::types::Materialize::MaterializedView
         );
+    }
+
+    #[test]
+    fn test_raw_connection_allows_numeric_port_and_adapter_alias() {
+        let yaml = r#"
+adapter: postgres
+host: localhost
+user: postgres
+database: postgres
+password: postgres
+port: 5432
+"#;
+
+        let raw: RawConnectionDetails = serde_yaml::from_str(yaml).expect("parse raw connection");
+        assert_eq!(raw.port, "5432");
+        assert!(matches!(
+            raw.adapter,
+            Some(DatabaseAdapterType::Postgres)
+        ));
+
+        // Ensure we can convert into adapter details without error
+        raw.into_adapter_details().expect("connection details");
     }
 }

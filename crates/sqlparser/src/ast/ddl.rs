@@ -20,15 +20,15 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::fmt::{self, Display, Formatter, Write};
+use core::fmt::{self, Debug, Display, Formatter, Write};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "visitor")]
 use sqlparser_derive::{Visit, VisitMut};
 
-use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt};
+use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt, MacroFnCall, MacroFnCallType};
 use crate::ast::value::escape_single_quote_string;
 use crate::ast::{
     display_comma_separated, display_separated, CommentDef, CreateFunctionBody,
@@ -2520,6 +2520,7 @@ pub struct CreateModel {
     pub name: Ident,
     pub model: ModelDef,
     pub drop: DropStmt,
+    pub macro_fn_call: Vec<MacroFnCall>
 }
 
 impl fmt::Display for CreateModel {
@@ -2538,12 +2539,116 @@ impl fmt::Display for CreateModel {
         write!(
             f,
             "CREATE MODEL {schema}.{name} AS\n\
-            DROP {model} IF EXISTS {schema}.{name};\n\
+            DROP {model} IF EXISTS {schema}.{name} CASCADE;\n\
             {statement}",
             name = self.name,
             model = model,
             statement = self.model,
             schema = self.schema,
         )
+    }
+}
+pub struct ModelSqlCompileError(pub String);
+
+impl Debug for ModelSqlCompileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Display for ModelSqlCompileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for ModelSqlCompileError {}
+impl CreateModel {
+    pub fn compile<F>(&self, src_resolver: F) -> Result<String, ModelSqlCompileError>
+    where
+        F: Fn(&str, &str) -> Result<String, ModelSqlCompileError>
+    {
+        let mut mappings = vec![];
+        for call in &self.macro_fn_call {
+            if call.m_type == MacroFnCallType::Source {
+                let mapping = HashMap::from([
+                    ("name".to_string(), src_resolver(&call.args[0], &call.args[1])?),
+                    ("to_replace".to_string(), call.call_def.clone()),
+                ]);
+                mappings.push(mapping)
+            } else {
+                mappings.push(HashMap::from([
+                    ("name".to_string(), call.args.join(".")),
+                    ("to_replace".to_string(), call.call_def.clone()),
+                ]))
+            }
+        }
+
+        let sql = if mappings.len() > 0 {
+            let mut sql = self.model.to_string();
+            for mapping in mappings {
+                sql = sql.replace(mapping.get("to_replace").unwrap(), mapping.get("name").unwrap());
+            }
+            sql
+        } else {
+            self.to_string()
+        };
+
+        let model = match &self.model {
+            ModelDef::Table(stmt) => "TABLE",
+            ModelDef::View(stmt) => {
+                if stmt.materialized {
+                    "MATERIALIZED VIEW"
+                } else {
+                    "VIEW"
+                }
+            }
+        };
+
+        let compiled = format!("DROP {} IF EXISTS {}.{} CASCADE;\n{}", model, self.schema, self.name, sql);
+
+        Ok(compiled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
+    use sqlparser::dialect::GenericDialect;
+    use sqlparser::parser::Parser;
+    use crate::ast::Statement;
+
+    #[test]
+    fn compile_replaces_ref_and_source_macros() {
+        let sql = r#"
+            CREATE MODEL bronze.orders AS
+            DROP TABLE IF EXISTS bronze.orders CASCADE;
+            CREATE TABLE bronze.orders AS
+            SELECT *
+            FROM source('warehouse', 'raw_orders')
+        "#;
+
+        let stmt = Parser::parse_sql(&GenericDialect, sql).unwrap();
+        let mut model = match stmt[0].clone() {
+            Statement::CreateModel(m) => m,
+            _ => panic!("expected CreateModel"),
+        };
+
+        model.macro_fn_call = vec![MacroFnCall {
+            m_type: MacroFnCallType::Source,
+            args: vec!["warehouse".into(), "raw_orders".into()],
+            call_def: "source('warehouse', 'raw_orders')".into(),
+        }];
+
+        let compiled = model
+            .compile(|schema, table| format!("{}.{}", schema, table))
+            .expect("compile");
+
+        assert!(compiled.contains("bronze.orders"));
+        assert!(compiled.contains("warehouse.raw_orders"));
+        assert!(!compiled.contains("source('warehouse', 'raw_orders')"));
+
+        println!("{}", compiled)
     }
 }

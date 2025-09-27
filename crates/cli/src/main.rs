@@ -3,13 +3,14 @@ mod commands;
 use crate::commands::init::InitArgs;
 use crate::commands::run::RunArgs;
 use clap::{Parser, Subcommand};
-// use commands::{handle_compile, handle_init, handle_run};
 use std::path::{Path, PathBuf};
 use time::format_description::FormatItem;
 use time::macros::format_description;
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+use crate::commands::compile::handle_compile;
+use crate::commands::handle_init;
 
 #[derive(Parser)]
 #[command(name = "foundry")]
@@ -46,45 +47,46 @@ fn main() {
     let time_format =
         format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]");
 
-    // tracing_subscriber::registry()
-    //     .with(
-    //         fmt::layer()
-    //             .with_timer(fmt::time::LocalTime::new(time_format))
-    //             .with_target(false)
-    //             .with_level(true)
-    //             .with_thread_names(false)
-    //             .with_line_number(false)
-    //             .with_file(false)
-    //             .with_span_events(fmt::format::FmtSpan::NONE) // 👈 Disable span name output
-    //             .compact(), // 👈 Fancy pre-built output
-    //     )
-    //     .with(filter)
-    //     .init();
-    // let cli = Cli::parse();
-    //
-    // match cli.command {
-    //     Cmd::Init(args) => {
-    //         // if let Err(e) = handle_init(&args.path, args.project_name, args.flow_arch) {
-    //         //     eprintln!(
-    //         //         "Failed to initialize project at {}: {}",
-    //         //         args.path.display(),
-    //         //         e
-    //         //     );
-    //         //     std::process::exit(1);
-    //         // }
-    //     }
-    //     Cmd::Compile => {
-    //         if let Err(e) = handle_compile() {
-    //             eprintln!("Compilation failed: {}", e);
-    //             std::process::exit(1);
-    //         }
-    //     }
-    //     Cmd::Run(args) => {
-    //         if let Err(e) = handle_run(args.model, cli.config_path) {
-    //             eprintln!("Run failed: {}", e);
-    //             std::process::exit(1);
-    //         }
-    //     }
-    //     _ => unimplemented!("Not implemented yet!"),
-    // }
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_timer(fmt::time::LocalTime::new(time_format))
+                .with_target(false)
+                .with_level(true)
+                .with_thread_names(false)
+                .with_line_number(false)
+                .with_file(false)
+                .with_span_events(fmt::format::FmtSpan::NONE) // 👈 Disable span name output
+                .compact(), // 👈 Fancy pre-built output
+        )
+        .with(filter)
+        .init();
+    let cli = Cli::parse();
+
+    match cli.command {
+        Cmd::Init(args) => {
+            if let Err(e) = handle_init(&args.path, args.project_name, args.flow_arch) {
+                eprintln!(
+                    "Failed to initialize project at {}: {}",
+                    args.path.display(),
+                    e
+                );
+                std::process::exit(1);
+            }
+        }
+        Cmd::Compile => {
+            if let Err(e) = handle_compile() {
+                eprintln!("Compilation failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Cmd::Run(args) => {
+            // if let Err(e) = handle_run(args.model, cli.config_path) {
+            //     eprintln!("Run failed: {}", e);
+            //     std::process::exit(1);
+            // }
+            unimplemented!("Not implemented yet!");
+        }
+        _ => unimplemented!("Not implemented yet!"),
+    }
 }

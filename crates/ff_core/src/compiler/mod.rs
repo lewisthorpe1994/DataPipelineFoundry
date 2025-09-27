@@ -1,4 +1,5 @@
-use crate::parser::parse_models;
+use std::collections::HashSet;
+use crate::parser::{parse_models, parse_nodes};
 use common::config::loader::read_config;
 use common::error::FFError;
 use common::types::{Identifier, RelationType};
@@ -7,21 +8,11 @@ use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use dag::types::{DagNodeType, NodeAst};
+use engine::registry;
+use engine::registry::{Compile, Register};
+use sqlparser::ast::ModelSqlCompileError;
 
-/// Compiles a materialized SQL statement.
-///
-/// This function generates the full DDL based on the provided materialization type, relation name, and SQL body.
-///
-/// # Arguments
-/// * `materialization` - The materialization type (e.g. "view", "table", etc).
-/// * `relation` - The target relation name.
-/// * `sql` - The SQL query body.
-///
-/// # Returns
-/// A fully assembled `CREATE ... AS ...` statement.
-pub fn build_materialized_sql(materialization: &str, relation: &str, sql: &str) -> String {
-    format!("CREATE {} {} AS {}", materialization, relation, sql)
-}
 
 /// Description of a compiled model written to `manifest.json`.
 #[derive(Debug, Serialize)]
@@ -29,93 +20,110 @@ struct ManifestModel {
     /// Fully qualified name of the model (e.g. `schema.table`).
     name: String,
     /// Path to the compiled SQL file on disk.
-    path: String,
+    compiled_executable: Option<String>,
     /// List of direct model dependencies.
-    depends_on: Vec<String>,
+    depends_on: Option<HashSet<String>>,
+    executable: bool,
 }
-
 /// Root manifest structure serialised to JSON.
 #[derive(Debug, Serialize)]
 struct Manifest {
-    models: Vec<ManifestModel>,
+    nodes: Vec<ManifestModel>,
 }
 
-// pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFError> {
-//     let catalog = engine::registry::MemoryCatalog::new();
-//     let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
-//
-//     // ---------------------------------------------------------------------
-//     // 1️⃣  Parse models and build the dependency DAG
-//     // ---------------------------------------------------------------------
-//     let nodes = match &config.project.paths.models.layers {
-//         Some(layers) => parse_models(layers, catalog).map_err(|e| FFError::Compile(e.into()))?,
-//         None => return Err(FFError::Compile("No models found to compile".into())),
-//     };
-//
-//     let dag = ModelsDag::new(nodes).map_err(|e| FFError::Compile(e.into()))?;
-//
-//     // ensure compile directory exists
-//     fs::create_dir_all(&compile_path).map_err(|e| FFError::Compile(e.into()))?;
-//
-//     // ---------------------------------------------------------------------
-//     // 2️⃣  Prepare Jinja environment for template rendering
-//     // ---------------------------------------------------------------------
-//     let dag_arc = Arc::new(dag);
-//     let env = build_jinja_env(dag_arc.clone(), Arc::new(config.warehouse_source));
-//
-//     // hold manifest data
-//     let mut manifest_models = Vec::new();
-//
-//     for node in dag_arc.graph.node_weights() {
-//         // read SQL to be compiled
-//         let sql = fs::read_to_string(&node.path).map_err(|e| FFError::Compile(e.into()))?;
-//
-//         // render macros (ref, source, etc)
-//         let rendered = env.render_str(&sql, ()).map_err(|e| FFError::Compile(e.into()))?;
-//
-//         // prepend materialisation statement
-//         let out = build_materialized_sql(&node.materialized.to_sql(), &node.identifier(), &rendered);
-//
-//         // write compiled SQL preserving directory structure under compile_path
-//         let models_dir = Path::new(&config.project.paths.models.dir);
-//         let rel_path = Path::new(&node.path)
-//             .strip_prefix(models_dir)
-//             .unwrap_or(Path::new(&node.path));
-//         let write_path = Path::new(&compile_path).join(rel_path);
-//         if let Some(parent) = write_path.parent() {
-//             fs::create_dir_all(parent).map_err(|e| FFError::Compile(e.into()))?;
-//         }
-//         fs::write(&write_path, out).map_err(|e| FFError::Compile(e.into()))?;
-//
-//         // collect manifest metadata
-//         let depends: Vec<String> = node
-//             .relations
-//             .iter()
-//             .filter(|r| matches!(r.relation_type, RelationType::Model))
-//             .map(|r| r.name.clone())
-//             .collect();
-//
-//         manifest_models.push(ManifestModel {
-//             name: node.identifier(),
-//             path: write_path.to_string_lossy().into(),
-//             depends_on: depends,
-//         });
-//     }
-//
-//     // ---------------------------------------------------------------------
-//     // 3️⃣  Export the DAG and manifest
-//     // ---------------------------------------------------------------------
-//     let dag_path = Path::new(&compile_path).join("dag.dot");
-//     dag_arc
-//         .export_dot_to(&dag_path)
-//         .map_err(|e| FFError::Compile(e.into()))?;
-//
-//     let manifest = Manifest {
-//         models: manifest_models,
-//     };
-//     let manifest_path = Path::new(&compile_path).join("manifest.json");
-//     let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
-//     serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
-//
-//     Ok(dag_arc)
-// }
+pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFError> {
+    let catalog = engine::registry::MemoryCatalog::new();
+    let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
+
+    // ---------------------------------------------------------------------
+    // 1️⃣  Parse models and build the dependency DAG
+    // ---------------------------------------------------------------------
+    let nodes = match &config.project.paths.models.layers {
+        Some(layers) => parse_nodes(&config).map_err(|e| FFError::Compile(e.into()))?,
+        None => return Err(FFError::Compile("No models found to compile".into())),
+    };
+
+    let mut dag = ModelsDag::new();
+    let wh_config = config.warehouse_source.clone();
+    catalog.register_nodes(nodes, wh_config).map_err(|e| FFError::Compile(e.into()))?;
+    dag.build(&catalog).map_err(|e| FFError::Compile(e.into()))?;
+
+    // ensure compile directory exists
+    fs::create_dir_all(&compile_path).map_err(|e| FFError::Compile(e.into()))?;
+
+    // ---------------------------------------------------------------------
+    // 2️⃣  Prepare Jinja environment for template rendering
+    // ---------------------------------------------------------------------
+    let dag_arc = Arc::new(dag);
+
+    // hold manifest data
+    let mut manifest_models = Vec::new();
+
+    for node in dag_arc.graph.node_weights() {
+        // read SQL to be compiled
+        if !node.is_executable { continue }
+
+        let sql = match &node.ast {
+            Some(model) => {
+                match model {
+                    NodeAst::Model(m) => {
+                        let compiled = m.compile(|schema, table| {
+                            config
+                                .warehouse_source
+                                .resolve(schema, table)
+                                .map_err(|e| ModelSqlCompileError(e.to_string()))
+                        }).map_err(|e| FFError::Compile(e.into()))?;
+                        Some(compiled)
+                    }
+                    NodeAst::KafkaConnector(connector) => {
+                        Some(catalog.compile_kafka_decl(&node.name)
+                            .map_err(|e| FFError::Compile(e.into()))?
+                            .to_string())
+                    },
+                    NodeAst::KafkaSmtPipeline(p) => {Some(p.to_string())},
+                    NodeAst::KafkaSmt(s) => {Some(s.to_string())},
+                }
+            }
+            _ => None,
+        };
+
+
+        manifest_models.push(ManifestModel {
+            name: node.name.clone(),
+            depends_on: node.relations.clone(),
+            executable: node.is_executable,
+            compiled_executable: sql,
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // 3️⃣  Export the DAG and manifest
+    // ---------------------------------------------------------------------
+    let dag_path = Path::new(&compile_path).join("dag.dot");
+    dag_arc
+        .export_dot_to(&dag_path)
+        .map_err(|e| FFError::Compile(e.into()))?;
+
+    let manifest = Manifest {
+        nodes: manifest_models,
+    };
+    let manifest_path = Path::new(&compile_path).join("manifest.json");
+    let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
+    serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
+
+    Ok(dag_arc)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::compiler::compile;
+    use test_utils::{get_root_dir, with_chdir};
+
+    #[test]
+    fn test() {
+        let project_root = get_root_dir();
+        with_chdir(&project_root, move || {
+            let res = compile(".compiled".to_string()).unwrap();
+        }).expect("compile failed");
+    }
+}

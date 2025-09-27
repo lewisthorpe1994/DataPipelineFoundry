@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display, Formatter};
 pub enum ConfigError {
     IncorrectPath(String),
     MissingConnection(String),
-    ParseError(serde_yaml::Error),
+    ParseError(String),
     PathError(std::io::Error),
 }
 
@@ -28,7 +28,7 @@ impl From<std::io::Error> for ConfigError {
 
 impl From<serde_yaml::Error> for ConfigError {
     fn from(err: serde_yaml::Error) -> Self {
-        Self::ParseError(err)
+        Self::ParseError(err.to_string())
     }
 }
 

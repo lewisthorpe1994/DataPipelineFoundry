@@ -1,8 +1,4 @@
-use crate::ast::{
-    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Ident,
-    KafkaConnectorType, ObjectName, ObjectType, Query, Statement, Value, ValueWithSpan,
-    ViewColumnDef,
-};
+use crate::ast::{display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr, Function, FunctionArg, FunctionArgExpr, FunctionArguments, Ident, KafkaConnectorType, ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor, TableWithJoins, Value, ValueWithSpan, ViewColumnDef};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
@@ -61,6 +57,136 @@ impl ParseUtils for Parser<'_> {
         Ok(kv_vec)
     }
 }
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum MacroFnCallType {
+    Ref,
+    Source,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MacroFnCall {
+    pub m_type: MacroFnCallType,
+    pub args: Vec<String>,
+    pub call_def: String,
+}
+
+/// Collect all ref(...) and source(...) function calls from a parsed `Query`.
+pub fn collect_ref_source_calls(query: &Query) -> Vec<MacroFnCall> {
+    let mut refs = Vec::new();
+    let mut sources = Vec::new();
+    collect_in_set_expr(&query.body, &mut refs, &mut sources);
+
+    fn into_macro(kind: MacroFnCallType, func: Function) -> MacroFnCall {
+        let call_def = func.to_string();
+        let mut args = Vec::new();
+
+        if let FunctionArguments::List(list) = func.args {
+            for arg in list.args {
+                match arg {
+                    FunctionArg::Unnamed(expr) => args.push(arg_expr_to_clean_string(&expr)),
+                    FunctionArg::Named { name, arg, .. } => args.push(format!(
+                        "{} => {}",
+                        name.value,
+                        arg_expr_to_clean_string(&arg)
+                    )),
+                    FunctionArg::ExprNamed { name, arg, .. } => args.push(format!(
+                        "{} => {}",
+                        expr_to_clean_string(&name),
+                        arg_expr_to_clean_string(&arg)
+                    )),
+                }
+            }
+        }
+
+        MacroFnCall {
+            m_type: kind,
+            args,
+            call_def,
+        }
+    }
+
+    refs
+        .into_iter()
+        .map(|f| into_macro(MacroFnCallType::Ref, f))
+        .chain(
+            sources
+                .into_iter()
+                .map(|f| into_macro(MacroFnCallType::Source, f)),
+        )
+        .collect()
+}
+
+fn collect_in_set_expr(set: &SetExpr, refs: &mut Vec<Function>, sources: &mut Vec<Function>) {
+    match set {
+        SetExpr::Select(select) => {
+            for table in &select.from {
+                collect_in_table_with_joins(table, refs, sources);
+            }
+        }
+        SetExpr::Query(query) => collect_in_set_expr(&query.body, refs, sources),
+        SetExpr::SetOperation { left, right, .. } => {
+            collect_in_set_expr(left, refs, sources);
+            collect_in_set_expr(right, refs, sources);
+        }
+        _ => {}
+    }
+}
+
+fn collect_in_table_with_joins(
+    table: &TableWithJoins,
+    refs: &mut Vec<Function>,
+    sources: &mut Vec<Function>,
+) {
+    collect_in_table_factor(&table.relation, refs, sources);
+    for join in &table.joins {
+        collect_in_table_factor(&join.relation, refs, sources);
+    }
+}
+
+fn collect_in_table_factor(
+    factor: &TableFactor,
+    refs: &mut Vec<Function>,
+    sources: &mut Vec<Function>,
+) {
+    match factor {
+        TableFactor::TableFunction { expr, .. } => {
+            if let Expr::Function(func) = expr {
+                match func.name.to_string().to_lowercase().as_str() {
+                    "ref" => refs.push(func.clone()),
+                    "source" => sources.push(func.clone()),
+                    _ => {}
+                }
+            }
+        }
+        TableFactor::Derived { subquery, .. } => collect_in_set_expr(&subquery.body, refs, sources),
+        TableFactor::NestedJoin { table_with_joins, .. } => {
+            collect_in_table_with_joins(table_with_joins, refs, sources);
+        }
+        _ => {}
+    }
+}
+
+fn arg_expr_to_clean_string(arg: &FunctionArgExpr) -> String {
+    match arg {
+        FunctionArgExpr::Expr(expr) => expr_to_clean_string(expr),
+        FunctionArgExpr::QualifiedWildcard(prefix) => format!("{}.*", prefix),
+        FunctionArgExpr::Wildcard => "*".into(),
+    }
+}
+
+fn expr_to_clean_string(expr: &Expr) -> String {
+    match expr {
+        Expr::Value(s) => s.value.to_string().replace("'", ""),
+        Expr::Identifier(ident) => ident.value.clone(),
+        Expr::CompoundIdentifier(idents) => idents
+            .iter()
+            .map(|i| i.value.clone())
+            .collect::<Vec<_>>()
+            .join("."),
+        _ => expr.to_string(),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -74,7 +200,7 @@ pub struct CreateModelView {
     /// View name
     pub name: ObjectName,
     columns: Vec<ViewColumnDef>,
-    query: Box<Query>,
+    pub query: Box<Query>,
     options: CreateTableOptions,
     cluster_by: Vec<Ident>,
     /// Snowflake: Views can have comments in Snowflake.

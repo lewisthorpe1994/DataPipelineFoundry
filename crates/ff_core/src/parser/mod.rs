@@ -8,7 +8,7 @@ use std::io::Error;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub fn parse_nodes(config: FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
+pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
     if let Some(model_layers_path) = &config.project.paths.models.layers {
         nodes.extend(parse_models(model_layers_path, config.models.as_ref())?)
@@ -68,6 +68,7 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
         format!("{}_{}", schema, stem)
     }
 }
+
 
 pub fn parse_kafka(config: &SourcePaths) -> Result<Vec<ParsedNode>, Error> {
     use common::types::sources::SourceType;
@@ -285,7 +286,7 @@ mod tests {
 
         let nodes = with_chdir(&project_root, || {
             let config = read_config(None).expect("load example project config");
-            parse_nodes(config).expect("parse example nodes")
+            parse_nodes(&config).expect("parse example nodes")
         })?;
 
         assert_eq!(
@@ -301,7 +302,6 @@ mod tests {
                 ParsedNode::KafkaSmt { node } => (node.name, "smt", node.path),
                 ParsedNode::KafkaSmtPipeline { node } => (node.name, "smtpipeline", node.path),
                 ParsedNode::KafkaConnector { node } => (node.name, "connector", node.path),
-                ParsedNode::Source { node } => (node.name, "source", node.path),
             })
             .map(|(name, ty, path)| {
                 let path = if path.is_absolute() {

@@ -61,7 +61,7 @@ pub use self::ddl::{
     IdentityProperty, IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder,
     IndexOption, IndexType, KeyOrIndexDisplay, ModelDef, NullsDistinctOption, Owner, Partition,
     ProcedureParam, ReferentialAction, TableConstraint, TagsColumnOption, TransformCall,
-    UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation, ViewColumnDef,
+    UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation, ViewColumnDef, ModelSqlCompileError
 };
 pub use self::dml::{CreateIndex, CreateTable, Delete, IndexColumn, Insert};
 pub use self::operator::{BinaryOperator, UnaryOperator};

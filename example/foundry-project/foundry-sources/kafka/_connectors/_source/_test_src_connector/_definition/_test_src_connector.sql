@@ -6,7 +6,7 @@ CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test_src_connector (
         "database.port" = 5432,
         "database.hostname" = "postgres",
         "database.dbname" = "postgres",
-        "table.include.list" = "public.test_connector_src",
+        "table.include.list" = "public.orders",
         "snapshot.mode" = "initial",
         "kafka.bootstrap.servers" = "kafka_broker:9092",
         "topic.prefix" = "postgres-"

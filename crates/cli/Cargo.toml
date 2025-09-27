@@ -17,3 +17,4 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 
 [dev-dependencies]
 serde_yaml = { workspace = true }
+test_utils = { workspace = true }

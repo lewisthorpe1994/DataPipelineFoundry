@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::executor::sql::KvPairs;
 use crate::types::KafkaConnectorType;
 use chrono::{DateTime, Utc};
@@ -100,8 +101,8 @@ pub struct ModelDecl {
     pub name: String,
     pub sql: CreateModel,
     pub materialize: Option<Materialize>,
-    pub refs: Option<Vec<ModelRef>>,
-    pub sources: Option<Vec<SourceRef>>,
+    pub refs: Vec<ModelRef>,
+    pub sources: Vec<SourceRef>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResourceRef {
@@ -120,6 +121,11 @@ pub struct KafkaConnectorDecl {
     pub reads: Vec<ResourceRef>,
     pub writes: Vec<ResourceRef>,
 }
+impl Display for KafkaConnectorDecl {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{\"name\": {}, \"config\": {}}}", self.name, self.config)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompiledModelDecl {
@@ -127,4 +133,16 @@ pub struct CompiledModelDecl {
     pub name: String,
     pub sql: String,
     pub materialize: Option<Materialize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WarehouseSourceDec {
+    pub schema: String,
+    pub table: String,
+    pub database: String,
+}
+impl WarehouseSourceDec {
+    pub fn identifier(&self) -> String {
+        format!("{}.{}.{}", self.database,self.schema, self.table)
+    }
 }
