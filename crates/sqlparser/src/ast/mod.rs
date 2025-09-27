@@ -59,9 +59,10 @@ pub use self::ddl::{
     CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Deduplicate,
     DeferrableInitial, DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters,
     IdentityProperty, IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder,
-    IndexOption, IndexType, KeyOrIndexDisplay, ModelDef, NullsDistinctOption, Owner, Partition,
-    ProcedureParam, ReferentialAction, TableConstraint, TagsColumnOption, TransformCall,
-    UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation, ViewColumnDef, ModelSqlCompileError
+    IndexOption, IndexType, KeyOrIndexDisplay, ModelDef, ModelSqlCompileError, NullsDistinctOption,
+    Owner, Partition, ProcedureParam, ReferentialAction, TableConstraint, TagsColumnOption,
+    TransformCall, UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation,
+    ViewColumnDef,
 };
 pub use self::dml::{CreateIndex, CreateTable, Delete, IndexColumn, Insert};
 pub use self::operator::{BinaryOperator, UnaryOperator};

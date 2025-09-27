@@ -11,9 +11,9 @@ use serde::de::{DeserializeOwned, Error};
 use serde::Deserialize;
 use serde_yaml::{self, Error as YamlError, Value};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::fmt;
 
 pub fn load_config<T, V, Wrapper>(path: &Path) -> Result<Wrapper, ConfigError>
 where
@@ -49,7 +49,8 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
     }
     let conn_file = fs::File::open(connections_path)?;
     let raw_connections: HashMap<String, Value> = serde_yaml::from_reader(conn_file)?;
-    let mut connections: HashMap<String, HashMap<String, AdapterConnectionDetails>> = HashMap::new();
+    let mut connections: HashMap<String, HashMap<String, AdapterConnectionDetails>> =
+        HashMap::new();
 
     for (profile, value) in raw_connections.into_iter() {
         let profile_connections = parse_connection_profile(value)
@@ -124,14 +125,13 @@ fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     }
 }
 
-fn parse_connection_profile(value: Value) -> Result<HashMap<String, AdapterConnectionDetails>, YamlError> {
+fn parse_connection_profile(
+    value: Value,
+) -> Result<HashMap<String, AdapterConnectionDetails>, YamlError> {
     // First try to interpret as a single connection definition.
     if let Ok(single) = serde_yaml::from_value::<RawConnectionDetails>(value.clone()) {
         let mut map = HashMap::new();
-        map.insert(
-            "default".to_string(),
-            single.into_adapter_details()?,
-        );
+        map.insert("default".to_string(), single.into_adapter_details()?);
         return Ok(map);
     }
 
@@ -309,10 +309,7 @@ port: 5432
 
         let raw: RawConnectionDetails = serde_yaml::from_str(yaml).expect("parse raw connection");
         assert_eq!(raw.port, "5432");
-        assert!(matches!(
-            raw.adapter,
-            Some(DatabaseAdapterType::Postgres)
-        ));
+        assert!(matches!(raw.adapter, Some(DatabaseAdapterType::Postgres)));
 
         // Ensure we can convert into adapter details without error
         raw.into_adapter_details().expect("connection details");

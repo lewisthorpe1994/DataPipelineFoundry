@@ -15398,12 +15398,12 @@ impl<'a> Parser<'a> {
             Statement::CreateTable(tbl) => {
                 let call = collect_ref_source_calls(&tbl.query.clone().unwrap());
                 (ModelDef::Table(tbl), call)
-            },
+            }
             _ => {
                 let view = CreateModelView::try_from(create_model)?;
                 let call = collect_ref_source_calls(&view.query.clone());
                 (ModelDef::View(view), call)
-            },
+            }
         };
         // let func = self.parse_function(
         //     vec![ObjectNamePart::Identifier(Ident {}])
@@ -15412,7 +15412,7 @@ impl<'a> Parser<'a> {
             name,
             model: model_def,
             drop: drop_stmt,
-            macro_fn_call: macro_call
+            macro_fn_call: macro_call,
         });
 
         Ok(stmt)

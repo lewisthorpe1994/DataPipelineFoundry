@@ -97,7 +97,6 @@ impl WarehouseSourceConfigs {
     }
 
     pub fn resolve(&self, name: &str, table: &str) -> Result<String, WarehouseSourceConfigError> {
-        println!("{:?}", self);
         let config = self
             .get(name)
             .ok_or_else(|| WarehouseSourceConfigError::SourceNotFound(name.to_string()))?;
@@ -106,11 +105,18 @@ impl WarehouseSourceConfigs {
             .database
             .schemas
             .iter()
-            .flat_map(|schema| schema.tables.iter().map(move |t| (config.database.name.clone(), schema, t.name.clone())))
+            .flat_map(|schema| {
+                schema
+                    .tables
+                    .iter()
+                    .map(move |t| (config.database.name.clone(), schema, t.name.clone()))
+            })
             .find(|(_, _, t)| t == table);
 
         match resolved {
-            Some((database, schema, table)) => Ok(format!("{}.{}.{}", database, schema.name, table)),
+            Some((database, schema, table)) => {
+                Ok(format!("{}.{}.{}", database, schema.name, table))
+            }
             None => Err(WarehouseSourceConfigError::TableNotFound(table.to_string())),
         }
     }

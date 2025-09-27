@@ -1,12 +1,19 @@
 use crate::executor::sql::AstValueFormatter;
-use crate::{CatalogError, CompiledModelDecl, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl, PipelineDecl, TransformDecl, WarehouseSourceDec};
-use common::config::components::sources::warehouse_source::{WarehouseSourceConfig, WarehouseSourceConfigs};
+use crate::{
+    CatalogError, CompiledModelDecl, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl,
+    PipelineDecl, TransformDecl, WarehouseSourceDec,
+};
+use common::config::components::sources::warehouse_source::{
+    WarehouseSourceConfig, WarehouseSourceConfigs,
+};
 use common::types::{Materialize, ModelRef, ParsedInnerNode, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
+use log::info;
 use parking_lot::RwLock;
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, Value};
+use sqlparser::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline, ModelDef, ObjectName, ObjectNamePart, Query, Statement,
@@ -16,8 +23,6 @@ use sqlparser::parser::Parser;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use uuid::Uuid;
-use log::info;
-use sqlparser::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -36,7 +41,7 @@ pub enum NodeDec {
     KafkaSmtPipeline(PipelineDecl),
     KafkaConnector(KafkaConnectorMeta),
     Model(ModelDecl),
-    WarehouseSource(WarehouseSourceDec)
+    WarehouseSource(WarehouseSourceDec),
 }
 
 #[derive(Debug)]
@@ -95,27 +100,27 @@ impl MemoryCatalog {
 
         for (name, dec) in g.models.iter() {
             nodes.push(CatalogNode {
-                    name: name.to_owned(),
-                    declaration: NodeDec::Model(dec.clone())
-                });
+                name: name.to_owned(),
+                declaration: NodeDec::Model(dec.clone()),
+            });
         }
         for (name, dec) in g.connectors.iter() {
             nodes.push(CatalogNode {
                 name: name.to_owned(),
-                declaration: NodeDec::KafkaConnector(dec.clone())
+                declaration: NodeDec::KafkaConnector(dec.clone()),
             });
         }
         for (name, dec) in g.pipelines.iter() {
             nodes.push(CatalogNode {
                 name: name.to_owned(),
-                declaration: NodeDec::KafkaSmtPipeline(dec.clone())
+                declaration: NodeDec::KafkaSmtPipeline(dec.clone()),
             });
         }
         for (name, id) in g.transform_name_to_id.iter() {
             let dec = g.transforms_by_id.get(id).unwrap();
             nodes.push(CatalogNode {
                 name: name.to_owned(),
-                declaration: NodeDec::KafkaSmt(dec.clone())
+                declaration: NodeDec::KafkaSmt(dec.clone()),
             });
         }
 
@@ -127,8 +132,8 @@ impl MemoryCatalog {
                         declaration: NodeDec::WarehouseSource(WarehouseSourceDec {
                             schema: schema.name.clone(),
                             table: table.name.clone(),
-                            database: dec.database.name.clone()
-                        })
+                            database: dec.database.name.clone(),
+                        }),
                     })
                 }
             }
@@ -144,18 +149,16 @@ pub trait Resolve {
 impl Resolve for MemoryCatalog {
     fn resolve_warehouse_source(&self, src: &SourceRef) -> Result<String, CatalogError> {
         let g = self.inner.read();
-        g.sources.resolve(&src.source_name, &src.source_table).map_err(|e| {
-            CatalogError::NotFound(format!(
-                "Source {} not found: {}",
-                src.source_name, e
-            ))
-        })
+        g.sources
+            .resolve(&src.source_name, &src.source_table)
+            .map_err(|e| {
+                CatalogError::NotFound(format!("Source {} not found: {}", src.source_name, e))
+            })
     }
     fn resolve_model(&self, model: ModelRef) -> Result<String, CatalogError> {
         todo!()
     }
 }
-
 
 pub trait IntoRelation {
     fn into_relation(self) -> String;
@@ -166,7 +169,6 @@ impl IntoRelation for ModelRef {
         format_relation(&self.schema, &self.table)
     }
 }
-
 
 fn format_relation(schema: &str, table: &str) -> String {
     if schema.is_empty() {
@@ -190,9 +192,9 @@ pub fn format_create_model_sql(sql: String, materialize: Materialize, model_name
 
 pub trait Register: Send + Sync + 'static {
     fn register_nodes(
-        &self, 
-        parsed_nodes: Vec<ParsedNode>, 
-        warehouse_sources: WarehouseSourceConfigs
+        &self,
+        parsed_nodes: Vec<ParsedNode>,
+        warehouse_sources: WarehouseSourceConfigs,
     ) -> Result<(), CatalogError>;
     fn register_object(&self, parsed_stmts: Vec<Statement>) -> Result<(), CatalogError>;
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError>;
@@ -204,7 +206,7 @@ pub trait Register: Send + Sync + 'static {
     fn register_model(&self, ast: CreateModel) -> Result<(), CatalogError>;
     fn register_warehouse_sources(
         &self,
-        warehouse_sources: WarehouseSourceConfigs
+        warehouse_sources: WarehouseSourceConfigs,
     ) -> Result<(), CatalogError>;
 }
 
@@ -225,15 +227,17 @@ fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
 }
 impl Register for MemoryCatalog {
     fn register_nodes(
-        &self, 
+        &self,
         mut parsed_nodes: Vec<ParsedNode>,
-        warehouse_sources: WarehouseSourceConfigs
+        warehouse_sources: WarehouseSourceConfigs,
     ) -> Result<(), CatalogError> {
         parsed_nodes.sort_by(compare_node);
         self.register_warehouse_sources(warehouse_sources)?;
         for node in parsed_nodes {
             let (path, config, node_name) = match &node {
-                ParsedNode::Model { node, config } => (&node.path, config.clone(), node.name.clone()),
+                ParsedNode::Model { node, config } => {
+                    (&node.path, config.clone(), node.name.clone())
+                }
                 ParsedNode::KafkaConnector { node }
                 | ParsedNode::KafkaSmt { node }
                 | ParsedNode::KafkaSmtPipeline { node } => (&node.path, None, node.name.clone()),
@@ -248,13 +252,14 @@ impl Register for MemoryCatalog {
             };
             // println!("{}", formatted_sql);
 
-            let parsed_sql = Parser::parse_sql(&GenericDialect, &formatted_sql)
-                .map_err(|e| CatalogError::SqlParser(format!(
+            let parsed_sql = Parser::parse_sql(&GenericDialect, &formatted_sql).map_err(|e| {
+                CatalogError::SqlParser(format!(
                     "{} (node: {}, file: {})",
                     e,
                     node_name,
                     path.display()
-                )))?;
+                ))
+            })?;
 
             self.register_object(parsed_sql)?;
         }
@@ -277,7 +282,6 @@ impl Register for MemoryCatalog {
                 _ => (),
             }
         } else if parsed_stmts.len() == 2 {
-
         } else {
             return Err(CatalogError::Unsupported(
                 "Cannot register more then two statements".to_string(),
@@ -376,26 +380,21 @@ impl Register for MemoryCatalog {
             .macro_fn_call
             .clone()
             .into_iter()
-            .partition(|call| matches!(call.m_type, MacroFnCallType::Ref)
-        );
+            .partition(|call| matches!(call.m_type, MacroFnCallType::Ref));
 
         let refs = r
             .iter()
-            .map(|call| {
-                ModelRef {
-                    table: call.args[1].clone(),
-                    schema: call.args[0].clone()
-                }
+            .map(|call| ModelRef {
+                table: call.args[1].clone(),
+                schema: call.args[0].clone(),
             })
             .collect::<Vec<ModelRef>>();
 
         let sources = s
             .iter()
-            .map(|call| {
-                SourceRef {
-                    source_table: call.args[1].clone(),
-                    source_name: call.args[0].clone()
-                }
+            .map(|call| SourceRef {
+                source_table: call.args[1].clone(),
+                source_name: call.args[0].clone(),
             })
             .collect::<Vec<SourceRef>>();
 
@@ -418,7 +417,7 @@ impl Register for MemoryCatalog {
 
     fn register_warehouse_sources(
         &self,
-        warehouse_sources: WarehouseSourceConfigs
+        warehouse_sources: WarehouseSourceConfigs,
     ) -> Result<(), CatalogError> {
         let mut g = self.inner.write();
         g.sources = warehouse_sources;
@@ -600,21 +599,20 @@ impl Compile for MemoryCatalog {
 
 #[cfg(test)]
 mod test {
-    use common::config::loader::read_config;
     use super::*;
+    use common::config::loader::read_config;
+    use ff_core::parser::parse_nodes;
     use sqlparser::ast::Value::SingleQuotedString;
     use sqlparser::ast::{Ident, ValueWithSpan};
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
     use sqlparser::tokenizer::{Location, Span};
     use test_utils::{get_root_dir, with_chdir};
-    use ff_core::parser::parse_nodes;
 
     #[test]
     fn test_register_nodes_ingests_example_project() -> std::io::Result<()> {
         let cat = MemoryCatalog::new();
         let project_root = get_root_dir();
-
 
         with_chdir(&project_root, move || {
             let config = read_config(None).expect("load example project config");
@@ -622,7 +620,8 @@ mod test {
             let nodes = parse_nodes(&config).expect("parse example models");
             println!("{:#?}", nodes);
             // println!("{:#?}", nodes);
-            cat.register_nodes(nodes, wh_config).expect("register nodes");
+            cat.register_nodes(nodes, wh_config)
+                .expect("register nodes");
             // println!("{:#?}", cat.inner.read().models);
             // println!("{:?}", cat.collect_catalog_nodes());
         })?;

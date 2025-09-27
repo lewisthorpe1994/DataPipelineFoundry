@@ -1,7 +1,10 @@
-use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
-use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline};
 use crate::error::DagError;
+use sqlparser::ast::{
+    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline,
+};
+use std::collections::{BTreeSet, HashSet};
+use std::fmt::{Debug, Display, Formatter};
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -24,7 +27,7 @@ pub enum DagNodeType {
     KafkaPipeline,
     Model,
     SourceDb,
-    WarehouseSourceDb
+    WarehouseSourceDb,
 }
 
 pub type DagResult<T> = Result<T, DagError>;
@@ -53,17 +56,21 @@ pub struct DagNode {
     pub ast: Option<NodeAst>,
     pub node_type: DagNodeType,
     pub is_executable: bool,
-    pub relations: Option<HashSet<String>>,
+    pub relations: Option<BTreeSet<String>>,
     //source: Option<String>,
 }
 impl Debug for DagNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\
+        write!(
+            f,
+            "\
         DagNode {{ \
             name: {}, \
             node_type: {:?}, \
             is_executable: {}, \
             relations: {:?} \
-        }}", self.name, self.node_type, self.is_executable, self.relations)
+        }}",
+            self.name, self.node_type, self.is_executable, self.relations
+        )
     }
 }

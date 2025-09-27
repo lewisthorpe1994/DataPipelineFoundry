@@ -1,4 +1,3 @@
-use std::fmt::{Display, Formatter};
 use crate::executor::sql::KvPairs;
 use crate::types::KafkaConnectorType;
 use chrono::{DateTime, Utc};
@@ -9,6 +8,7 @@ use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline, Select, Statement,
 };
+use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 /// A single SMT / transform
@@ -123,7 +123,11 @@ pub struct KafkaConnectorDecl {
 }
 impl Display for KafkaConnectorDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{\"name\": {}, \"config\": {}}}", self.name, self.config)
+        write!(
+            f,
+            "{{\"name\": {}, \"config\": {}}}",
+            self.name, self.config
+        )
     }
 }
 
@@ -143,6 +147,6 @@ pub struct WarehouseSourceDec {
 }
 impl WarehouseSourceDec {
     pub fn identifier(&self) -> String {
-        format!("{}.{}.{}", self.database,self.schema, self.table)
+        format!("{}.{}.{}", self.database, self.schema, self.table)
     }
 }

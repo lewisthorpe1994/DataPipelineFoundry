@@ -1,5 +1,7 @@
 mod commands;
 
+use crate::commands::compile::handle_compile;
+use crate::commands::handle_init;
 use crate::commands::init::InitArgs;
 use crate::commands::run::RunArgs;
 use clap::{Parser, Subcommand};
@@ -9,8 +11,6 @@ use time::macros::format_description;
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
-use crate::commands::compile::handle_compile;
-use crate::commands::handle_init;
 
 #[derive(Parser)]
 #[command(name = "foundry")]

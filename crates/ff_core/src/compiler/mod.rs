@@ -1,18 +1,17 @@
-use std::collections::HashSet;
 use crate::parser::{parse_models, parse_nodes};
 use common::config::loader::read_config;
 use common::error::FFError;
 use common::types::{Identifier, RelationType};
+use dag::types::{DagNodeType, NodeAst};
 use dag::ModelsDag;
+use engine::registry;
+use engine::registry::{Compile, Register};
 use serde::Serialize;
+use sqlparser::ast::ModelSqlCompileError;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use dag::types::{DagNodeType, NodeAst};
-use engine::registry;
-use engine::registry::{Compile, Register};
-use sqlparser::ast::ModelSqlCompileError;
-
 
 /// Description of a compiled model written to `manifest.json`.
 #[derive(Debug, Serialize)]
@@ -22,7 +21,7 @@ struct ManifestModel {
     /// Path to the compiled SQL file on disk.
     compiled_executable: Option<String>,
     /// List of direct model dependencies.
-    depends_on: Option<HashSet<String>>,
+    depends_on: Option<BTreeSet<String>>,
     executable: bool,
 }
 /// Root manifest structure serialised to JSON.
@@ -45,8 +44,11 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
 
     let mut dag = ModelsDag::new();
     let wh_config = config.warehouse_source.clone();
-    catalog.register_nodes(nodes, wh_config).map_err(|e| FFError::Compile(e.into()))?;
-    dag.build(&catalog).map_err(|e| FFError::Compile(e.into()))?;
+    catalog
+        .register_nodes(nodes, wh_config)
+        .map_err(|e| FFError::Compile(e.into()))?;
+    dag.build(&catalog)
+        .map_err(|e| FFError::Compile(e.into()))?;
 
     // ensure compile directory exists
     fs::create_dir_all(&compile_path).map_err(|e| FFError::Compile(e.into()))?;
@@ -61,32 +63,34 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
 
     for node in dag_arc.graph.node_weights() {
         // read SQL to be compiled
-        if !node.is_executable { continue }
+        if !node.is_executable {
+            continue;
+        }
 
         let sql = match &node.ast {
-            Some(model) => {
-                match model {
-                    NodeAst::Model(m) => {
-                        let compiled = m.compile(|schema, table| {
+            Some(model) => match model {
+                NodeAst::Model(m) => {
+                    let compiled = m
+                        .compile(|schema, table| {
                             config
                                 .warehouse_source
                                 .resolve(schema, table)
                                 .map_err(|e| ModelSqlCompileError(e.to_string()))
-                        }).map_err(|e| FFError::Compile(e.into()))?;
-                        Some(compiled)
-                    }
-                    NodeAst::KafkaConnector(connector) => {
-                        Some(catalog.compile_kafka_decl(&node.name)
-                            .map_err(|e| FFError::Compile(e.into()))?
-                            .to_string())
-                    },
-                    NodeAst::KafkaSmtPipeline(p) => {Some(p.to_string())},
-                    NodeAst::KafkaSmt(s) => {Some(s.to_string())},
+                        })
+                        .map_err(|e| FFError::Compile(e.into()))?;
+                    Some(compiled)
                 }
-            }
+                NodeAst::KafkaConnector(connector) => Some(
+                    catalog
+                        .compile_kafka_decl(&node.name)
+                        .map_err(|e| FFError::Compile(e.into()))?
+                        .to_string(),
+                ),
+                NodeAst::KafkaSmtPipeline(p) => Some(p.to_string()),
+                NodeAst::KafkaSmt(s) => Some(s.to_string()),
+            },
             _ => None,
         };
-
 
         manifest_models.push(ManifestModel {
             name: node.name.clone(),
@@ -124,6 +128,7 @@ mod tests {
         let project_root = get_root_dir();
         with_chdir(&project_root, move || {
             let res = compile(".compiled".to_string()).unwrap();
-        }).expect("compile failed");
+        })
+        .expect("compile failed");
     }
 }

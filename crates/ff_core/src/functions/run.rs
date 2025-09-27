@@ -10,7 +10,7 @@ use log::info;
 use logging::timeit;
 use petgraph::Direction;
 use std::io;
-// 
+//
 // /// Execute the compiled SQL in dependency order using the provided executor.
 // async fn execute_dag_nodes<'a, T>(
 //     nodes: T,
@@ -35,10 +35,10 @@ use std::io;
 //             });
 //         }
 //     });
-// 
+//
 //     Ok(())
 // }
-// 
+//
 // /// Execute a single model or a slice of the DAG depending on the provided
 // /// selector syntax.
 // ///
@@ -80,7 +80,7 @@ use std::io;
 //             } else {
 //                 None
 //             };
-// 
+//
 //             if let Some(exec_order) = exec_order {
 //                 execute_dag_nodes(
 //                     exec_order,
@@ -101,7 +101,7 @@ use std::io;
 //                         ))
 //                     }
 //                 };
-// 
+//
 //                 execute_dag_nodes(
 //                     node,
 //                     &config.project.compile_path,
@@ -130,7 +130,7 @@ use std::io;
 //             .map_err(|e| FFError::Run(e.into()))?;
 //         }
 //     }
-// 
+//
 //     Ok(())
 // }
 //

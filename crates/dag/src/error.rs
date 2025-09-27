@@ -1,7 +1,7 @@
-use std::fmt::Display;
-use std::{fmt, io};
 use common::types::ModelRef;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
+use std::fmt::Display;
+use std::{fmt, io};
 
 #[derive(Debug)]
 pub enum DagError {
@@ -27,7 +27,9 @@ impl Display for DagError {
             DagError::DuplicateNode(r) => {
                 write!(f, "Found duplicated declaration of Node: {r:?}")
             }
-            DagError::MissingExpectedDependency( r) => write!(f, "Expected dependency not found for node {r:?}"),
+            DagError::MissingExpectedDependency(r) => {
+                write!(f, "Expected dependency not found for node {r:?}")
+            }
             DagError::RefNotFound(r) => write!(f, "Ref {r} not found!"),
             DagError::ExecutionError(e) => write!(f, "Execution error: {e}"),
             DagError::AstSyntax(e) => write!(f, "Unexpected AST error: {e}"),

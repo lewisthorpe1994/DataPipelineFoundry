@@ -28,7 +28,9 @@ use std::collections::{HashMap, HashSet};
 #[cfg(feature = "visitor")]
 use sqlparser_derive::{Visit, VisitMut};
 
-use crate::ast::helpers::foundry_helpers::{CreateModelView, DropStmt, MacroFnCall, MacroFnCallType};
+use crate::ast::helpers::foundry_helpers::{
+    CreateModelView, DropStmt, MacroFnCall, MacroFnCallType,
+};
 use crate::ast::value::escape_single_quote_string;
 use crate::ast::{
     display_comma_separated, display_separated, CommentDef, CreateFunctionBody,
@@ -2520,7 +2522,7 @@ pub struct CreateModel {
     pub name: Ident,
     pub model: ModelDef,
     pub drop: DropStmt,
-    pub macro_fn_call: Vec<MacroFnCall>
+    pub macro_fn_call: Vec<MacroFnCall>,
 }
 
 impl fmt::Display for CreateModel {
@@ -2566,13 +2568,16 @@ impl std::error::Error for ModelSqlCompileError {}
 impl CreateModel {
     pub fn compile<F>(&self, src_resolver: F) -> Result<String, ModelSqlCompileError>
     where
-        F: Fn(&str, &str) -> Result<String, ModelSqlCompileError>
+        F: Fn(&str, &str) -> Result<String, ModelSqlCompileError>,
     {
         let mut mappings = vec![];
         for call in &self.macro_fn_call {
             if call.m_type == MacroFnCallType::Source {
                 let mapping = HashMap::from([
-                    ("name".to_string(), src_resolver(&call.args[0], &call.args[1])?),
+                    (
+                        "name".to_string(),
+                        src_resolver(&call.args[0], &call.args[1])?,
+                    ),
                     ("to_replace".to_string(), call.call_def.clone()),
                 ]);
                 mappings.push(mapping)
@@ -2587,7 +2592,10 @@ impl CreateModel {
         let sql = if mappings.len() > 0 {
             let mut sql = self.model.to_string();
             for mapping in mappings {
-                sql = sql.replace(mapping.get("to_replace").unwrap(), mapping.get("name").unwrap());
+                sql = sql.replace(
+                    mapping.get("to_replace").unwrap(),
+                    mapping.get("name").unwrap(),
+                );
             }
             sql
         } else {
@@ -2605,7 +2613,10 @@ impl CreateModel {
             }
         };
 
-        let compiled = format!("DROP {} IF EXISTS {}.{} CASCADE;\n{}", model, self.schema, self.name, sql);
+        let compiled = format!(
+            "DROP {} IF EXISTS {}.{} CASCADE;\n{}",
+            model, self.schema, self.name, sql
+        );
 
         Ok(compiled)
     }
@@ -2615,9 +2626,9 @@ impl CreateModel {
 mod tests {
     use super::*;
     use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
+    use crate::ast::Statement;
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
-    use crate::ast::Statement;
 
     #[test]
     fn compile_replaces_ref_and_source_macros() {

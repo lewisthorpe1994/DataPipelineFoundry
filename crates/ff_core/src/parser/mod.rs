@@ -69,7 +69,6 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
     }
 }
 
-
 pub fn parse_kafka(config: &SourcePaths) -> Result<Vec<ParsedNode>, Error> {
     use common::types::sources::SourceType;
     use std::collections::HashSet;

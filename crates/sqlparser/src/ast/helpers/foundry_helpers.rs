@@ -1,4 +1,9 @@
-use crate::ast::{display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr, Function, FunctionArg, FunctionArgExpr, FunctionArguments, Ident, KafkaConnectorType, ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor, TableWithJoins, Value, ValueWithSpan, ViewColumnDef};
+use crate::ast::{
+    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr,
+    Function, FunctionArg, FunctionArgExpr, FunctionArguments, Ident, KafkaConnectorType,
+    ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor, TableWithJoins, Value,
+    ValueWithSpan, ViewColumnDef,
+};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
@@ -106,8 +111,7 @@ pub fn collect_ref_source_calls(query: &Query) -> Vec<MacroFnCall> {
         }
     }
 
-    refs
-        .into_iter()
+    refs.into_iter()
         .map(|f| into_macro(MacroFnCallType::Ref, f))
         .chain(
             sources
@@ -160,7 +164,9 @@ fn collect_in_table_factor(
             }
         }
         TableFactor::Derived { subquery, .. } => collect_in_set_expr(&subquery.body, refs, sources),
-        TableFactor::NestedJoin { table_with_joins, .. } => {
+        TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => {
             collect_in_table_with_joins(table_with_joins, refs, sources);
         }
         _ => {}
