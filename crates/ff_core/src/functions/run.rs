@@ -1,5 +1,5 @@
-// use dag::{DagError, IntoDagNodes, ModelsDag};
-//
+// use dag::{ModelsDag};
+// 
 // /// Execute the compiled SQL in dependency order using the provided executor.
 // async fn execute_dag_nodes<'a, T>(
 //     nodes: T,
@@ -24,10 +24,10 @@
 //             });
 //         }
 //     });
-//
+// 
 //     Ok(())
 // }
-//
+// 
 // /// Execute a single model or a slice of the DAG depending on the provided
 // /// selector syntax.
 // ///
@@ -69,7 +69,7 @@
 //             } else {
 //                 None
 //             };
-//
+// 
 //             if let Some(exec_order) = exec_order {
 //                 execute_dag_nodes(
 //                     exec_order,
@@ -90,7 +90,7 @@
 //                         ))
 //                     }
 //                 };
-//
+// 
 //                 execute_dag_nodes(
 //                     node,
 //                     &config.project.compile_path,
@@ -119,10 +119,10 @@
 //             .map_err(|e| FFError::Run(e.into()))?;
 //         }
 //     }
-//
+// 
 //     Ok(())
 // }
-//
+// 
 // /// Compile models and execute them against the configured target database.
 // ///
 // /// When `model` is `None` the entire DAG is executed. If a model name is
@@ -132,16 +132,16 @@
 //     // compile models and obtain the dependency graph
 //     let dag = compiler::compile(config.project.compile_path.clone())?;
 //     let engine = Engine::new();
-//
+// 
 //     // build postgres connection string from selected profile
 //     let profile = config
 //         .connections
 //         .get(&config.connection_profile)
 //         .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
-//
+// 
 //     let mut adapter = create_db_adapter(profile.clone()).await
 //         .map_err(|e| FFError::Run(Box::new(io::Error::new(io::ErrorKind::Other, e.to_string()))))?;
-//
+// 
 //     let source_conn_args = if let Some(kafka_sources) = &config.kafka_source {
 //         let kafka_source_name = config
 //             .project
@@ -150,7 +150,7 @@
 //             .iter()
 //             .find(|s| s.kind == SourceType::Kafka)
 //             .map(|s| s.name.clone());
-//
+// 
 //         if let Some(name) = kafka_source_name {
 //             kafka_sources
 //                 .get(&name)
@@ -167,10 +167,10 @@
 //     } else {
 //         SourceConnArgs { kafka_connect: None }
 //     };
-//
+// 
 //     run_dag(&dag, model, &config, engine, &mut adapter, source_conn_args).await
 // }
-//
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

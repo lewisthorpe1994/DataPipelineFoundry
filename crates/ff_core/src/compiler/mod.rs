@@ -1,7 +1,7 @@
 use crate::parser::parse_nodes;
 use common::config::loader::read_config;
 use common::error::FFError;
-use dag::types::NodeAst;
+use dag::types::{DagNodeType, NodeAst};
 use dag::ModelsDag;
 use engine::registry::{Compile, Register};
 use serde::Serialize;
@@ -10,6 +10,13 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+
+#[derive(Debug, Serialize)]
+pub enum ManifestNodeType {
+    Kafka,
+    DPF,
+    DB
+}
 
 /// Description of a compiled model written to `manifest.json`.
 #[derive(Debug, Serialize)]
@@ -21,6 +28,7 @@ struct ManifestModel {
     /// List of direct model dependencies.
     depends_on: Option<BTreeSet<String>>,
     executable: bool,
+    node_type: ManifestNodeType,
 }
 /// Root manifest structure serialised to JSON.
 #[derive(Debug, Serialize)]
@@ -61,9 +69,9 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
 
     for node in dag_arc.graph.node_weights() {
         // read SQL to be compiled
-        if !node.is_executable {
-            continue;
-        }
+        // if !node.is_executable {
+        //     continue;
+        // }
 
         let sql = match &node.ast {
             Some(model) => match model {
@@ -90,11 +98,23 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
             _ => None,
         };
 
+        let mn_type = match &node.node_type {
+            DagNodeType::KafkaSmt => ManifestNodeType::Kafka,
+            DagNodeType::KafkaPipeline => ManifestNodeType::Kafka,
+            DagNodeType::Model => ManifestNodeType::DPF,
+            DagNodeType::KafkaSinkConnector => ManifestNodeType::Kafka,
+            DagNodeType::KafkaSourceConnector => ManifestNodeType::Kafka,
+            DagNodeType::SourceDb => ManifestNodeType::DB,
+            DagNodeType::WarehouseSourceDb => ManifestNodeType::DB,
+            DagNodeType::KafkaTopic => ManifestNodeType::Kafka,
+        };
+
         manifest_models.push(ManifestModel {
             name: node.name.clone(),
             depends_on: node.relations.clone(),
             executable: node.is_executable,
             compiled_executable: sql,
+            node_type: mn_type,
         });
     }
 

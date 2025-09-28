@@ -18,12 +18,13 @@ mod tests {
     };
     use common::types::sources::SourceConnArgs;
     use common_test_utils::setup_kafka;
-    use engine::executor::kafka::{KafkaConnectClient, KafkaConnectorType};
-    use engine::registry::Catalog;
+    use engine::executor::kafka::{KafkaConnectClient};
     use engine::{Engine, EngineError};
     use std::time::Duration;
     use tokio::time::sleep;
     use tokio_postgres::NoTls;
+    use engine::registry::Getter;
+    use engine::types::KafkaConnectorType;
 
     async fn set_up_table(pg_conn: String) {
         let (mut pg, pg_conn) = tokio_postgres::connect(&pg_conn, NoTls)
@@ -234,7 +235,7 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
             .unwrap();
         let smt = engine
             .catalog
-            .get_transform("cast_hash_cols_to_int")
+            .get_kafka_smt("cast_hash_cols_to_int")
             .expect("transform exists");
         assert_eq!(smt.name, "cast_hash_cols_to_int");
         assert_eq!(
@@ -290,10 +291,10 @@ CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
 
         let pipe = engine
             .catalog
-            .get_pipeline("some_pipeline")
+            .get_smt_pipeline("some_pipeline")
             .expect("pipeline exists");
-        let t1 = engine.catalog.get_transform("hash_email").unwrap();
-        let t2 = engine.catalog.get_transform("drop_pii").unwrap();
+        let t1 = engine.catalog.get_kafka_smt("hash_email").unwrap();
+        let t2 = engine.catalog.get_kafka_smt("drop_pii").unwrap();
         assert_eq!(pipe.name, "some_pipeline");
         assert_eq!(pipe.transforms, vec![t1.id, t2.id]);
         assert_eq!(pipe.predicate.as_deref(), Some("some_predicate"));

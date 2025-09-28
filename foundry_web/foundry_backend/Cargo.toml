@@ -5,3 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+actix-web = { version = "4.11", features = ["macros"] }
+actix-files = "0.6"
+actix-cors = "0.6"
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+env_logger = "0.11"
+log = "0.4"
