@@ -12,6 +12,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/logging/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/sqlparser/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/test_utils/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/foundry_web/foundry_backend/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/crates/sqlparser/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

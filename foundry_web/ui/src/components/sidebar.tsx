@@ -1,6 +1,18 @@
 import type { LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import Logo from "@/assets/dpf-logo.svg";
 
 export type TabKey = "home" | "scheduler" | "dag";
 
@@ -17,42 +29,60 @@ interface SidebarProps {
   onSelect: (key: TabKey) => void;
 }
 
-export function Sidebar({ tabs, activeTab, onSelect }: SidebarProps) {
+export function AppSidebar({ tabs, activeTab, onSelect }: SidebarProps) {
   return (
-    <aside className="hidden h-screen max-h-screen w-64 border-r bg-card/40 shadow-sm md:flex md:flex-col">
-      <div className="px-5 pb-4 pt-6">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Foundry
-        </div>
-        <div className="mt-2 text-lg font-semibold">Control Center</div>
-      </div>
-      <nav className="flex-1 space-y-1 px-3 pb-6">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = tab.key === activeTab;
-          return (
-            <Button
-              key={tab.key}
-              variant={isActive ? "secondary" : "ghost"}
-              className={cn(
-                "w-full justify-start gap-3 text-sm",
-                isActive && "shadow-inner"
-              )}
-              onClick={() => onSelect(tab.key)}
-            >
-              <Icon className="h-4 w-4" />
-              <div className="flex flex-col items-start">
-                <span>{tab.label}</span>
-                {tab.description ? (
-                  <span className="text-xs text-muted-foreground">
-                    {tab.description}
-                  </span>
-                ) : null}
-              </div>
-            </Button>
-          );
-        })}
-      </nav>
-    </aside>
+    <Sidebar
+      collapsible="icon"
+      className="border-r bg-sidebar text-sidebar-foreground"
+      variant="sidebar"
+    >
+      <SidebarHeader className="px-2 py-2">
+        <SidebarMenuButton>
+          {/*<div className={"bg-blue-500 rounded-lg p-1"}>*/}
+          <img src={Logo} alt="FlowFoundry Logo" className="h-12 w-12" />
+          {/*</div>*/}
+          <div className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
+            Data Pipeline Foundry
+          </div>
+        </SidebarMenuButton>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Control Center</SidebarGroupLabel>
+          <SidebarMenu>
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = tab.key === activeTab;
+
+              return (
+                <SidebarMenuItem key={tab.key}>
+                  <SidebarMenuButton
+                    type="button"
+                    isActive={isActive}
+                    onClick={() => onSelect(tab.key)}
+                    className="items-center"
+                    tooltip={tab.label}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <div className="flex flex-col text-left group-data-[collapsible=icon]:hidden">
+                      <span className="text-sm font-mono">{tab.label}</span>
+                      {tab.description ? (
+                        <span className="text-xs text-muted-foreground">
+                          {tab.description}
+                        </span>
+                      ) : null}
+                    </div>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter className="border-t border-sidebar-border px-4 py-3 text-xs text-muted-foreground">
+        FlowFoundry
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
 }

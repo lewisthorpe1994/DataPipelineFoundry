@@ -1,10 +1,15 @@
 import { useMemo, useState } from "react";
 import { CalendarClock, Home, Workflow } from "lucide-react";
 
-import { Sidebar, type TabDefinition, type TabKey } from "@/components/sidebar";
+import { AppSidebar, type TabDefinition, type TabKey } from "@/components/sidebar";
 import { DagView } from "@/components/dag-view";
 import { Placeholder } from "@/components/placeholders";
 import { Button } from "@/components/ui/button";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 const TABS: TabDefinition[] = [
@@ -54,13 +59,16 @@ export default function App() {
   }, [activeTab]);
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <Sidebar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
-      <main className="flex-1 overflow-hidden">
+    <SidebarProvider defaultOpen className="bg-background text-foreground">
+      <AppSidebar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
+      <SidebarInset>
         <header className="flex items-center justify-between border-b px-4 py-3 shadow-sm">
-          <div>
-            <div className="text-sm font-medium text-muted-foreground">Foundry</div>
-            <h1 className="text-lg font-semibold capitalize">{activeTab}</h1>
+          <div className="flex items-center gap-3">
+            <SidebarTrigger className="md:hidden" />
+            <div>
+              <div className="text-sm font-medium text-muted-foreground">Foundry</div>
+              <h1 className="text-lg font-semibold capitalize">{activeTab}</h1>
+            </div>
           </div>
           <div className="hidden gap-2 md:flex">
             <Button
@@ -91,7 +99,7 @@ export default function App() {
             {content}
           </div>
         </section>
-      </main>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
-import cytoscape, { type ElementDefinition, type Stylesheet } from "cytoscape";
+import cytoscape from "cytoscape";
 import dagre from "cytoscape-dagre";
 
-import kafkaIcon from "@/assets/kafka-logo.svg?url";
+import kafkaIcon from "@/assets/kafka.svg?url";
 import dpfIcon from "@/assets/dpf.svg?url";
 import dbIcon from "@/assets/db.svg?url";
 import externalIcon from "@/assets/external.svg?url";
@@ -18,7 +18,13 @@ const ICONS = {
   none: "none"
 } as const;
 
-const graphStyle: Stylesheet[] = [
+type CyStylesheet = Record<string, unknown>;
+type CyElement = {
+  data: Record<string, unknown>;
+  classes?: string;
+};
+
+const graphStyle: CyStylesheet[] = [
   {
     selector: "edge",
     style: {
@@ -152,15 +158,15 @@ export function DagGraph({ manifest }: DagGraphProps) {
   return <div ref={containerRef} className="h-full w-full" />;
 }
 
-function buildElements(manifest: Manifest): ElementDefinition[] {
-  const nodeMap = new Map<string, ElementDefinition>();
+function buildElements(manifest: Manifest): CyElement[] {
+  const nodeMap = new Map<string, CyElement>();
   const manifestNodes = manifest.nodes;
 
   manifestNodes.forEach((node) => {
     const nodeType = getNodeType(node as any);
     const icon = getIconForType(nodeType);
 
-    const element: ElementDefinition = {
+    const element: CyElement = {
       data: {
         id: node.name,
         label: formatLabel(node.name),
@@ -173,8 +179,8 @@ function buildElements(manifest: Manifest): ElementDefinition[] {
     nodeMap.set(node.name, element);
   });
 
-  const externalNodes = new Map<string, ElementDefinition>();
-  const edges: ElementDefinition[] = [];
+  const externalNodes = new Map<string, CyElement>();
+  const edges: CyElement[] = [];
 
   manifestNodes.forEach((node) => {
     (node.depends_on ?? []).forEach((dep) => {
