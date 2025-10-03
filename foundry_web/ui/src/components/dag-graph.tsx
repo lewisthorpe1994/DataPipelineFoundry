@@ -155,7 +155,12 @@ export function DagGraph({ manifest }: DagGraphProps) {
     };
   }, [manifest]);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 h-full w-full overflow-hidden rounded-xl border border-border bg-card"
+    />
+  );
 }
 
 function buildElements(manifest: Manifest): CyElement[] {
