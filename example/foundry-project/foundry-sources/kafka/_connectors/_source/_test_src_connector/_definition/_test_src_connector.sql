@@ -1,4 +1,5 @@
-CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test_src_connector (
+CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test_src_connector
+USING KAFKA CLUSTER 'some_kafka_cluster' (
         "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
         "tasks.max" = "1",
         "database.user" = "postgres",
@@ -8,7 +9,6 @@ CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test_src_connector (
         "database.dbname" = "postgres",
         "table.include.list" = "public.orders",
         "snapshot.mode" = "initial",
-        "kafka.bootstrap.servers" = "kafka_broker:9092",
         "topic.prefix" = "postgres-"
 )
 WITH PIPELINES(pii_pipeline);

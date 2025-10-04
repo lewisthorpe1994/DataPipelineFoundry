@@ -15299,6 +15299,12 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_identifier()?;
 
+        let cluster_ident = if self.parse_keywords(&[Keyword::USING, Keyword::KAFKA, Keyword::CLUSTER]) {
+            self.parse_identifier()?
+        } else {
+            return Err(ParserError::ParserError("Expected USING KAFKA CLUSTER".to_string()));
+        };
+
         let mut properties = vec![];
         if self.consume_token(&Token::LParen) {
             loop {
@@ -15331,6 +15337,7 @@ impl<'a> Parser<'a> {
             connector_type,
             with_properties: properties,
             with_pipelines: pipeline_idents,
+            cluster_ident
         }))
     }
 
@@ -16604,23 +16611,25 @@ mod tests {
         use sqlparser::parser::Parser;
 
         let sql = r#"
-    CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
+    CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink
+    USING KAFKA CLUSTER 'kafka-cluster' (
         "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
         "key.converter"           = "org.apache.kafka.connect.json.JsonConverter",
         "value.converter"         = "org.apache.kafka.connect.json.JsonConverter",
-        "topics"                  = "topic2",
-        "kafka.bootstrap.servers" = "localhost:9092"
+        "topics"                  = "topic2"
     ) WITH PIPELINES(filter_rejects, mask_data);
     "#;
 
         let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
         assert_eq!(stmts.len(), 1);
 
+        println!("{:?}", stmts);
         match &stmts[0] {
             Statement::CreateKafkaConnector(ref c) => {
                 assert_eq!(c.connector_type, KafkaConnectorType::Sink);
                 assert!(c.if_not_exists);
                 assert_eq!(c.name.value, "test_sink");
+                assert_eq!(c.cluster_ident.value, "kafka-cluster");
 
                 // ✔ pipelines captured in order
                 assert_eq!(

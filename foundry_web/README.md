@@ -48,3 +48,17 @@ The output is written to `foundry_web/ui/dist`. Serve that folder with the backe
 ## Manifest contract
 
 The frontend expects the manifest shape produced by `ff_core` (root object with a `nodes` array containing `name`, `depends_on`, and `executable` metadata). Any additional fields are preserved and forwarded by the backend without modification, so existing consumers are unaffected.
+
+## Docker Compose dev stack
+
+A lightweight Compose file in `foundry_web/docker-compose.yml` runs the backend and Vite dev server with live reload:
+
+```bash
+cd foundry_web
+docker compose up --build
+```
+
+- `backend` mounts the workspace and runs `cargo watch`, hot-reloading `foundry_backend` on Rust changes.
+- `frontend` mounts the UI code, installs dependencies on demand, and serves Vite on <http://localhost:5173> with polling so file updates propagate immediately.
+
+Both services share the repo via bind mounts, so edits on the host invalidate the running processes automatically. To stop the stack, press `Ctrl+C` or run `docker compose down` from `foundry_web/`.

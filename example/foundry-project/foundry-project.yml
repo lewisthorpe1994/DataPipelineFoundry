@@ -29,3 +29,4 @@ paths:
   connections: connections.yml
 modelling_architecture: medallion
 connection_profile: dev
+warehouse_db_connection: warehouse_source

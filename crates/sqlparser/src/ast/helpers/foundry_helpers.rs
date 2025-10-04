@@ -1,15 +1,14 @@
-use crate::ast::{
-    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr,
-    Function, FunctionArg, FunctionArgExpr, FunctionArguments, Ident, KafkaConnectorType,
-    ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor, TableWithJoins, Value,
-    ValueWithSpan, ViewColumnDef,
-};
+use crate::ast::{display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr, Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident, KafkaConnectorType, ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor, TableWithJoins, Value, ValueWithSpan, ViewColumnDef};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
 use core::fmt::{Display, Formatter};
 #[cfg(feature = "json_example")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "json_example")]
+use serde_json::{Value as Json, Map};
+
+
 use std::fmt;
 
 pub trait KafkaParse {
@@ -141,35 +140,83 @@ fn collect_in_table_with_joins(
     table: &TableWithJoins,
     refs: &mut Vec<Function>,
     sources: &mut Vec<Function>,
-) {
-    collect_in_table_factor(&table.relation, refs, sources);
+) -> Result<(), ParserError>{
+    collect_in_table_factor(&table.relation, refs, sources)?;
     for join in &table.joins {
-        collect_in_table_factor(&join.relation, refs, sources);
+        collect_in_table_factor(&join.relation, refs, sources)?;
     }
+    Ok(())
 }
 
 fn collect_in_table_factor(
     factor: &TableFactor,
     refs: &mut Vec<Function>,
     sources: &mut Vec<Function>,
-) {
+) -> Result<(), ParserError> {
     match factor {
         TableFactor::TableFunction { expr, .. } => {
             if let Expr::Function(func) = expr {
                 match func.name.to_string().to_lowercase().as_str() {
-                    "ref" => refs.push(func.clone()),
-                    "source" => sources.push(func.clone()),
-                    _ => {}
+                    "ref" => Ok(refs.push(func.clone())),
+                    "source" => Ok(sources.push(func.clone())),
+                    _ => {Ok(())}
                 }
+            } else {
+                Ok(())
             }
         }
-        TableFactor::Derived { subquery, .. } => collect_in_set_expr(&subquery.body, refs, sources),
+        TableFactor::Function {name, args, ..} => {
+            let func = Function {
+                name: name.clone(),
+                uses_odbc_syntax: false,
+                parameters: FunctionArguments::None,
+                args: FunctionArguments::List(FunctionArgumentList {
+                    duplicate_treatment: None,
+                    args: args.clone(),
+                    clauses: vec![],
+                }),
+                filter: None,
+                null_treatment: None,
+                over: None,
+                within_group: vec![],
+            };
+            match name.to_string().to_lowercase().as_str() {
+                "ref" => Ok(refs.push(func.clone())),
+                "source" => Ok(sources.push(func.clone())),
+                _ => {Ok(())}
+            }
+        }
+        TableFactor::Table {name, args, .. } => {
+            let fn_args = args.clone().ok_or(
+                ParserError::ParserError(format!("expected fn {} to have args", name))
+            )?;
+            let func = Function {
+                name: name.clone(),
+                uses_odbc_syntax: false,
+                parameters: FunctionArguments::None,
+                args: FunctionArguments::List(FunctionArgumentList {
+                    duplicate_treatment: None,
+                    args: fn_args.args,
+                    clauses: vec![],
+                }),
+                filter: None,
+                null_treatment: None,
+                over: None,
+                within_group: vec![],
+            };
+            match name.to_string().to_lowercase().as_str() {
+                "ref" => Ok(refs.push(func.clone())),
+                "source" => Ok(sources.push(func.clone())),
+                _ => {Ok(())}
+            }
+        }
+        TableFactor::Derived { subquery, .. } => Ok(collect_in_set_expr(&subquery.body, refs, sources)),
         TableFactor::NestedJoin {
             table_with_joins, ..
         } => {
-            collect_in_table_with_joins(table_with_joins, refs, sources);
+            Ok(collect_in_table_with_joins(table_with_joins, refs, sources)?)
         }
-        _ => {}
+        _ => {Ok(())}
     }
 }
 
@@ -386,5 +433,32 @@ impl fmt::Display for DropStmt {
             if self.restrict { " RESTRICT" } else { "" },
             if self.purge { " PURGE" } else { "" }
         )
+    }
+}
+
+pub trait AstValueFormatter {
+    fn formatted_string(&self) -> String;
+}
+impl AstValueFormatter for ValueWithSpan {
+    fn formatted_string(&self) -> String {
+        if self.value.to_string().starts_with("'") && self.value.to_string().ends_with("'") {
+            return self.value.to_string().trim_matches('\'').to_string();
+        };
+        if self.value.to_string().starts_with('"') && self.value.to_string().ends_with('"') {
+            return self.value.to_string().trim_matches('"').to_string();
+        }
+        self.value.to_string()
+    }
+}
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct KvPairs(pub Vec<(Ident, ValueWithSpan)>);
+#[cfg(feature = "serde")]
+impl From<KvPairs> for Json {
+    fn from(kvs: KvPairs) -> Self {
+        let mut obj = Map::new();
+        for (k, vws) in kvs.0 {
+            obj.insert(k.value, Json::String(vws.formatted_string()));
+        }
+        Json::Object(obj)
     }
 }

@@ -12,10 +12,9 @@ serde_json = { workspace = true }
 petgraph = "0.8.2"
 common = { workspace = true}
 walkdir = "2.5.0"
-log = "0.4.27"
 sqlparser = { workspace = true}
 dag = { workspace = true}
-engine = { workspace = true}
+catalog = { workspace = true }
 logging = { workspace = true }
 database_adapters = { workspace = true }
 regex = "1.11.1"

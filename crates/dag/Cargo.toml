@@ -8,7 +8,7 @@ license.workspace = true
 petgraph = "0.8.2"
 minijinja = "2.11.0"
 common = { workspace = true}
-engine = { workspace = true}
+catalog = { workspace = true}
 sqlparser = { workspace = true }
 log = "0.4.27"
 env_logger = "0.11.8"

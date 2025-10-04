@@ -3,13 +3,13 @@ use common::config::loader::read_config;
 use common::error::FFError;
 use dag::types::{DagNodeType, NodeAst};
 use dag::ModelsDag;
-use engine::registry::{Compile, Register};
 use serde::Serialize;
 use sqlparser::ast::ModelSqlCompileError;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use catalog::{Compile, MemoryCatalog, Register};
 
 #[derive(Debug, Serialize)]
 pub enum ManifestNodeType {
@@ -29,6 +29,7 @@ struct ManifestModel {
     depends_on: Option<BTreeSet<String>>,
     executable: bool,
     node_type: ManifestNodeType,
+    target: Option<String>,
 }
 /// Root manifest structure serialised to JSON.
 #[derive(Debug, Serialize)]
@@ -36,8 +37,8 @@ struct Manifest {
     nodes: Vec<ManifestModel>,
 }
 
-pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFError> {
-    let catalog = engine::registry::MemoryCatalog::new();
+pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalog>), FFError> {
+    let catalog = MemoryCatalog::new();
     let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
 
     // ---------------------------------------------------------------------
@@ -73,40 +74,57 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
         //     continue;
         // }
 
-        let sql = match &node.ast {
+        let (sql, k_cluster_name) = match &node.ast {
             Some(model) => match model {
                 NodeAst::Model(m) => {
                     let compiled = m
-                        .compile(|schema, table| {
+                        .compile(|src, table| {
                             config
                                 .warehouse_source
-                                .resolve(schema, table)
+                                .resolve(src, table)
                                 .map_err(|e| ModelSqlCompileError(e.to_string()))
                         })
                         .map_err(|e| FFError::Compile(e.into()))?;
-                    Some(compiled)
+                    (Some(compiled), None)
                 }
-                NodeAst::KafkaConnector(connector) => Some(
-                    catalog
-                        .compile_kafka_decl(&node.name)
+                NodeAst::KafkaConnector(connector) => {
+                    let compiled = catalog
+                        .compile_kafka_decl(&node.name, &config)
                         .map_err(|e| FFError::Compile(e.into()))?
-                        .to_string(),
-                ),
-                NodeAst::KafkaSmtPipeline(p) => Some(p.to_string()),
-                NodeAst::KafkaSmt(s) => Some(s.to_string()),
+                        .to_string();
+                    let c_name = &connector.cluster_ident.value;
+                    (Some(compiled), Some(c_name))
+                }
+                NodeAst::KafkaSmtPipeline(p) => (Some(p.to_string()), None),
+                NodeAst::KafkaSmt(s) => (Some(s.to_string()), None),
             },
-            _ => None,
+            _ => (None,None),
         };
 
-        let mn_type = match &node.node_type {
-            DagNodeType::KafkaSmt => ManifestNodeType::Kafka,
-            DagNodeType::KafkaPipeline => ManifestNodeType::Kafka,
-            DagNodeType::Model => ManifestNodeType::DPF,
-            DagNodeType::KafkaSinkConnector => ManifestNodeType::Kafka,
-            DagNodeType::KafkaSourceConnector => ManifestNodeType::Kafka,
-            DagNodeType::SourceDb => ManifestNodeType::DB,
-            DagNodeType::WarehouseSourceDb => ManifestNodeType::DB,
-            DagNodeType::KafkaTopic => ManifestNodeType::Kafka,
+        let (mn_type, exec_target_name) = match &node.node_type {
+            DagNodeType::KafkaSmt => (ManifestNodeType::Kafka, None),
+            DagNodeType::KafkaPipeline => (ManifestNodeType::Kafka, None),
+            DagNodeType::Model => {
+                let t = config.warehouse_db_connection.clone();
+                (ManifestNodeType::DPF, Some(t))
+            },
+            DagNodeType::KafkaSinkConnector => {
+                if let Some(k_cluster_name) = k_cluster_name {
+                    (ManifestNodeType::Kafka, Some(k_cluster_name.to_string()))
+                } else {
+                    return Err(FFError::Compile("Kafka Sink Connector must have a Kafka cluster".into()));
+                }
+            },
+            DagNodeType::KafkaSourceConnector => {
+                if let Some(k_cluster_name) = k_cluster_name {
+                    (ManifestNodeType::Kafka, Some(k_cluster_name.to_string()))
+                } else {
+                    return Err(FFError::Compile("Kafka Source Connector must have a Kafka cluster".into()));
+                }
+            },
+            DagNodeType::SourceDb => (ManifestNodeType::DB, None),
+            DagNodeType::WarehouseSourceDb => (ManifestNodeType::DB, None),
+            DagNodeType::KafkaTopic => (ManifestNodeType::Kafka,None)
         };
 
         manifest_models.push(ManifestModel {
@@ -115,6 +133,7 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
             executable: node.is_executable,
             compiled_executable: sql,
             node_type: mn_type,
+            target: exec_target_name,
         });
     }
 
@@ -133,20 +152,20 @@ pub fn compile(compile_path: String) -> Result<std::sync::Arc<ModelsDag>, FFErro
     let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
     serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
 
-    Ok(dag_arc)
+    Ok((dag_arc, Arc::new(catalog)))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::compiler::compile;
     use test_utils::{get_root_dir, with_chdir};
+    use crate::functions::compile::compile;
 
     #[test]
     fn test() {
         let project_root = get_root_dir();
         with_chdir(&project_root, move || {
-            let res = compile(".compiled".to_string()).unwrap();
+            let (dag, cat) = compile(".compiled".to_string()).unwrap();
         })
-        .expect("compile failed");
+            .expect("compile failed");
     }
 }

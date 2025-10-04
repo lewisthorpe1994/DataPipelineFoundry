@@ -39,7 +39,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
     let config_root = proj_config_file_path
         .parent()
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .unwrap_or_else(|| PathBuf::from("../../../../.."));
 
     let connections_path = resolve_path(&config_root, Path::new(&proj_config.paths.connections));
     if !connections_path.exists() {
@@ -103,6 +103,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         None
     };
     let conn_profile = proj_config.connection_profile.clone();
+    let warehouse_db_connection = proj_config.warehouse_db_connection.clone();
 
     let config = FoundryConfig::new(
         proj_config,
@@ -110,6 +111,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         connections,
         models_config,
         conn_profile,
+        warehouse_db_connection,
         kafka_config,
         resolved_sources,
     );

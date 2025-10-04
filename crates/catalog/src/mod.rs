@@ -1,5 +1,5 @@
 pub mod error;
-pub mod mem;
+pub mod lib;
 pub mod models;
 mod tests;
 

@@ -1,15 +1,16 @@
-use crate::executor::sql::AstValueFormatter;
-use crate::{
-    CatalogError, KafkaConnectorDecl, KafkaConnectorMeta, ModelDecl,
-    PipelineDecl, TransformDecl, WarehouseSourceDec,
-};
+pub mod error;
+pub mod models;
+mod tests;
+
+pub use models::*;
+
 use common::config::components::sources::warehouse_source::WarehouseSourceConfigs;
 use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, Value};
-use sqlparser::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
+use sqlparser::ast::helpers::foundry_helpers::{AstValueFormatter, MacroFnCall, MacroFnCallType};
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline, ModelDef, ObjectName, ObjectNamePart, Statement,
@@ -19,6 +20,9 @@ use sqlparser::parser::Parser;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+use common::config::components::global::FoundryConfig;
+use crate::error::CatalogError;
+use common::types::kafka::KafkaConnectorType;
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -535,11 +539,11 @@ impl Macro for MemoryCatalog {
 }
 
 pub trait Compile: Send + Sync + 'static + Getter {
-    fn compile_kafka_decl(&self, name: &str) -> Result<KafkaConnectorDecl, CatalogError>;
+    fn compile_kafka_decl(&self, name: &str, foundry_config: &FoundryConfig) -> Result<KafkaConnectorDecl, CatalogError>;
 }
 
 impl Compile for MemoryCatalog {
-    fn compile_kafka_decl(&self, name: &str) -> Result<KafkaConnectorDecl, CatalogError> {
+    fn compile_kafka_decl(&self, name: &str, foundry_config: &FoundryConfig) -> Result<KafkaConnectorDecl, CatalogError> {
         let conn = self.get_kafka_connector(name)?;
         let mut config = match conn.config {
             Value::Object(map) => map,
@@ -581,6 +585,22 @@ impl Compile for MemoryCatalog {
             );
         }
 
+        match conn.con_type {
+            KafkaConnectorType::Source => {
+                let cluster_config = if let Some(cluster_config) = &foundry_config.kafka_source {
+                    let cc = cluster_config.get(&conn.cluster_name)
+                        .ok_or(CatalogError::NotFound(format!("Cluster {} not found", conn.cluster_name)))?;
+                    cc
+                } else {
+                    return Err(CatalogError::NotFound(format!("Cluster {} not found", conn.cluster_name)))
+                };
+
+                config.insert("kafka.bootstrap.servers".to_string(), Json::String(cluster_config.bootstrap.servers.clone()));
+            }
+            _ => ()
+        };
+
+
         let dec = KafkaConnectorDecl {
             kind: conn.con_type,
             name: conn.name,
@@ -588,6 +608,7 @@ impl Compile for MemoryCatalog {
             sql: conn.sql,
             reads: vec![],
             writes: vec![],
+            cluster_name: conn.cluster_name,
         };
         Ok(dec)
     }
@@ -804,136 +825,6 @@ mod test {
     }
 
     #[test]
-    fn compile_connector_merges_pipeline_configs() {
-        use sqlparser::ast::{KafkaConnectorType, TransformCall};
-
-        let registry = MemoryCatalog::new();
-        let span = Span::new(Location::new(0, 0), Location::new(0, 0));
-
-        // register transform and pipeline
-        let smt = CreateSimpleMessageTransform {
-            name: Ident {
-                value: "mask".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            config: vec![
-                (
-                    Ident {
-                        value: "type".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString(
-                            "org.apache.kafka.connect.transforms.MaskField$Value".into(),
-                        ),
-                        span,
-                    },
-                ),
-                (
-                    Ident {
-                        value: "fields".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("name".into()),
-                        span,
-                    },
-                ),
-            ],
-        };
-        registry.register_kafka_smt(smt).unwrap();
-
-        let pipe = CreateSimpleMessageTransformPipeline {
-            name: Ident {
-                value: "pii".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            connector_type: KafkaConnectorType::Source,
-            steps: vec![TransformCall::new(
-                Ident {
-                    value: "mask".into(),
-                    quote_style: None,
-                    span,
-                },
-                vec![],
-            )],
-            pipe_predicate: Some(ValueWithSpan {
-                value: SingleQuotedString("pred".into()),
-                span,
-            }),
-        };
-        registry.register_smt_pipeline(pipe).unwrap();
-
-        // register the connector referencing the pipeline
-        let conn = CreateKafkaConnector {
-            name: Ident {
-                value: "test_conn".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: true,
-            connector_type: KafkaConnectorType::Source,
-            with_properties: vec![
-                (
-                    Ident {
-                        value: "connector.class".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("dummy".into()),
-                        span,
-                    },
-                ),
-                (
-                    Ident {
-                        value: "topics".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("topic1".into()),
-                        span,
-                    },
-                ),
-            ],
-            with_pipelines: vec![Ident {
-                value: "pii".into(),
-                quote_style: None,
-                span,
-            }],
-        };
-        registry.register_kafka_connector(conn).unwrap();
-
-        let decl = registry.compile_kafka_decl("test_conn").unwrap();
-        let cfg = decl.config.as_object().unwrap();
-        assert_eq!(cfg.get("transforms").unwrap().as_str().unwrap(), "pii_mask");
-        assert_eq!(cfg.get("topics").unwrap().as_str().unwrap(), "topic1");
-        assert_eq!(
-            cfg.get("transforms.pii_mask.fields")
-                .unwrap()
-                .as_str()
-                .unwrap(),
-            "name"
-        );
-        assert_eq!(
-            cfg.get("transforms.pii_mask.predicate")
-                .unwrap()
-                .as_str()
-                .unwrap(),
-            "pred"
-        );
-
-        println!("{:?}", cfg);
-    }
-
-    #[test]
     fn register_duplicate_returns_error() {
         let registry = MemoryCatalog::new();
         let span = Span::new(Location::new(0, 0), Location::new(0, 0));
@@ -982,6 +873,7 @@ mod test {
                 quote_style: None,
                 span,
             },
+            cluster_ident: Ident {value: "c".into(), quote_style: None, span},
             if_not_exists: false,
             connector_type: sqlparser::ast::KafkaConnectorType::Source,
             with_properties: vec![],

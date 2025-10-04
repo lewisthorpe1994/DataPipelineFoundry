@@ -2353,6 +2353,7 @@ pub struct CreateKafkaConnector {
     pub connector_type: KafkaConnectorType,
     pub with_properties: Vec<(Ident, ValueWithSpan)>,
     pub with_pipelines: Vec<Ident>,
+    pub cluster_ident: Ident,
 }
 
 impl fmt::Display for CreateKafkaConnector {
@@ -2592,10 +2593,15 @@ impl CreateModel {
         let sql = if mappings.len() > 0 {
             let mut sql = self.model.to_string();
             for mapping in mappings {
-                sql = sql.replace(
-                    mapping.get("to_replace").unwrap(),
-                    mapping.get("name").unwrap(),
-                );
+                if let (Some(replacement), Some(resolved)) =
+                    (mapping.get("to_replace"), mapping.get("name"))
+                {
+                    // let table_wrapped = format!("TABLE({})", replacement);
+                    // if sql.contains(&table_wrapped) {
+                    //     sql = sql.replace(&table_wrapped, resolved);
+                    // }
+                    sql = sql.replace(replacement, resolved);
+                }
             }
             sql
         } else {
@@ -2645,6 +2651,8 @@ mod tests {
             Statement::CreateModel(m) => m,
             _ => panic!("expected CreateModel"),
         };
+
+        println!("{}", model.to_string());
 
         model.macro_fn_call = vec![MacroFnCall {
             m_type: MacroFnCallType::Source,

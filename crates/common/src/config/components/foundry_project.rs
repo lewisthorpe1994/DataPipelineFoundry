@@ -2,6 +2,8 @@ use crate::config::components::model::ModelsPaths;
 use crate::config::components::sources::SourcePaths;
 use serde::Deserialize;
 use std::collections::HashMap;
+use database_adapters::AdapterConnectionDetails;
+use crate::config::components::connections::ConnectionsConfig;
 
 pub type ModelLayerName = String;
 pub type ModelLayerDir = String;
@@ -15,6 +17,7 @@ pub struct FoundryProjectConfig {
     pub modelling_architecture: String,
     pub connection_profile: String,
     pub paths: PathsConfig,
+    pub warehouse_db_connection: String,
 }
 
 #[derive(Debug, Deserialize)]

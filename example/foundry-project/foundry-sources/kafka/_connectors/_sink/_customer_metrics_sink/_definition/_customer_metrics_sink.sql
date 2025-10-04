@@ -1,4 +1,5 @@
-CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS customer_orders_sink (
+CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS customer_orders_sink
+USING KAFKA CLUSTER 'some_kafka_cluster' (
     "connector.class" = "io.confluent.connect.jdbc.JdbcSinkConnector",
     "tasks.max" = "1",
     "topics" = "postgres-.public.orders",

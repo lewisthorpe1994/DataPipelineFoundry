@@ -1,5 +1,5 @@
-use crate::executor::sql::KvPairs;
-use crate::types::KafkaConnectorType;
+use std::collections::HashSet;
+use common::types::kafka::KafkaConnectorType;
 use chrono::{DateTime, Utc};
 use common::types::{Materialize, ModelRef, SourceRef};
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,8 @@ use sqlparser::ast::{
 };
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
+use sqlparser::ast::helpers::foundry_helpers::KvPairs;
+use crate::CatalogError;
 
 /// A single SMT / transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +67,7 @@ pub struct KafkaConnectorMeta {
     pub config: serde_json::Value,
     pub sql: CreateKafkaConnector,
     pub pipelines: Option<Vec<String>>,
+    pub cluster_name: String,
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -89,6 +92,7 @@ impl KafkaConnectorMeta {
             name: ast.name.to_string(),
             con_type: KafkaConnectorType::from(ast.connector_type),
             config: KvPairs(ast.with_properties).into(),
+            cluster_name: ast.cluster_ident.value,
             sql,
             pipelines,
         }
@@ -104,6 +108,7 @@ pub struct ModelDecl {
     pub refs: Vec<ModelRef>,
     pub sources: Vec<SourceRef>,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResourceRef {
     SourceTable { schema: String, table: String },
@@ -120,6 +125,7 @@ pub struct KafkaConnectorDecl {
     pub sql: CreateKafkaConnector,
     pub reads: Vec<ResourceRef>,
     pub writes: Vec<ResourceRef>,
+    pub cluster_name: String,
 }
 impl Display for KafkaConnectorDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -149,4 +155,30 @@ impl WarehouseSourceDec {
     pub fn identifier(&self) -> String {
         format!("{}.{}.{}", self.database, self.schema, self.table)
     }
+}
+
+pub trait ExecutionTarget {
+    fn target_name(&self) -> Result<String, CatalogError>;
+}
+
+impl ExecutionTarget for ModelDecl {
+    fn target_name(&self) -> Result<String, CatalogError> {
+        let source_names = self.sources
+            .iter()
+            .map(|s| s.source_name.clone())
+            .collect::<HashSet<String>>();
+        if source_names.len() > 1 {
+            return Err(CatalogError::Unsupported(
+                "Cannot execute model with multiple sources".to_string(),
+            ));
+        } else if source_names.is_empty() {
+            return Err(CatalogError::NotFound(
+                "Cannot compile a model with no sources".to_string(),
+            ))
+        }
+
+        Ok(source_names.into_iter().next().unwrap())
+
+    }
+
 }

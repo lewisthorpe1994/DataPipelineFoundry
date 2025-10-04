@@ -1,13 +1,9 @@
 pub mod executor;
-pub mod registry;
 pub mod types;
 
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter};
 use executor::{Executor, ExecutorError, ExecutorResponse};
-pub use registry::error::CatalogError;
-pub use registry::models::*;
-use registry::MemoryCatalog;
 use std::fmt::{Debug, Display, Formatter};
 
 pub enum EngineError {

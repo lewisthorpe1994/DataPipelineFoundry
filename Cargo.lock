@@ -533,6 +533,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "catalog"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "common",
+ "ff_core",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sqlparser",
+ "test_utils",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -631,7 +648,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sqlparser",
- "tempfile",
  "test_utils",
  "walkdir",
 ]
@@ -711,8 +727,8 @@ dependencies = [
 name = "dag"
 version = "0.1.0"
 dependencies = [
+ "catalog",
  "common",
- "engine",
  "env_logger",
  "ff_core",
  "log",
@@ -985,11 +1001,10 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 name = "ff_core"
 version = "0.1.0"
 dependencies = [
+ "catalog",
  "common",
  "dag",
  "database_adapters",
- "engine",
- "log",
  "logging",
  "minijinja",
  "once_cell",

@@ -8,6 +8,7 @@ members = [
     "crates/logging",
     "crates/test_utils",
     "crates/engine",
+    "crates/catalog",
     "crates/dag",
     "crates/database_adapters",
     "foundry_web/foundry_backend"
@@ -41,3 +42,4 @@ dag = { path = "crates/dag"}
 tokio-postgres = { version = "0.7", features = ["runtime"] }
 engine = { path = "crates/engine"}
 database_adapters = { path = "crates/database_adapters"}
+catalog = { path = "crates/catalog" }

@@ -3,8 +3,6 @@ pub mod types;
 
 use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst};
-use engine::registry::{Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
-use engine::types::KafkaConnectorType;
 use log::{info, warn};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -13,6 +11,8 @@ use petgraph::Direction;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
+use catalog::{Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
+use common::types::kafka::KafkaConnectorType;
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -78,6 +78,7 @@ impl ModelsDag {
     }
     pub fn build(&mut self, registry: &MemoryCatalog) -> DagResult<()> {
         let started = Instant::now();
+        
         // First Pass - build all the nodes
         for c_node in registry.collect_catalog_nodes().iter() {
             match &c_node.declaration {
@@ -116,7 +117,8 @@ impl ModelsDag {
                     }
                     rels.extend(refs);
                     rels.extend(resolved_srcs);
-
+                    
+                   
                     self.upsert_node(
                         c_node.name.clone(),
                         true,

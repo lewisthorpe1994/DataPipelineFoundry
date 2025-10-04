@@ -5,5 +5,5 @@
     o.customer_id,
     count(*) as order_count,
     sum(o.total_amount) as total_revenue
-  from {{ ref('silver','orders') }} as o
+  from ref('silver','orders') as o
   group by o.customer_id;

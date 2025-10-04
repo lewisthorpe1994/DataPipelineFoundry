@@ -1,3 +1,4 @@
+use database_adapters::AdapterConnectionDetails;
 use crate::config::components::connections::ConnectionsConfig;
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ModelsConfig;
@@ -12,6 +13,7 @@ pub struct FoundryConfig {
     pub warehouse_source: WarehouseSourceConfigs,
     pub kafka_source: Option<KafkaSourceConfigs>,
     pub connections: ConnectionsConfig,
+    pub warehouse_db_connection: String,
     pub models: Option<ModelsConfig>,
     pub connection_profile: String,
     pub source_paths: SourcePaths,
@@ -23,6 +25,7 @@ impl FoundryConfig {
         connections: ConnectionsConfig,
         models: Option<ModelsConfig>,
         connection_profile: String,
+        warehouse_db_connection: String,
         kafka_source: Option<KafkaSourceConfigs>,
         source_paths: SourcePaths,
     ) -> Self {
@@ -32,8 +35,20 @@ impl FoundryConfig {
             connections,
             models,
             connection_profile,
+            warehouse_db_connection,
             kafka_source,
             source_paths,
         }
+    }
+}
+
+impl FoundryConfig {
+    pub fn get_adapter_connection_details(
+        &self,
+    ) -> Option<AdapterConnectionDetails> {
+        self.connections
+            .get(&self.connection_profile)
+            .and_then(|sources| sources.get(&self.warehouse_db_connection))
+            .cloned()
     }
 }

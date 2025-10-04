@@ -1,6 +1,7 @@
 pub mod nodes;
 pub mod schema;
 pub mod sources;
+pub mod kafka;
 
 pub use nodes::*;
 use serde::{Deserialize, Serialize};

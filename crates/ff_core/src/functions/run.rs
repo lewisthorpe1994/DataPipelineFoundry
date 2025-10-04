@@ -1,175 +1,169 @@
-// use dag::{ModelsDag};
-// 
-// /// Execute the compiled SQL in dependency order using the provided executor.
-// async fn execute_dag_nodes<'a, T>(
-//     nodes: T,
-//     compile_path: &str,
-//     models_dir: &str,
-//     engine: Engine,
-//     db_adapter: &mut AsyncDbAdapter,
-//     source_conn_args: SourceConnArgs,
-// ) -> Result<(), FFError>
-// where
-//     T: IntoDagNodes<'a>,
-// {
-//     timeit!("Executed all models", {
-//         for node in nodes.into_vec() {
-//             timeit!(format!("Executed model {}", &node.path.display()), {
-//                 let sql = read_sql_file(models_dir, &node.path, compile_path)
-//                     .map_err(|e| FFError::Run(Box::new(e)))?;
-//                 engine
-//                     .execute(&sql, &source_conn_args, Some(db_adapter))
-//                     .await
-//                     .map_err(|e| FFError::Run(Box::new(e)))?;
-//             });
-//         }
-//     });
-// 
-//     Ok(())
-// }
-// 
-// /// Execute a single model or a slice of the DAG depending on the provided
-// /// selector syntax.
-// ///
-// /// A model name can be prefixed and/or suffixed with `<` / `>` to select
-// /// additional nodes:
-// ///
-// /// * `"<model"` - execute all upstream dependencies of `model`.
-// /// * `"model>"` - execute all downstream dependents of `model`.
-// /// * `"<model>"` - execute both upstream and downstream nodes as well as the
-// ///   model itself.
-// async fn run_dag(
-//     dag: &ModelsDag,
-//     model: Option<String>,
-//     config: &FoundryConfig,
-//     engine: Engine,
-//     db_adapter: &mut AsyncDbAdapter,
-//     source_conn_args: SourceConnArgs,
-// ) -> Result<(), FFError> {
-//     match model {
-//         Some(model) => {
-//             let exec_order = if model.starts_with('<') && model.ends_with('>') {
-//                 let name = model.trim_start_matches('<').trim_end_matches('>');
-//                 Some(
-//                     dag.get_model_execution_order(name)
-//                         .map_err(|e| FFError::Run(e.into()))?,
-//                 )
-//             } else if model.starts_with('<') {
-//                 let name = model.trim_start_matches('<');
-//                 Some(
-//                     dag.transitive_closure(name, Direction::Incoming)
-//                         .map_err(|e| FFError::Run(e.into()))?,
-//                 )
-//             } else if model.ends_with('>') {
-//                 let name = model.trim_end_matches('>');
-//                 Some(
-//                     dag.transitive_closure(name, Direction::Outgoing)
-//                         .map_err(|e| FFError::Run(e.into()))?,
-//                 )
-//             } else {
-//                 None
-//             };
-// 
-//             if let Some(exec_order) = exec_order {
-//                 execute_dag_nodes(
-//                     exec_order,
-//                     &config.project.compile_path,
-//                     &config.project.paths.models.dir,
-//                     engine,
-//                     db_adapter,
-//                     source_conn_args,
-//                 )
-//                 .await
-//                 .map_err(|e| FFError::Run(e.into()))?;
-//             } else {
-//                 let node = match dag.get_node_ref(&model) {
-//                     Some(idx) => idx,
-//                     None => {
-//                         return Err(FFError::Compile(
-//                             format!("model {} not found", model).into(),
-//                         ))
-//                     }
-//                 };
-// 
-//                 execute_dag_nodes(
-//                     node,
-//                     &config.project.compile_path,
-//                     &config.project.paths.models.dir,
-//                     engine,
-//                     db_adapter,
-//                     source_conn_args,
-//                 )
-//                 .await
-//                 .map_err(|e| FFError::Run(e.into()))?;
-//             }
-//         }
-//         None => {
-//             let ordered_nodes = dag
-//                 .get_included_dag_nodes(None)
-//                 .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
-//             execute_dag_nodes(
-//                 ordered_nodes,
-//                 &config.project.compile_path,
-//                 &config.project.paths.models.dir,
-//                 engine,
-//                 db_adapter,
-//                 source_conn_args,
-//             )
-//             .await
-//             .map_err(|e| FFError::Run(e.into()))?;
-//         }
-//     }
-// 
-//     Ok(())
-// }
-// 
-// /// Compile models and execute them against the configured target database.
-// ///
-// /// When `model` is `None` the entire DAG is executed. If a model name is
-// /// supplied, the selection syntax from [`execute_model`] can be used to run a
-// /// specific slice of the DAG.
-// pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
-//     // compile models and obtain the dependency graph
-//     let dag = compiler::compile(config.project.compile_path.clone())?;
-//     let engine = Engine::new();
-// 
-//     // build postgres connection string from selected profile
-//     let profile = config
-//         .connections
-//         .get(&config.connection_profile)
-//         .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
-// 
-//     let mut adapter = create_db_adapter(profile.clone()).await
-//         .map_err(|e| FFError::Run(Box::new(io::Error::new(io::ErrorKind::Other, e.to_string()))))?;
-// 
-//     let source_conn_args = if let Some(kafka_sources) = &config.kafka_source {
-//         let kafka_source_name = config
-//             .project
-//             .paths
-//             .sources
-//             .iter()
-//             .find(|s| s.kind == SourceType::Kafka)
-//             .map(|s| s.name.clone());
-// 
-//         if let Some(name) = kafka_source_name {
-//             kafka_sources
-//                 .get(&name)
-//                 .map(|cfg| {
-//                     let host = format!("http://{}:{}", cfg.connect.host, cfg.connect.port);
-//                     SourceConnArgs {
-//                         kafka_connect: Some(host),
-//                     }
-//                 })
-//                 .unwrap_or(SourceConnArgs { kafka_connect: None })
-//         } else {
-//             SourceConnArgs { kafka_connect: None }
-//         }
-//     } else {
-//         SourceConnArgs { kafka_connect: None }
-//     };
-// 
-//     run_dag(&dag, model, &config, engine, &mut adapter, source_conn_args).await
-// }
+use std::io;
+use petgraph::Direction;
+use common::config::components::global::FoundryConfig;
+use common::error::FFError;
+use dag::{ModelsDag};
+use dag::types::DagNode;
+use database_adapters::create_db_adapter;
+use logging::timeit;
+use crate::functions::compile::compile;
+
+// Execute the compiled SQL in dependency order using the provided executor.
+async fn execute_dag_nodes(
+    nodes: Vec<&DagNode>,
+    config: &FoundryConfig,
+) -> Result<(), FFError>
+{
+    timeit!("Executed all models", {
+        for node in nodes.into() {
+            timeit!(format!("Executed model {}", &node.path.display()), {
+                engine
+                    .execute(&sql, &source_conn_args, Some(db_adapter))
+                    .await
+                    .map_err(|e| FFError::Run(Box::new(e)))?;
+            });
+        }
+    });
+
+    Ok(())
+}
+
+
+
+async fn run_dag(nodes: &ModelsDag, model: Option<String>) -> Result<(), FFError> {
+    match model {
+        Some(model) => {
+            let exec_order = if model.starts_with('<') && model.ends_with('>') {
+                let name = model.trim_start_matches('<').trim_end_matches('>');
+                Some(
+                    nodes.get_model_execution_order(name)
+                        .map_err(|e| FFError::Run(e.into()))?,
+                )
+            } else if model.starts_with('<') {
+                let name = model.trim_start_matches('<');
+                Some(
+                    nodes.transitive_closure(name, Direction::Incoming)
+                        .map_err(|e| FFError::Run(e.into()))?,
+                )
+            } else if model.ends_with('>') {
+                let name = model.trim_end_matches('>');
+                Some(
+                    nodes.transitive_closure(name, Direction::Outgoing)
+                        .map_err(|e| FFError::Run(e.into()))?,
+                )
+            } else {
+                None
+            };
+
+            if let Some(exec_order) = exec_order {
+                execute_dag_nodes(
+                    exec_order,
+                    &config.project.compile_path,
+                    &config.project.paths.models.dir,
+                    engine,
+                    db_adapter,
+                    source_conn_args,
+                )
+                .await
+                .map_err(|e| FFError::Run(e.into()))?;
+            } else {
+                let node = match nodes.get_node_ref(&model) {
+                    Some(idx) => idx,
+                    None => {
+                        return Err(FFError::Compile(
+                            format!("model {} not found", model).into(),
+                        ))
+                    }
+                };
+
+                if !node.is_executable {
+                    return Err(FFError::Compile(
+                        format!("model {} is not executable", model).into(),
+                    ));
+                }
+
+                execute_dag_nodes(
+                    node,
+                    &config.project.compile_path,
+                    &config.project.paths.models.dir,
+                    engine,
+                    db_adapter,
+                    source_conn_args,
+                )
+                .await
+                .map_err(|e| FFError::Run(e.into()))?;
+            }
+        }
+        None => {
+            let ordered_nodes = nodes
+                .get_included_dag_nodes(None)
+                .map_err(|e| FFError::Run(format!("dag cycle: {:?}", e).into()))?;
+            execute_dag_nodes(
+                ordered_nodes,
+                &config.project.compile_path,
+                &config.project.paths.models.dir,
+                engine,
+                db_adapter,
+                source_conn_args,
+            )
+            .await
+            .map_err(|e| FFError::Run(e.into()))?;
+        }
+    }
+
+    Ok(())
+}
+
+// Compile models and execute them against the configured target database.
+//
+// When `model` is `None` the entire DAG is executed. If a model name is
+// supplied, the selection syntax from [`execute_model`] can be used to run a
+// specific slice of the DAG.
+pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
+    // compile models and obtain the dependency graph
+    let (dag, catalog) = compile(config.project.compile_path.clone())?;
+
+    // // build postgres connection string from selected profile
+    // let profile = config
+    //     .connections
+    //     .get(&config.connection_profile)
+    //     .ok_or_else(|| FFError::Compile("missing connection profile".into()))?;
+    //
+    // let adapter_connection_obj = config
+    //     .get_adapter_connection_details()
+    //     .ok_or_else(|| FFError::Compile("missing adapter connection details".into()))?;
+    //
+    // let mut adapter = create_db_adapter(adapter_connection_obj).await
+    //     .map_err(|e| FFError::Run(Box::new(io::Error::new(io::ErrorKind::Other, e.to_string()))))?;
+    //
+    // let source_conn_args = if let Some(kafka_sources) = &config.kafka_source {
+    //     let kafka_source_name = config
+    //         .project
+    //         .paths
+    //         .sources
+    //         .iter()
+    //         .find(|s| s.kind == SourceType::Kafka)
+    //         .map(|s| s.name.clone());
+    //
+    //     if let Some(name) = kafka_source_name {
+    //         kafka_sources
+    //             .get(&name)
+    //             .map(|cfg| {
+    //                 let host = format!("http://{}:{}", cfg.connect.host, cfg.connect.port);
+    //                 SourceConnArgs {
+    //                     kafka_connect: Some(host),
+    //                 }
+    //             })
+    //             .unwrap_or(SourceConnArgs { kafka_connect: None })
+    //     } else {
+    //         SourceConnArgs { kafka_connect: None }
+    //     }
+    // } else {
+    //     SourceConnArgs { kafka_connect: None }
+    // };
+
+    run_dag(&dag, model, &config, engine, &mut adapter, source_conn_args).await
+}
 
 // #[cfg(test)]
 // mod tests {

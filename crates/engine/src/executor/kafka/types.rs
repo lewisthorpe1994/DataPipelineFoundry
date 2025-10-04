@@ -1,5 +1,4 @@
 use crate::types::KafkaConnectorType;
-use crate::KafkaConnectorMeta;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -9,14 +8,6 @@ pub struct KafkaConnectorDeployConfig {
     pub config: Value,
 }
 
-impl From<KafkaConnectorMeta> for KafkaConnectorDeployConfig {
-    fn from(meta: KafkaConnectorMeta) -> Self {
-        Self {
-            config: meta.config,
-            name: meta.name,
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KafkaConnectorDeployedConfig {
