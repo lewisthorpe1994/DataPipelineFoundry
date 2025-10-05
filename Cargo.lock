@@ -896,33 +896,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "common",
- "dag",
- "log",
- "parking_lot",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml",
- "shared_clients",
- "sqlparser",
- "test_utils",
- "testcontainers",
- "tokio",
- "tokio-postgres",
- "tracing-subscriber",
- "uuid",
- "wiremock",
-]
-
-[[package]]
 name = "env_filter"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -970,6 +943,30 @@ dependencies = [
  "cfg-if",
  "home",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "executor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "common",
+ "dag",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shared_clients",
+ "sqlparser",
+ "test_utils",
+ "testcontainers",
+ "tokio",
+ "tokio-postgres",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]
@@ -2989,7 +2986,8 @@ name = "test_utils"
 version = "0.1.0"
 dependencies = [
  "once_cell",
- "tempfile",
+ "testcontainers",
+ "uuid",
 ]
 
 [[package]]

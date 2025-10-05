@@ -30,7 +30,7 @@ impl From<Error> for DatabaseAdapterError {
 /* ----- async Postgres adapter ----- */
 
 pub struct PostgresAdapter {
-    client: Client,
+    pub client: Client,
     _driver: tokio::task::JoinHandle<()>, // keep the task alive
 }
 
@@ -63,8 +63,14 @@ impl PostgresAdapter {
 
 #[async_trait]
 impl AsyncDatabaseAdapter for PostgresAdapter {
+    type Row = tokio_postgres::Row;
+
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
         self.client.batch_execute(sql).await?; // waits until server confirms
         Ok(())
+    }
+    async fn query(&self, sql: &str) -> Result<Vec<Self::Row>, DatabaseAdapterError> {
+        let response = self.client.query(sql, &[]).await?;
+        Ok(response)
     }
 }

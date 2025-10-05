@@ -19,11 +19,6 @@ pub struct KafkaConnectorDeployedConfig {
     pub conn_type: Option<KafkaConnectorType>,
 }
 
-#[derive(PartialEq, Debug)]
-pub enum KafkaExecutorResponse {
-    Ok,
-}
-
 pub enum KafkaConnectClientError {
     NotFound(String),
     FailedToConnect(String),
@@ -143,7 +138,7 @@ impl KafkaConnectClient {
     pub async fn deploy_connector(
         &self,
         cfg: &KafkaConnectorDeployConfig,
-    ) -> Result<KafkaExecutorResponse, KafkaConnectClientError> {
+    ) -> Result<(), KafkaConnectClientError> {
         let client = Client::new();
         let resp = client
             .post(format!("{}/connectors", self.host))
@@ -155,7 +150,7 @@ impl KafkaConnectClient {
             StatusCode::OK
             | StatusCode::CREATED
             | StatusCode::ACCEPTED
-            | StatusCode::NO_CONTENT => Ok(KafkaExecutorResponse::Ok),
+            | StatusCode::NO_CONTENT => Ok(()),
             StatusCode::BAD_REQUEST => {
                 let body: ConnectErrorBody =
                     resp.json().await.unwrap_or_else(|_| ConnectErrorBody {

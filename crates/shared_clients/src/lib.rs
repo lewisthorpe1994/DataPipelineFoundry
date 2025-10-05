@@ -65,11 +65,15 @@ impl From<std::io::Error> for DatabaseAdapterError {
 }
 
 pub trait DatabaseAdapter {
+    type Row: Send + 'static;
     fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
     fn connection(&self) -> String;
+    fn query(&self, sql: &str) -> Result<Vec<Self::Row>, DatabaseAdapterError>;
 }
 
 impl<T: DatabaseAdapter + ?Sized> DatabaseAdapter for &mut T {
+    type Row = T::Row;
+
     fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
         (**self).execute(sql)
     }
@@ -77,25 +81,39 @@ impl<T: DatabaseAdapter + ?Sized> DatabaseAdapter for &mut T {
     fn connection(&self) -> String {
         (**self).connection()
     }
+    fn query(&self, sql: &str) -> Result<Vec<Self::Row>, DatabaseAdapterError> {
+        (**self).query(sql)
+    }
 }
 
 #[async_trait]
-pub trait AsyncDatabaseAdapter {
+pub trait AsyncDatabaseAdapter: Send + Sync {
+    type Row: Send + 'static;
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
+    async fn query(&self, sql: &str) -> Result<Vec<Self::Row>, DatabaseAdapterError>;
+
 }
 
 #[async_trait] // ← leave the default (Send) mode
 impl<T> AsyncDatabaseAdapter for &mut T
 where
-    T: DatabaseAdapter + Send + ?Sized, //  ↑ ensure the captured &mut T _is_
+    T: DatabaseAdapter + Send + ?Sized + Sync, //  ↑ ensure the captured &mut T _is_
 {
+    type Row = T::Row;
+
     //    Send (it is, if T: Send)
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError> {
         // if this call can block, wrap it in spawn_blocking!
         (**self).execute(sql)
     }
+
+    async fn query(&self, sql: &str) -> Result<Vec<Self::Row>, DatabaseAdapterError> {
+        (**self).query(sql)
+    }
 }
-pub type AsyncDbAdapter = Box<dyn AsyncDatabaseAdapter>;
+
+// TODO - needs revisiting when more dbs are supported
+pub type AsyncDbAdapter = Box<dyn AsyncDatabaseAdapter<Row = tokio_postgres::Row> + Send + Sync + 'static>;
 
 pub async fn create_db_adapter(
     conn_details: AdapterConnectionDetails,

@@ -1,5 +1,5 @@
 [package]
-name = "engine"
+name = "executor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,11 +22,9 @@ parking_lot = "0.12.4"
 sqlparser = { workspace = true, features = ["json_example"]}
 reqwest = { version = "0.12.22", features = ["json"] }
 tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
-async-trait = "0.1.88"
 common = { workspace = true }
 dag = { workspace = true }
 shared_clients = { workspace = true }
 tracing-subscriber = "0.3.19"
-regex = { version = "1.11.1" }
-log = "0.4.27"
+
 
