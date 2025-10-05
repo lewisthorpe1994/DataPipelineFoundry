@@ -94,7 +94,7 @@ where
 }
 
 
-pub const PG_DB: &str = "postgres";
+pub const PG_DB: &str = "dvdrental";
 pub const PG_USER: &str = "postgres";
 pub const PG_PASSWORD: &str = "postgres";
 pub const PG_HOST: &str = "0.0.0.0";
@@ -153,7 +153,7 @@ fn plugins_host_path() -> PathBuf {
 pub async fn setup_postgres() -> Result<PgTestContainer, Box<dyn std::error::Error>> {
     let id = Uuid::new_v4();
     let name = format!("postgres-{}", id);
-    let postgres = GenericImage::new("postgres", "16")
+    let postgres = GenericImage::new("dvdrental-db", "latest")
         .with_wait_for(WaitFor::message_on_stdout(
             "database system is ready to accept connections",
         ))
@@ -178,6 +178,7 @@ pub async fn setup_postgres() -> Result<PgTestContainer, Box<dyn std::error::Err
         local_host: NET_HOST,
     })
 }
+
 
 pub async fn setup_kafka() -> Result<KafkaTestContainers, Box<dyn std::error::Error>> {
     let id = Uuid::new_v4();
