@@ -641,7 +641,6 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
- "database_adapters",
  "log",
  "minijinja",
  "serde",
@@ -775,16 +774,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "database_adapters"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde",
- "tokio",
- "tokio-postgres",
-]
-
-[[package]]
 name = "deadpool"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -914,8 +903,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "common",
- "database_adapters",
- "ff_core",
+ "dag",
  "log",
  "parking_lot",
  "regex",
@@ -923,15 +911,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "shared_clients",
  "sqlparser",
  "test_utils",
  "testcontainers",
- "thiserror",
  "tokio",
  "tokio-postgres",
  "tracing-subscriber",
  "uuid",
- "walkdir",
  "wiremock",
 ]
 
@@ -1004,7 +991,6 @@ dependencies = [
  "catalog",
  "common",
  "dag",
- "database_adapters",
  "logging",
  "minijinja",
  "once_cell",
@@ -2406,9 +2392,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest"
-version = "0.12.22"
+version = "0.12.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbc931937e6ca3a06e3b6c0aa7841849b160a90351d6ab467a8b9b9959767531"
+checksum = "d429f34c8092b2d42c7c93cec323bb4adeb7c67698f70839adec842ec10c7ceb"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2772,6 +2758,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
+]
+
+[[package]]
+name = "shared_clients"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "common",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]

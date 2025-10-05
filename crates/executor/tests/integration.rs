@@ -18,7 +18,7 @@ mod tests {
     };
     use common::types::sources::SourceConnArgs;
     use common_test_utils::setup_kafka;
-    use engine::executor::kafka::{KafkaConnectClient};
+    use engine::kafka::{KafkaConnectClient};
     use engine::{Engine, EngineError};
     use std::time::Duration;
     use tokio::time::sleep;

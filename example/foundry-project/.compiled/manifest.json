@@ -11,16 +11,6 @@
       "target": "warehouse_source"
     },
     {
-      "name": "silver.orders",
-      "compiled_executable": "DROP MATERIALIZED VIEW IF EXISTS silver.orders CASCADE;\nCREATE MATERIALIZED VIEW silver.orders AS SELECT o.order_id, o.customer_id, o.order_date, o.total_amount FROM bronze.orders AS o",
-      "depends_on": [
-        "bronze.orders"
-      ],
-      "executable": true,
-      "node_type": "DPF",
-      "target": "warehouse_source"
-    },
-    {
       "name": "gold.customer_metrics",
       "compiled_executable": "DROP TABLE IF EXISTS gold.customer_metrics CASCADE;\nCREATE TABLE gold.customer_metrics AS SELECT o.customer_id, count(*) AS order_count, sum(o.total_amount) AS total_revenue FROM silver.orders AS o GROUP BY o.customer_id",
       "depends_on": [
@@ -31,8 +21,67 @@
       "target": "warehouse_source"
     },
     {
+      "name": "silver.orders",
+      "compiled_executable": "DROP MATERIALIZED VIEW IF EXISTS silver.orders CASCADE;\nCREATE MATERIALIZED VIEW silver.orders AS SELECT o.order_id, o.customer_id, o.order_date, o.total_amount FROM bronze.orders AS o",
+      "depends_on": [
+        "bronze.orders"
+      ],
+      "executable": true,
+      "node_type": "DPF",
+      "target": "warehouse_source"
+    },
+    {
+      "name": "public.orders",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "postgres-.public.orders",
+      "compiled_executable": null,
+      "depends_on": [
+        "test_src_connector"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "mask_field",
+      "compiled_executable": null,
+      "depends_on": [
+        "public.orders"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "drop_id",
+      "compiled_executable": null,
+      "depends_on": [
+        "public.orders"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "test_src_connector",
+      "compiled_executable": "{\"name\": test_src_connector, \"config\": {\"connector.class\":\"io.debezium.connector.postgresql.PostgresConnector\",\"database.dbname\":\"postgres\",\"database.hostname\":\"postgres\",\"database.password\":\"postgres\",\"database.port\":\"5432\",\"database.user\":\"postgres\",\"kafka.bootstrap.servers\":\"kafka-1:9092,kafka-2:9092,kafka-3:9092\",\"snapshot.mode\":\"initial\",\"table.include.list\":\"public.orders\",\"tasks.max\":\"1\",\"topic.prefix\":\"postgres-\",\"transforms\":\"pii_pipeline_mask_field,pii_pipeline_drop_id\",\"transforms.pii_pipeline_drop_id.blacklist\":\"id\",\"transforms.pii_pipeline_drop_id.predicate\":\"some_predicate\",\"transforms.pii_pipeline_drop_id.type\":\"org.apache.kafka.connect.transforms.ReplaceField$Value\",\"transforms.pii_pipeline_mask_field.fields\":\"name\",\"transforms.pii_pipeline_mask_field.predicate\":\"some_predicate\",\"transforms.pii_pipeline_mask_field.replacement\":\"X\",\"transforms.pii_pipeline_mask_field.type\":\"org.apache.kafka.connect.transforms.MaskField$Value\"}}",
+      "depends_on": [
+        "pii_pipeline",
+        "public.orders"
+      ],
+      "executable": true,
+      "node_type": "Kafka",
+      "target": "some_kafka_cluster"
+    },
+    {
       "name": "unwrap_after",
-      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM unwrap_after (\"type\" = 'io.debezium.transforms.ExtractNewRecordState', \"drop.tombstones\" = 'true', \"delete.handling.mode\" = 'rewrite')",
+      "compiled_executable": null,
       "depends_on": [
         "postgres-.public.orders"
       ],
@@ -62,53 +111,14 @@
       "target": null
     },
     {
-      "name": "public.orders",
-      "compiled_executable": null,
-      "depends_on": null,
-      "executable": false,
-      "node_type": "DB",
-      "target": null
-    },
-    {
-      "name": "postgres-.public.orders",
-      "compiled_executable": null,
+      "name": "customer_metrics_sink_pipeline",
+      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS customer_metrics_sink_pipeline SINK (unwrap_after)",
       "depends_on": [
-        "test_src_connector"
+        "unwrap_after"
       ],
       "executable": false,
       "node_type": "Kafka",
       "target": null
-    },
-    {
-      "name": "mask_field",
-      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM mask_field (\"type\" = 'org.apache.kafka.connect.transforms.MaskField$Value', \"fields\" = 'name', \"replacement\" = 'X')",
-      "depends_on": [
-        "public.orders"
-      ],
-      "executable": false,
-      "node_type": "Kafka",
-      "target": null
-    },
-    {
-      "name": "drop_id",
-      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM drop_id (\"type\" = 'org.apache.kafka.connect.transforms.ReplaceField$Value', \"blacklist\" = 'id')",
-      "depends_on": [
-        "public.orders"
-      ],
-      "executable": false,
-      "node_type": "Kafka",
-      "target": null
-    },
-    {
-      "name": "test_src_connector",
-      "compiled_executable": "{\"name\": test_src_connector, \"config\": {\"connector.class\":\"io.debezium.connector.postgresql.PostgresConnector\",\"database.dbname\":\"postgres\",\"database.hostname\":\"postgres\",\"database.password\":\"postgres\",\"database.port\":\"5432\",\"database.user\":\"postgres\",\"kafka.bootstrap.servers\":\"kafka-1:9092,kafka-2:9092,kafka-3:9092\",\"snapshot.mode\":\"initial\",\"table.include.list\":\"public.orders\",\"tasks.max\":\"1\",\"topic.prefix\":\"postgres-\",\"transforms\":\"pii_pipeline_mask_field,pii_pipeline_drop_id\",\"transforms.pii_pipeline_drop_id.blacklist\":\"id\",\"transforms.pii_pipeline_drop_id.predicate\":\"some_predicate\",\"transforms.pii_pipeline_drop_id.type\":\"org.apache.kafka.connect.transforms.ReplaceField$Value\",\"transforms.pii_pipeline_mask_field.fields\":\"name\",\"transforms.pii_pipeline_mask_field.predicate\":\"some_predicate\",\"transforms.pii_pipeline_mask_field.replacement\":\"X\",\"transforms.pii_pipeline_mask_field.type\":\"org.apache.kafka.connect.transforms.MaskField$Value\"}}",
-      "depends_on": [
-        "pii_pipeline",
-        "public.orders"
-      ],
-      "executable": true,
-      "node_type": "Kafka",
-      "target": "some_kafka_cluster"
     },
     {
       "name": "pii_pipeline",
@@ -116,16 +126,6 @@
       "depends_on": [
         "drop_id",
         "mask_field"
-      ],
-      "executable": false,
-      "node_type": "Kafka",
-      "target": null
-    },
-    {
-      "name": "customer_metrics_sink_pipeline",
-      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS customer_metrics_sink_pipeline SINK (unwrap_after)",
-      "depends_on": [
-        "unwrap_after"
       ],
       "executable": false,
       "node_type": "Kafka",

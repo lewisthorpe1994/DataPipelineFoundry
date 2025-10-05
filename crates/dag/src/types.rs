@@ -54,9 +54,11 @@ impl Display for NodeAst {
 pub struct DagNode {
     pub name: String,
     pub ast: Option<NodeAst>,
+    pub compiled_obj: Option<String>,
     pub node_type: DagNodeType,
     pub is_executable: bool,
     pub relations: Option<BTreeSet<String>>,
+    pub target: Option<String>,
     //source: Option<String>,
 }
 impl Debug for DagNode {

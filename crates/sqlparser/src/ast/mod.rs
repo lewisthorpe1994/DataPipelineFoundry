@@ -8766,7 +8766,7 @@ impl Display for CreateViewParams {
     }
 }
 
-/// Engine of DB. Some warehouse has parameters of engine, e.g. [ClickHouse]
+/// Engine of DB. Some warehouse has parameters of executor, e.g. [ClickHouse]
 ///
 /// [ClickHouse]: https://clickhouse.com/docs/en/engines/table-engines
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]

@@ -1,8 +1,7 @@
-use database_adapters::AdapterConnectionDetails;
-use crate::config::components::connections::ConnectionsConfig;
+use crate::config::components::connections::{AdapterConnectionDetails, ConnectionsConfig};
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ModelsConfig;
-use crate::config::components::sources::kafka::KafkaSourceConfigs;
+use crate::config::components::sources::kafka::{KafkaSourceConfig, KafkaSourceConfigs};
 use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
 use crate::config::components::sources::SourcePaths;
 
@@ -50,5 +49,13 @@ impl FoundryConfig {
             .get(&self.connection_profile)
             .and_then(|sources| sources.get(&self.warehouse_db_connection))
             .cloned()
+    }
+    
+    pub fn get_kafka_cluster_conn(&self, cluster_name: &str) -> Option<KafkaSourceConfig> {
+        if let Some(s) = &self.kafka_source {
+            s.get(cluster_name).cloned()
+        } else {
+            None
+        }
     }
 }

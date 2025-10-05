@@ -6,7 +6,6 @@ use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs
 use crate::config::components::sources::{SourcePathConfig, SourcePaths};
 use crate::config::error::ConfigError;
 use crate::config::traits::{ConfigName, FromFileConfigList, IntoConfigVec};
-use database_adapters::{AdapterConnectionDetails, DatabaseAdapterType};
 use serde::de::{DeserializeOwned, Error};
 use serde::Deserialize;
 use serde_yaml::{self, Error as YamlError, Value};
@@ -14,6 +13,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use crate::config::components::connections::{AdapterConnectionDetails, DatabaseAdapterType};
 
 pub fn load_config<T, V, Wrapper>(path: &Path) -> Result<Wrapper, ConfigError>
 where

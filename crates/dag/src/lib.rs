@@ -11,8 +11,11 @@ use petgraph::Direction;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
-use catalog::{Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
+use catalog::{Compile, Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
+use common::config::components::global::FoundryConfig;
+use common::error::FFError;
 use common::types::kafka::KafkaConnectorType;
+use sqlparser::ast::ModelSqlCompileError;
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -76,7 +79,11 @@ impl ModelsDag {
             Some(db.to_string())
         }
     }
-    pub fn build(&mut self, registry: &MemoryCatalog) -> DagResult<()> {
+    pub fn build(
+        &mut self, 
+        registry: &MemoryCatalog,
+        config: &FoundryConfig
+    ) -> DagResult<()> {
         let started = Instant::now();
         
         // First Pass - build all the nodes
@@ -90,8 +97,10 @@ impl ModelsDag {
                             name: source.identifier(),
                             ast: None,
                             node_type: DagNodeType::WarehouseSourceDb,
+                            compiled_obj: None,
                             is_executable: false,
                             relations: None,
+                            target: None
                         },
                     )?;
                 }
@@ -118,7 +127,14 @@ impl ModelsDag {
                     rels.extend(refs);
                     rels.extend(resolved_srcs);
                     
-                   
+                   let compiled_obj = model.sql.compile(|src, table| {
+                       config
+                           .warehouse_source
+                           .resolve(src, table)
+                           .map_err(|e| ModelSqlCompileError(e.to_string()))
+                   })
+                       .map_err(|e| DagError::AstSyntax(e.to_string()))?;
+                    
                     self.upsert_node(
                         c_node.name.clone(),
                         true,
@@ -128,6 +144,8 @@ impl ModelsDag {
                             node_type: DagNodeType::Model,
                             is_executable: true,
                             relations: Some(rels),
+                            compiled_obj: Some(compiled_obj),
+                            target: Some(config.warehouse_db_connection.clone()),
                         },
                     )?;
                 }
@@ -148,6 +166,8 @@ impl ModelsDag {
                             node_type: DagNodeType::KafkaPipeline,
                             is_executable: false,
                             relations: Some(rels),
+                            compiled_obj: Some(pipe.sql.to_string()),
+                            target: None
                         },
                     )?;
                 }
@@ -161,6 +181,8 @@ impl ModelsDag {
                             node_type: DagNodeType::KafkaSmt,
                             is_executable: false,
                             relations: None, // TODO - needs revisiting
+                            compiled_obj: Some(smt.sql.to_string()),
+                            target: None
                         },
                     )?;
                 }
@@ -197,6 +219,8 @@ impl ModelsDag {
                                         node_type: DagNodeType::SourceDb,
                                         is_executable: false,
                                         relations: None,
+                                        compiled_obj: None,
+                                        target: None
                                     },
                                 )?;
                             }
@@ -248,6 +272,8 @@ impl ModelsDag {
                                         node_type: DagNodeType::KafkaTopic,
                                         is_executable: false,
                                         relations: Some(BTreeSet::from([conn.name.clone()])),
+                                        compiled_obj: None,
+                                        target: None
                                     },
                                 )?;
                             }
@@ -272,11 +298,18 @@ impl ModelsDag {
                                                 node_type: DagNodeType::KafkaSmt,
                                                 is_executable: false,
                                                 relations: Some(src_db_rels.clone()),
+                                                compiled_obj: None,
+                                                target: None
                                             },
                                         )?
                                     }
                                 }
                             };
+
+                            let compiled = registry
+                                .compile_kafka_decl(&c_node.name, &config)
+                                .map_err(|e| DagError::AstSyntax(e.to_string()))?
+                                .to_string();
 
                             // Add connector
                             self.upsert_node(
@@ -288,6 +321,8 @@ impl ModelsDag {
                                     node_type: DagNodeType::KafkaSourceConnector,
                                     is_executable: true,
                                     relations: Some(conn_rels.clone()),
+                                    compiled_obj: Some(compiled),
+                                    target: Some(conn.cluster_name.clone()),
                                 },
                             )?;
                         }
@@ -344,6 +379,8 @@ impl ModelsDag {
                                                 node_type: DagNodeType::KafkaSmt,
                                                 is_executable: false,
                                                 relations: Some(rels.clone()),
+                                                compiled_obj: None,
+                                                target: None
                                             },
                                         )?
                                     }
@@ -370,6 +407,11 @@ impl ModelsDag {
                                 warehouse_src = format!("{}.{}", db_name, warehouse_src);
                             }
 
+                            let compiled = registry
+                                .compile_kafka_decl(&c_node.name, &config)
+                                .map_err(|e| DagError::AstSyntax(e.to_string()))?
+                                .to_string();
+
                             self.upsert_node(
                                 conn.name.clone(),
                                 true,
@@ -379,6 +421,8 @@ impl ModelsDag {
                                     node_type: DagNodeType::KafkaSinkConnector,
                                     is_executable: true,
                                     relations: Some(rels),
+                                    compiled_obj: Some(compiled),
+                                    target: Some(conn.cluster_name.clone()),
                                 },
                             )?;
 
@@ -391,6 +435,8 @@ impl ModelsDag {
                                     node_type: DagNodeType::WarehouseSourceDb,
                                     is_executable: false,
                                     relations: Some(BTreeSet::from([conn.name.clone()])),
+                                    compiled_obj: None,
+                                    target: None
                                 },
                             )?;
                         }
@@ -723,9 +769,9 @@ impl ModelsDag {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use catalog::Register;
+use super::*;
     use common::config::loader::read_config;
-    use engine::registry::Register;
     use ff_core::parser::parse_nodes;
     use test_utils::{get_root_dir, with_chdir};
 
@@ -747,7 +793,7 @@ mod tests {
                 .expect("register nodes");
 
             let mut dag = ModelsDag::new();
-            dag.build(&cat).expect("build models");
+            dag.build(&cat, &config).expect("build models");
         })?;
 
         Ok(())

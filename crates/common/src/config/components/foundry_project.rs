@@ -2,8 +2,6 @@ use crate::config::components::model::ModelsPaths;
 use crate::config::components::sources::SourcePaths;
 use serde::Deserialize;
 use std::collections::HashMap;
-use database_adapters::AdapterConnectionDetails;
-use crate::config::components::connections::ConnectionsConfig;
 
 pub type ModelLayerName = String;
 pub type ModelLayerDir = String;

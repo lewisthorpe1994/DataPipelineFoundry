@@ -16,7 +16,6 @@ sqlparser = { workspace = true}
 dag = { workspace = true}
 catalog = { workspace = true }
 logging = { workspace = true }
-database_adapters = { workspace = true }
 regex = "1.11.1"
 
 [dev-dependencies]

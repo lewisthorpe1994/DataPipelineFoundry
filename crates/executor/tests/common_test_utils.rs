@@ -1,4 +1,4 @@
-use engine::executor::kafka::KafkaConnectClient;
+use engine::kafka::KafkaConnectClient;
 use engine::executor::ExecutorHost;
 use std::path::{Path, PathBuf};
 use std::time::Duration;

@@ -9,16 +9,16 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
 // ---------------- KafkaSource Config ----------------
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct KafkaConnect {
     pub host: String,
     pub port: String,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct KafkaBootstrap {
     pub servers: String,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct KafkaSourceConfig {
     pub name: String,
     pub bootstrap: KafkaBootstrap,

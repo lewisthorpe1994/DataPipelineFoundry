@@ -1,7 +1,5 @@
-use crate::executor::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
-use crate::executor::{ExecutorError, ExecutorResponse};
-use crate::registry::{Compile, MemoryCatalog};
-use crate::{CatalogError, PipelineDecl, TransformDecl};
+use crate::kafka::{KafkaConnectorDeployConfig, KafkaDeploy, KafkaExecutor};
+
 use common::types::sources::SourceConnArgs;
 use database_adapters::{AsyncDatabaseAdapter};
 use serde_json::Value as Json;
@@ -103,7 +101,7 @@ impl SqlExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
+    use crate::kafka::{KafkaExecutorError, KafkaExecutorResponse};
     use crate::registry::Register;
     use async_trait::async_trait;
     use database_adapters::DatabaseAdapterError;

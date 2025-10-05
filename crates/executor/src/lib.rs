@@ -1,16 +1,11 @@
-pub mod kafka;
+pub mod types;
 pub mod sql;
-
-use crate::executor::kafka::{KafkaExecutorError, KafkaExecutorResponse};
-use crate::executor::sql::SqlExecutor;
-use crate::registry::MemoryCatalog;
-use crate::CatalogError;
-use common::types::sources::SourceConnArgs;
-use database_adapters::{AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError};
-use sqlparser::dialect::GenericDialect;
-use sqlparser::parser::{Parser, ParserError};
+use dag::types::{DagNode, DagNodeType};
+use shared_clients::{create_db_adapter, AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError};
 use std::error::Error;
 use std::fmt;
+use common::config::components::global::FoundryConfig;
+use shared_clients::kafka::KafkaConnectClient;
 
 pub trait ExecutorHost {
     fn host(&self) -> &str;
@@ -31,14 +26,6 @@ pub enum ExecutorResponse {
     Ok,
 }
 
-impl From<KafkaExecutorResponse> for ExecutorResponse {
-    fn from(resp: KafkaExecutorResponse) -> Self {
-        match resp {
-            KafkaExecutorResponse::Ok => ExecutorResponse::Ok,
-        }
-    }
-}
-
 impl fmt::Display for ExecutorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -55,11 +42,6 @@ impl fmt::Display for ExecutorError {
 
 impl Error for ExecutorError {}
 
-impl From<CatalogError> for ExecutorError {
-    fn from(e: CatalogError) -> ExecutorError {
-        ExecutorError::FailedToExecute(e.to_string())
-    }
-}
 impl From<KafkaExecutorError> for ExecutorError {
     fn from(e: KafkaExecutorError) -> ExecutorError {
         match e {
@@ -71,11 +53,6 @@ impl From<KafkaExecutorError> for ExecutorError {
                 ExecutorError::UnexpectedError(e.to_string())
             }
         }
-    }
-}
-impl From<ParserError> for ExecutorError {
-    fn from(value: ParserError) -> Self {
-        ExecutorError::ParseError(value.to_string())
     }
 }
 
@@ -94,13 +71,41 @@ impl Executor {
 impl Executor {
     pub async fn execute(
         &self,
-        sql: &str,
-        catalog: &MemoryCatalog,
-        source_conn_args: &SourceConnArgs,
-        target_db_adapter: Option<&mut Box<dyn AsyncDatabaseAdapter>>,
+        node: &DagNode,
+        config: &FoundryConfig
     ) -> Result<ExecutorResponse, ExecutorError> {
-        let ast_vec = Parser::parse_sql(&GenericDialect, sql)?;
+        match node.node_type {
+            DagNodeType::Model => {
+                let executable = node.compiled_obj.ok_or(
+                    ExecutorError::ConfigError("Expected a executable string for a model but got none".to_string())
+                )?;
 
-        Ok(SqlExecutor::execute(ast_vec, catalog, source_conn_args, target_db_adapter).await?)
+                let adapter_connection_obj = config
+                    .get_adapter_connection_details()
+                    .ok_or_else(|| ExecutorError::ConfigError("missing adapter connection details".into()))?;
+
+                let mut adapter = create_db_adapter(adapter_connection_obj).await?;
+                adapter.execute(&executable).await?;
+                Ok(ExecutorResponse::Ok)
+            }
+            DagNodeType::KafkaSourceConnector => {
+                let executable = node.compiled_obj.ok_or(
+                    ExecutorError::ConfigError("Expected a executable string for a model but got none".to_string())
+                )?;
+                let kafka_conn_name = node.target.ok_or(ExecutorError::ConfigError(
+                    "Expected a kafka connection name but got none".to_string()
+                ))?;
+                let kafka_conn = config.get_kafka_cluster_conn(&kafka_conn_name)
+                    .ok_or(ExecutorError::ConfigError(
+                        format!("No kafka cluster connection details found for {}", kafka_conn_name)
+                    ))?;
+
+                let kafka_client = KafkaConnectClient::new(
+                    &kafka_conn.connect.host,
+                    &kafka_conn.connect.port
+                );
+
+            }
+        }
     }
 }

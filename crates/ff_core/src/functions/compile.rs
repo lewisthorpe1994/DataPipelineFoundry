@@ -54,7 +54,7 @@ pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalo
     catalog
         .register_nodes(nodes, wh_config)
         .map_err(|e| FFError::Compile(e.into()))?;
-    dag.build(&catalog)
+    dag.build(&catalog, &config)
         .map_err(|e| FFError::Compile(e.into()))?;
 
     // ensure compile directory exists
@@ -69,71 +69,24 @@ pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalo
     let mut manifest_models = Vec::new();
 
     for node in dag_arc.graph.node_weights() {
-        // read SQL to be compiled
-        // if !node.is_executable {
-        //     continue;
-        // }
-
-        let (sql, k_cluster_name) = match &node.ast {
-            Some(model) => match model {
-                NodeAst::Model(m) => {
-                    let compiled = m
-                        .compile(|src, table| {
-                            config
-                                .warehouse_source
-                                .resolve(src, table)
-                                .map_err(|e| ModelSqlCompileError(e.to_string()))
-                        })
-                        .map_err(|e| FFError::Compile(e.into()))?;
-                    (Some(compiled), None)
-                }
-                NodeAst::KafkaConnector(connector) => {
-                    let compiled = catalog
-                        .compile_kafka_decl(&node.name, &config)
-                        .map_err(|e| FFError::Compile(e.into()))?
-                        .to_string();
-                    let c_name = &connector.cluster_ident.value;
-                    (Some(compiled), Some(c_name))
-                }
-                NodeAst::KafkaSmtPipeline(p) => (Some(p.to_string()), None),
-                NodeAst::KafkaSmt(s) => (Some(s.to_string()), None),
-            },
-            _ => (None,None),
-        };
-
-        let (mn_type, exec_target_name) = match &node.node_type {
-            DagNodeType::KafkaSmt => (ManifestNodeType::Kafka, None),
-            DagNodeType::KafkaPipeline => (ManifestNodeType::Kafka, None),
-            DagNodeType::Model => {
-                let t = config.warehouse_db_connection.clone();
-                (ManifestNodeType::DPF, Some(t))
-            },
-            DagNodeType::KafkaSinkConnector => {
-                if let Some(k_cluster_name) = k_cluster_name {
-                    (ManifestNodeType::Kafka, Some(k_cluster_name.to_string()))
-                } else {
-                    return Err(FFError::Compile("Kafka Sink Connector must have a Kafka cluster".into()));
-                }
-            },
-            DagNodeType::KafkaSourceConnector => {
-                if let Some(k_cluster_name) = k_cluster_name {
-                    (ManifestNodeType::Kafka, Some(k_cluster_name.to_string()))
-                } else {
-                    return Err(FFError::Compile("Kafka Source Connector must have a Kafka cluster".into()));
-                }
-            },
-            DagNodeType::SourceDb => (ManifestNodeType::DB, None),
-            DagNodeType::WarehouseSourceDb => (ManifestNodeType::DB, None),
-            DagNodeType::KafkaTopic => (ManifestNodeType::Kafka,None)
+        let mn_type = match &node.node_type {
+            DagNodeType::KafkaSmt => ManifestNodeType::Kafka,
+            DagNodeType::KafkaPipeline => ManifestNodeType::Kafka,
+            DagNodeType::Model => ManifestNodeType::DPF,
+            DagNodeType::KafkaSinkConnector => ManifestNodeType::Kafka,
+            DagNodeType::KafkaSourceConnector => ManifestNodeType::Kafka,
+            DagNodeType::SourceDb => ManifestNodeType::DB,
+            DagNodeType::WarehouseSourceDb => ManifestNodeType::DB,
+            DagNodeType::KafkaTopic => ManifestNodeType::Kafka,
         };
 
         manifest_models.push(ManifestModel {
             name: node.name.clone(),
             depends_on: node.relations.clone(),
             executable: node.is_executable,
-            compiled_executable: sql,
+            compiled_executable: node.compiled_obj.clone(),
             node_type: mn_type,
-            target: exec_target_name,
+            target: node.target.clone(),
         });
     }
 
