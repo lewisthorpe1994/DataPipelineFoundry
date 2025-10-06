@@ -1,0 +1,32 @@
+digraph {
+    rankdir=LR;
+    0 [label="bronze.orders"];
+    1 [label="gold.customer_metrics"];
+    2 [label="silver.orders"];
+    3 [label="public.orders"];
+    4 [label="postgres-.public.orders"];
+    5 [label="mask_field"];
+    6 [label="drop_id"];
+    7 [label="test_src_connector"];
+    8 [label="unwrap_after"];
+    9 [label="customer_orders_sink"];
+    10 [label="postgres.bronze.raw_orders"];
+    11 [label="customer_metrics_sink_pipeline"];
+    12 [label="pii_pipeline"];
+    13 [label="postgres.bronze.raw_customers"];
+    10 -> 0;
+    2 -> 1;
+    0 -> 2;
+    7 -> 4;
+    3 -> 5;
+    3 -> 6;
+    12 -> 7;
+    3 -> 7;
+    4 -> 8;
+    11 -> 9;
+    4 -> 9;
+    9 -> 10;
+    8 -> 11;
+    6 -> 12;
+    5 -> 12;
+}

@@ -55,13 +55,14 @@ pub use self::ddl::{
     AlterTableAlgorithm, AlterTableLock, AlterTableOperation, AlterType, AlterTypeAddValue,
     AlterTypeAddValuePosition, AlterTypeOperation, AlterTypeRename, AlterTypeRenameValue,
     ClusteredBy, ColumnDef, ColumnOption, ColumnOptionDef, ColumnPolicy, ColumnPolicyProperty,
-    ConstraintCharacteristics, CreateConnector, CreateKafkaConnector, CreateSimpleMessageTransformPipeline,
-    TransformCall, CreateSimpleMessageTransform, CreateFunction, Deduplicate, DeferrableInitial,
-    DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters, IdentityProperty,
-    IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder, IndexOption,
-    IndexType, KeyOrIndexDisplay, NullsDistinctOption, Owner, Partition, ProcedureParam,
-    ReferentialAction, TableConstraint, TagsColumnOption, UserDefinedTypeCompositeAttributeDef,
-    UserDefinedTypeRepresentation, ViewColumnDef,
+    ConstraintCharacteristics, CreateConnector, CreateFunction, CreateKafkaConnector, CreateModel,
+    CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Deduplicate,
+    DeferrableInitial, DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters,
+    IdentityProperty, IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder,
+    IndexOption, IndexType, KeyOrIndexDisplay, ModelDef, ModelSqlCompileError, NullsDistinctOption,
+    Owner, Partition, ProcedureParam, ReferentialAction, TableConstraint, TagsColumnOption,
+    TransformCall, UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation,
+    ViewColumnDef,
 };
 pub use self::dml::{CreateIndex, CreateTable, Delete, IndexColumn, Insert};
 pub use self::operator::{BinaryOperator, UnaryOperator};
@@ -2894,11 +2895,6 @@ impl From<Set> for Statement {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(
-    feature = "visitor",
-    derive(Visit, VisitMut),
-    visit(with = "visit_statement")
-)]
 pub enum Statement {
     /// ```sql
     /// ANALYZE
@@ -3094,6 +3090,7 @@ pub enum Statement {
         /// MySQL: Optional parameters for the view algorithm, definer, and security context
         params: Option<CreateViewParams>,
     },
+    CreateModel(CreateModel),
     /// ```sql
     /// CREATE TABLE
     /// ```
@@ -4698,9 +4695,12 @@ impl fmt::Display for Statement {
                 Ok(())
             }
             Statement::CreateTable(create_table) => create_table.fmt(f),
-            Statement::CreateKafkaConnector(create_kafka_connector) => {create_kafka_connector.fmt(f)},
+            Statement::CreateKafkaConnector(create_kafka_connector) => {
+                create_kafka_connector.fmt(f)
+            }
             Statement::CreateSMTPipeline(create_smtpipe) => create_smtpipe.fmt(f),
             Statement::CreateSMTransform(create_smt) => create_smt.fmt(f),
+            Statement::CreateModel(create_model) => create_model.fmt(f),
             Statement::LoadData {
                 local,
                 inpath,
@@ -8766,7 +8766,7 @@ impl Display for CreateViewParams {
     }
 }
 
-/// Engine of DB. Some warehouse has parameters of engine, e.g. [ClickHouse]
+/// Engine of DB. Some warehouse has parameters of executor, e.g. [ClickHouse]
 ///
 /// [ClickHouse]: https://clickhouse.com/docs/en/engines/table-engines
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]

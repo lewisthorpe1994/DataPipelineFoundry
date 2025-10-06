@@ -20,16 +20,25 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::fmt::{self, Display, Write};
-use std::collections::HashMap;
+use core::fmt::{self, Debug, Display, Formatter, Write};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "visitor")]
 use sqlparser_derive::{Visit, VisitMut};
 
+use crate::ast::helpers::foundry_helpers::{
+    CreateModelView, DropStmt, MacroFnCall, MacroFnCallType,
+};
 use crate::ast::value::escape_single_quote_string;
-use crate::ast::{display_comma_separated, display_separated, CommentDef, CreateFunctionBody, CreateFunctionUsing, DataType, Expr, FunctionBehavior, FunctionCalledOnNull, FunctionDeterminismSpecifier, FunctionParallel, Ident, KafkaConnectorType, MySQLColumnPosition, ObjectName, OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag, Value, ValueWithSpan};
+use crate::ast::{
+    display_comma_separated, display_separated, CommentDef, CreateFunctionBody,
+    CreateFunctionUsing, CreateTable, DataType, Expr, FunctionBehavior, FunctionCalledOnNull,
+    FunctionDeterminismSpecifier, FunctionParallel, Ident, KafkaConnectorType, MySQLColumnPosition,
+    ObjectName, OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag,
+    Value, ValueWithSpan,
+};
 use crate::keywords::Keyword;
 use crate::tokenizer::Token;
 
@@ -2338,24 +2347,29 @@ impl fmt::Display for CreateConnector {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub struct CreateKafkaConnector {
     pub name: Ident,
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
     pub with_properties: Vec<(Ident, ValueWithSpan)>,
-    pub with_pipelines: Vec<Ident>
+    pub with_pipelines: Vec<Ident>,
+    pub cluster_ident: Ident,
 }
 
 impl fmt::Display for CreateKafkaConnector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // 1️⃣  pre-compute the optional bits
-        let if_not_exists = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let if_not_exists = if self.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
 
         let pipelines_clause = if self.with_pipelines.is_empty() {
             String::new()
         } else {
-            let list = self.with_pipelines
+            let list = self
+                .with_pipelines
                 .iter()
                 .map(|id| id.to_string())
                 .collect::<Vec<_>>()
@@ -2363,7 +2377,8 @@ impl fmt::Display for CreateKafkaConnector {
             format!(" WITH PIPELINES({})", list)
         };
 
-        let props = self.with_properties
+        let props = self
+            .with_properties
             .iter()
             .map(|(k, v)| format!("{} = {}", k, v))
             .collect::<Vec<_>>()
@@ -2392,7 +2407,11 @@ pub struct CreateSimpleMessageTransform {
 
 impl fmt::Display for CreateSimpleMessageTransform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ine = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let ine = if self.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
 
         let cfg = self
             .config
@@ -2401,8 +2420,13 @@ impl fmt::Display for CreateSimpleMessageTransform {
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(f, "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name} ({cfg})",
-               ine = ine, name = self.name, cfg = cfg)
+        write!(
+            f,
+            "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name} ({cfg})",
+            ine = ine,
+            name = self.name,
+            cfg = cfg
+        )
     }
 }
 
@@ -2410,7 +2434,7 @@ impl fmt::Display for CreateSimpleMessageTransform {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TransformCall {
     pub name: Ident,
-    pub args: Vec<(Ident, ValueWithSpan)>,   // may be empty
+    pub args: Vec<(Ident, ValueWithSpan)>, // may be empty
 }
 impl TransformCall {
     pub fn new(name: Ident, args: Vec<(Ident, ValueWithSpan)>) -> Self {
@@ -2434,20 +2458,24 @@ impl fmt::Display for TransformCall {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CreateSimpleMessageTransformPipeline {
     pub name: Ident,
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
+    /// Ordered list of SMTs to call
     pub steps: Vec<TransformCall>,
     pub pipe_predicate: Option<ValueWithSpan>,
 }
 
 impl fmt::Display for CreateSimpleMessageTransformPipeline {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ine = if self.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let ine = if self.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
 
         let body = self
             .steps
@@ -2458,17 +2486,192 @@ impl fmt::Display for CreateSimpleMessageTransformPipeline {
 
         let pred_clause = match &self.pipe_predicate {
             Some(p) => format!(" WITH PIPELINE PREDICATE {}", p),
-            None    => String::new(),
+            None => String::new(),
         };
 
         write!(
             f,
             "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {ine}{name} {ctype} ({body}){pred}",
-            ine   = ine,
-            name  = self.name,
+            ine = ine,
+            name = self.name,
             ctype = self.connector_type,
-            body  = body,
-            pred  = pred_clause
+            body = body,
+            pred = pred_clause
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ModelDef {
+    Table(CreateTable),
+    View(CreateModelView),
+}
+impl fmt::Display for ModelDef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Table(table) => write!(f, "{}", table.to_string()),
+            Self::View(view) => write!(f, "{}", view.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CreateModel {
+    pub schema: Ident,
+    pub name: Ident,
+    pub model: ModelDef,
+    pub drop: DropStmt,
+    pub macro_fn_call: Vec<MacroFnCall>,
+}
+
+impl fmt::Display for CreateModel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let model = match &self.model {
+            ModelDef::Table(stmt) => "TABLE",
+            ModelDef::View(stmt) => {
+                if stmt.materialized {
+                    "MATERIALIZED VIEW"
+                } else {
+                    "VIEW"
+                }
+            }
+        };
+
+        write!(
+            f,
+            "CREATE MODEL {schema}.{name} AS\n\
+            DROP {model} IF EXISTS {schema}.{name} CASCADE;\n\
+            {statement}",
+            name = self.name,
+            model = model,
+            statement = self.model,
+            schema = self.schema,
+        )
+    }
+}
+pub struct ModelSqlCompileError(pub String);
+
+impl Debug for ModelSqlCompileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Display for ModelSqlCompileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for ModelSqlCompileError {}
+impl CreateModel {
+    pub fn compile<F>(&self, src_resolver: F) -> Result<String, ModelSqlCompileError>
+    where
+        F: Fn(&str, &str) -> Result<String, ModelSqlCompileError>,
+    {
+        let mut mappings = vec![];
+        for call in &self.macro_fn_call {
+            if call.m_type == MacroFnCallType::Source {
+                let mapping = HashMap::from([
+                    (
+                        "name".to_string(),
+                        src_resolver(&call.args[0], &call.args[1])?,
+                    ),
+                    ("to_replace".to_string(), call.call_def.clone()),
+                ]);
+                mappings.push(mapping)
+            } else {
+                mappings.push(HashMap::from([
+                    ("name".to_string(), call.args.join(".")),
+                    ("to_replace".to_string(), call.call_def.clone()),
+                ]))
+            }
+        }
+
+        let sql = if mappings.len() > 0 {
+            let mut sql = self.model.to_string();
+            for mapping in mappings {
+                if let (Some(replacement), Some(resolved)) =
+                    (mapping.get("to_replace"), mapping.get("name"))
+                {
+                    // let table_wrapped = format!("TABLE({})", replacement);
+                    // if sql.contains(&table_wrapped) {
+                    //     sql = sql.replace(&table_wrapped, resolved);
+                    // }
+                    sql = sql.replace(replacement, resolved);
+                }
+            }
+            sql
+        } else {
+            self.to_string()
+        };
+
+        let model = match &self.model {
+            ModelDef::Table(stmt) => "TABLE",
+            ModelDef::View(stmt) => {
+                if stmt.materialized {
+                    "MATERIALIZED VIEW"
+                } else {
+                    "VIEW"
+                }
+            }
+        };
+
+        let compiled = format!(
+            "DROP {} IF EXISTS {}.{} CASCADE;\n{}",
+            model, self.schema, self.name, sql
+        );
+
+        Ok(compiled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
+    use crate::ast::Statement;
+    use sqlparser::dialect::GenericDialect;
+    use sqlparser::parser::Parser;
+
+    #[test]
+    fn compile_replaces_ref_and_source_macros() {
+        let sql = r#"
+            CREATE MODEL bronze.orders AS
+            DROP TABLE IF EXISTS bronze.orders CASCADE;
+            CREATE TABLE bronze.orders AS
+            SELECT *
+            FROM source('warehouse', 'raw_orders')
+        "#;
+
+        let stmt = Parser::parse_sql(&GenericDialect, sql).unwrap();
+        let mut model = match stmt[0].clone() {
+            Statement::CreateModel(m) => m,
+            _ => panic!("expected CreateModel"),
+        };
+
+        println!("{}", model.to_string());
+
+        model.macro_fn_call = vec![MacroFnCall {
+            m_type: MacroFnCallType::Source,
+            args: vec!["warehouse".into(), "raw_orders".into()],
+            call_def: "source('warehouse', 'raw_orders')".into(),
+        }];
+        
+        fn resolver(name: &str, table: &str) -> Result<String, ModelSqlCompileError> {
+            Ok(format!("{}.{}", name, table))
+        }
+
+        let compiled = model
+            .compile(|schema, table| resolver(schema, table))
+            .expect("compile");
+
+        assert!(compiled.contains("bronze.orders"));
+        assert!(compiled.contains("warehouse.raw_orders"));
+        assert!(!compiled.contains("source('warehouse', 'raw_orders')"));
+
+        println!("{}", compiled)
     }
 }
