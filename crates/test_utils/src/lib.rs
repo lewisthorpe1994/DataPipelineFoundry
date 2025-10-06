@@ -153,7 +153,7 @@ pub struct KafkaConnectTestClient {
 fn plugins_host_path() -> PathBuf {
     // Always relative to current project root
     let base_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    base_dir.join("tests").join("connect_plugins")
+    base_dir.join("connect_plugins")
 }
 
 pub async fn setup_postgres() -> Result<PgTestContainer, Box<dyn std::error::Error>> {
