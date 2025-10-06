@@ -10,6 +10,19 @@ use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use uuid::Uuid;
+
+pub const PG_DB: &str = "postgres";
+pub const PG_USER: &str = "postgres";
+pub const PG_PASSWORD: &str = "postgres";
+pub const PG_HOST: &str = "0.0.0.0";
+pub const PG_PORT: &str = "5432";
+pub const KAFKA_BROKER_HOST: &str = "0.0.0.0";
+pub const KAFKA_BROKER_PORT: &str = "9092";
+pub const KAFKA_CONNECT_HOST: &str = "0.0.0.0";
+pub const KAFKA_CONNECT_PORT: &str = "8083";
+pub const NET: &str = "int-net";
+pub const NET_HOST: &str = "127.0.0.1";
+
 /// Global mutex to serialize tests that modify the process working directory.
 /// Changing the directory concurrently can lead to nondeterministic failures.
 pub static TEST_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -93,19 +106,6 @@ where
     Ok(f().await)
 }
 
-
-pub const PG_DB: &str = "dvdrental";
-pub const PG_USER: &str = "postgres";
-pub const PG_PASSWORD: &str = "postgres";
-pub const PG_HOST: &str = "0.0.0.0";
-pub const PG_PORT: &str = "5432";
-pub const KAFKA_BROKER_HOST: &str = "0.0.0.0";
-pub const KAFKA_BROKER_PORT: &str = "9092";
-pub const KAFKA_CONNECT_HOST: &str = "0.0.0.0";
-pub const KAFKA_CONNECT_PORT: &str = "8083";
-pub const NET: &str = "int-net";
-pub const NET_HOST: &str = "127.0.0.1";
-
 pub struct PgTestContainer {
     pub container: ContainerAsync<GenericImage>,
     pub port: String,
@@ -130,14 +130,20 @@ impl PgTestContainer {
     }
 }
 
-pub struct KafkaTestContainer {
+pub struct KafkaBrokerTestContainer {
     pub container: ContainerAsync<GenericImage>,
     pub host: String,
 }
 
+pub struct KafkaConnectTestContainer {
+    pub container: ContainerAsync<GenericImage>,
+    pub port: String,
+    pub host: String,
+}
+
 pub struct KafkaTestContainers {
-    pub kafka_broker: KafkaTestContainer,
-    pub kafka_connect: KafkaTestContainer,
+    pub kafka_broker: KafkaBrokerTestContainer,
+    pub kafka_connect: KafkaConnectTestContainer,
 }
 
 pub struct KafkaConnectTestClient {
@@ -153,7 +159,7 @@ fn plugins_host_path() -> PathBuf {
 pub async fn setup_postgres() -> Result<PgTestContainer, Box<dyn std::error::Error>> {
     let id = Uuid::new_v4();
     let name = format!("postgres-{}", id);
-    let postgres = GenericImage::new("dvdrental-db", "latest")
+    let postgres = GenericImage::new("postgres", "16")
         .with_wait_for(WaitFor::message_on_stdout(
             "database system is ready to accept connections",
         ))
@@ -263,13 +269,14 @@ pub async fn setup_kafka() -> Result<KafkaTestContainers, Box<dyn std::error::Er
     let connect_rest_port = kafka_connect.get_host_port_ipv4(8083).await?;
 
     Ok(KafkaTestContainers {
-        kafka_broker: KafkaTestContainer {
+        kafka_broker: KafkaBrokerTestContainer {
             container: kafka_broker,
             host: format!("{}:{KAFKA_BROKER_PORT}", broker_name),
         },
-        kafka_connect: KafkaTestContainer {
+        kafka_connect: KafkaConnectTestContainer {
             container: kafka_connect,
-            host: format!("{KAFKA_CONNECT_HOST}:{connect_rest_port}"),
+            host: KAFKA_CONNECT_HOST.to_string(),
+            port: connect_rest_port.to_string()
         },
     })
 }

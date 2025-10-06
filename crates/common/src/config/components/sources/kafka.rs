@@ -32,7 +32,7 @@ impl ConfigName for KafkaSourceConfig {
 
 //  ---------------- KafkaSource Configs ----------------
 #[derive(Debug)]
-pub struct KafkaSourceConfigs(HashMap<String, KafkaSourceConfig>);
+pub struct KafkaSourceConfigs(pub HashMap<String, KafkaSourceConfig>);
 
 impl Deref for KafkaSourceConfigs {
     type Target = HashMap<String, KafkaSourceConfig>;

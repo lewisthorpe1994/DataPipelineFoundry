@@ -66,7 +66,6 @@ impl Executor {
 }
 impl Executor {
     pub async fn execute(
-        &self,
         node: &DagNode,
         config: &FoundryConfig
     ) -> Result<ExecutorResponse, ExecutorError> {
@@ -101,6 +100,9 @@ impl Executor {
                     &kafka_conn.connect.port
                 );
 
+                println!("{:#?}", kafka_client);
+
+                println!("{}", &executable);
                 let conn_config: KafkaConnectorDeployConfig = serde_json::from_str(&executable)
                     .map_err(|e|
                         ExecutorError::ConfigError(
@@ -118,13 +120,37 @@ impl Executor {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::collections::HashMap;
+    use test_utils::{NET_HOST, PG_DB};
+use test_utils::PG_PASSWORD;
+use test_utils::PG_USER;
+use std::time::Duration;
     use tokio::time::sleep;
+    use common::config::components::connections::AdapterConnectionDetails;
+    use common::config::components::sources::kafka::{KafkaBootstrap, KafkaConnect, KafkaSourceConfig, KafkaSourceConfigs};
     use common::config::loader::read_config;
+    use common::types::kafka::KafkaConnectorType;
     use dag::types::{DagNode, DagNodeType};
     use shared_clients::create_db_adapter;
-    use test_utils::{get_root_dir, setup_postgres, with_chdir_async};
-    use crate::Executor;
+    use shared_clients::kafka::KafkaConnectClient;
+    use test_utils::{get_root_dir, setup_kafka, setup_postgres, with_chdir_async};
+    use crate::{Executor, ExecutorError};
+
+        async fn set_up_table(pg_conn: AdapterConnectionDetails) {
+            let mut adapter = create_db_adapter(pg_conn).await.unwrap();
+            adapter.execute(
+                "
+            DROP TABLE IF EXISTS test_connector_src;
+            CREATE TABLE test_connector_src (
+                id   SERIAL PRIMARY KEY,
+                name TEXT NOT NULL
+            );
+            INSERT INTO test_connector_src (name) VALUES ('alice'), ('bob');
+            ",
+            )
+            .await
+            .expect("prepare table");
+        }
 
     #[tokio::test]
     async fn test_execute_db() {
@@ -153,8 +179,7 @@ CREATE TABLE public.orders AS SELECT 'test' as col".to_string()),
             }
 
             async move {
-                executor
-                    .execute(&node, &config)
+                Executor::execute(&node, &config)
                     .await
                     .expect("executor to run");
 
@@ -175,7 +200,205 @@ CREATE TABLE public.orders AS SELECT 'test' as col".to_string()),
     }
 
     #[tokio::test]
-    async fn test_execute_source_kafka_connector() {
+    async fn test_create_connector() -> Result<(), ExecutorError> {
+        let postgres_test_container = setup_postgres().await.unwrap();
+        let kafka_test_containers = setup_kafka().await.unwrap();
+        sleep(Duration::from_secs(5)).await;
 
+        let con_name = "test";
+        let sql = format!(
+            r#"{{"name": "{con_name}",
+"config": {{
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.user": "{PG_USER}",
+    "database.password": "{PG_PASSWORD}",
+    "database.port": {},
+    "database.hostname": "{}",
+    "database.dbname": "{PG_DB}",
+    "table.include.list": "public.test_connector_src",
+    "snapshot.mode": "initial",
+    "kafka.bootstrap.servers": "{}",
+    "topic.prefix": "postgres-"
+    }}
+}}"#,
+            5432, postgres_test_container.docker_host, kafka_test_containers.kafka_broker.host
+        );
+
+        let node = DagNode {
+            name: "test_con".to_string(),
+            ast: None,
+            compiled_obj: Some(sql),
+            node_type: DagNodeType::KafkaSourceConnector,
+            is_executable: true,
+            relations: None,
+            target: Some("some_kafka_cluster".to_string()),
+        };
+
+        let kafka_client = KafkaConnectClient::new(
+            &kafka_test_containers.kafka_connect.host,
+            &kafka_test_containers.kafka_connect.port,
+        );
+
+        let project_root = get_root_dir();
+        with_chdir_async(&project_root, || {
+            let mut config = read_config(None).expect("load example project config");
+            if let Some(profile) = config.connections.get_mut(&config.connection_profile) {
+                if let Some(details) = profile.get_mut(&config.warehouse_db_connection) {
+                    details.host = postgres_test_container.local_host.to_string();
+                    details.port = postgres_test_container.port.to_string();
+                }
+            }
+
+            config.kafka_source = Some(KafkaSourceConfigs(HashMap::from([
+                (node.target.clone().unwrap(), KafkaSourceConfig {
+                    name: node.target.clone().unwrap(),
+                    bootstrap: KafkaBootstrap {
+                        servers: kafka_test_containers.kafka_broker.host.clone(), },
+                    connect: KafkaConnect {
+                        host: NET_HOST.to_string(),
+                        port: kafka_test_containers.kafka_connect.port
+                    },
+                })
+            ])));
+
+
+            let db_adapter_con = config.get_adapter_connection_details().unwrap();
+            async move {
+                set_up_table(db_adapter_con).await;
+
+                Executor::execute(&node, &config).await.expect("executor to run");
+            }
+        })
+            .await
+            .unwrap();
+        println!("checking if connector exists");
+        let conn_exists = kafka_client.connector_exists(con_name).await?;
+        assert!(conn_exists);
+        let conn_config = kafka_client.get_connector_config(con_name).await.unwrap();
+        assert_eq!(conn_config.conn_type.unwrap(), KafkaConnectorType::Source);
+        assert_eq!(
+            conn_config.config["table.include.list"],
+            "public.test_connector_src"
+        );
+        assert_eq!(conn_config.config["snapshot.mode"], "initial");
+        assert_eq!(
+            conn_config.config["kafka.bootstrap.servers"],
+            kafka_test_containers.kafka_broker.host
+        );
+        assert_eq!(conn_config.config["topic.prefix"], "postgres-");
+        Ok(())
     }
+    //
+    //     #[tokio::test]
+    //     async fn test_create_connector_with_pipeline() -> Result<(), EngineError> {
+    //         let postgres_test_container = setup_postgres().await.unwrap();
+    //         let kafka_test_containers = setup_kafka().await.unwrap();
+    //         sleep(Duration::from_secs(5)).await;
+    //         set_up_table(postgres_test_container.conn_string(false)).await;
+    //
+    //         let con_name = "test";
+    //         let sql = format!(
+    //             r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS {con_name} (
+    //         "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
+    //         "tasks.max" = "1",
+    //         "database.user" = "{PG_USER}",
+    //         "database.password" = "{PG_PASSWORD}",
+    //         "database.port" = {},
+    //         "database.hostname" = "{}",
+    //         "database.dbname" = "{PG_DB}",
+    //         "table.include.list" = "public.test_connector_src",
+    //         "snapshot.mode" = "initial",
+    //         "topic.prefix" = "postgres-",
+    //         "kafka.bootstrap.servers" = "{}")
+    //         WITH PIPELINES(pii_pipeline);"#,
+    //             5432, postgres_test_container.docker_host, kafka_test_containers.kafka_broker.host
+    //         );
+    //
+    //         let engine = Engine::new();
+    //
+    //         // ---- create required transforms and pipeline ----------------------
+    //         let smt_mask = r#"CREATE SIMPLE MESSAGE TRANSFORM mask_field (
+    //             type = 'org.apache.kafka.connect.transforms.MaskField$Value',
+    //             fields = 'name',
+    //             replacement = 'X'
+    //         );"#;
+    //         engine
+    //             .execute(
+    //                 smt_mask,
+    //                 &SourceConnArgs {
+    //                     kafka_connect: None,
+    //                 },
+    //                 None,
+    //             )
+    //             .await?;
+    //
+    //         let smt_drop = r#"CREATE SIMPLE MESSAGE TRANSFORM drop_id (
+    //             type = 'org.apache.kafka.connect.transforms.ReplaceField$Value',
+    //             blacklist = 'id'
+    //         );"#;
+    //         engine
+    //             .execute(
+    //                 smt_drop,
+    //                 &SourceConnArgs {
+    //                     kafka_connect: None,
+    //                 },
+    //                 None,
+    //             )
+    //             .await?;
+    //
+    //         let pipe_sql = r#"
+    // CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
+    //     mask_field,
+    //     drop_id
+    // ) WITH PIPELINE PREDICATE 'some_predicate';
+    // "#;
+    //         engine
+    //             .execute(
+    //                 pipe_sql,
+    //                 &SourceConnArgs {
+    //                     kafka_connect: None,
+    //                 },
+    //                 None,
+    //             )
+    //             .await?;
+    //
+    //         // ---- deploy connector --------------------------------------------
+    //         let connect_host = format!("http://{}", kafka_test_containers.kafka_connect.host);
+    //         let kafka_args = SourceConnArgs {
+    //             kafka_connect: Some(connect_host.clone()),
+    //         };
+    //         engine.execute(sql.as_str(), &kafka_args, None).await?;
+    //
+    //         let kafka_executor = KafkaConnectTestClient { host: connect_host };
+    //         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
+    //         assert!(conn_exists);
+    //         let conn_config = kafka_executor.get_connector_config(con_name).await.unwrap();
+    //         assert_eq!(conn_config.conn_type.unwrap(), KafkaConnectorType::Source);
+    //         assert_eq!(
+    //             conn_config.config["transforms"],
+    //             "pii_pipeline_mask_field,pii_pipeline_drop_id"
+    //         );
+    //         assert_eq!(
+    //             conn_config.config["transforms.pii_pipeline_mask_field.fields"],
+    //             "name"
+    //         );
+    //         assert_eq!(
+    //             conn_config.config["transforms.pii_pipeline_mask_field.replacement"],
+    //             "X"
+    //         );
+    //         assert_eq!(
+    //             conn_config.config["transforms.pii_pipeline_mask_field.predicate"],
+    //             "some_predicate"
+    //         );
+    //         assert_eq!(
+    //             conn_config.config["transforms.pii_pipeline_drop_id.blacklist"],
+    //             "id"
+    //         );
+    //         assert_eq!(
+    //             conn_config.config["transforms.pii_pipeline_drop_id.predicate"],
+    //             "some_predicate"
+    //         );
+    //         Ok(())
+    //     }
 }

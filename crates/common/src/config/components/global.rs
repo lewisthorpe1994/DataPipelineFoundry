@@ -51,9 +51,9 @@ impl FoundryConfig {
             .cloned()
     }
     
-    pub fn get_kafka_cluster_conn(&self, cluster_name: &str) -> Option<KafkaSourceConfig> {
+    pub fn get_kafka_cluster_conn(&self, cluster_name: &str) -> Option<&KafkaSourceConfig> {
         if let Some(s) = &self.kafka_source {
-            s.get(cluster_name).cloned()
+            s.get(cluster_name)
         } else {
             None
         }

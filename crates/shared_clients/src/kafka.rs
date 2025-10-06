@@ -82,20 +82,24 @@ impl From<reqwest::Error> for KafkaConnectClientError {
                 StatusCode::NOT_FOUND => {
                     KafkaConnectClientError::NotFound(err.to_string())
                 }
-                _ => KafkaConnectClientError::UnexpectedError(err.to_string()),
+                _ => KafkaConnectClientError::UnexpectedError(
+                    format!("Unexpected error due to {} - status code {}", err.to_string(), err)),
             }
         } else {
-            KafkaConnectClientError::UnexpectedError(err.to_string())
+            KafkaConnectClientError::UnexpectedError(
+                format!("Unexpected error trying to send kafka connect request: {}"
+                        , err.to_string()))
         }
     }
 }
+#[derive(Debug)]
 pub struct KafkaConnectClient {
     host: String,
 }
 impl KafkaConnectClient {
     pub fn new(host: &str, port: &str) -> KafkaConnectClient {
         Self {
-            host: format!("{}:{}", host, port),
+            host: format!("http://{}:{}", host, port),
         }
     }
     pub async fn connector_exists(&self, conn_name: &str) -> Result<bool, KafkaConnectClientError> {
@@ -160,9 +164,12 @@ impl KafkaConnectClient {
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
                 let body: ConnectErrorBody = resp.json().await?;
-                Err(KafkaConnectClientError::UnexpectedError(body.message))
+                Err(KafkaConnectClientError::UnexpectedError(
+                    format!("Failed to deploy connector due to unexpected issue: {}", body.message)))
             }
-            status => Err(KafkaConnectClientError::UnexpectedError(status.to_string())),
+            status => Err(KafkaConnectClientError::UnexpectedError(
+                format!("Unexpected error trying to deploy connector due to {} - status code {}",
+                        status.to_string(), status.as_u16()))),
         }
     }
 }
