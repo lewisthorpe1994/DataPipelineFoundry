@@ -28,9 +28,11 @@ DROP DATABASE dvdrental;
 --
 
 CREATE DATABASE dvdrental WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'English_United States.1252' LC_CTYPE = 'English_United States.1252';
+CREATE DATABASE warehouse WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'English_United States.1252' LC_CTYPE = 'English_United States.1252';
 
 
 ALTER DATABASE dvdrental OWNER TO postgres;
+ALTER DATABASE warehouse OWNER TO postgres;
 
 \connect dvdrental
 

@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  postgres:
+  postgres-source:
     build:
       context: ./dvdrental
     container_name: dvdrental-postgres
@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dvdrental
     ports:
-      - "5432:5432"
+      - "15432:5432"
     networks:
       - int-net
 

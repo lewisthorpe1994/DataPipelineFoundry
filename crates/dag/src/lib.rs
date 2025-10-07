@@ -2,7 +2,7 @@ mod error;
 pub mod types;
 
 use crate::error::DagError;
-use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst};
+use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, TransitiveDirection};
 use log::{info, warn};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -662,14 +662,13 @@ impl ModelsDag {
     pub fn transitive_closure(
         &self,
         model_ref: &str,
-        direction: Direction,
+        direction: TransitiveDirection,
     ) -> Result<Vec<&DagNode>, DagError> {
         let start_idx = match self.ref_to_index.get(model_ref) {
             Some(idx) => *idx,
             None => return Ok(Vec::new()),
         };
-
-        let visited = self.traverse(start_idx, direction);
+        let visited = self.traverse(start_idx, Direction::from(direction));
 
         let deps = self.get_included_dag_nodes(Some(&visited))?;
 

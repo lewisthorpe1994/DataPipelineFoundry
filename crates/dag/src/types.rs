@@ -5,6 +5,7 @@ use sqlparser::ast::{
 };
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
+use petgraph::Direction;
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -74,5 +75,19 @@ impl Debug for DagNode {
         }}",
             self.name, self.node_type, self.is_executable, self.relations
         )
+    }
+}
+
+pub enum TransitiveDirection {
+    Incoming,
+    Outgoing,
+}
+
+impl From<TransitiveDirection> for Direction {
+    fn from(value: TransitiveDirection) -> Self {
+        match value { 
+            TransitiveDirection::Incoming => Direction::Incoming,
+            TransitiveDirection::Outgoing => Direction::Outgoing,
+        }
     }
 }

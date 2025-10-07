@@ -11,6 +11,7 @@ pub enum DagError {
     Io(io::Error),
     RefNotFound(String),
     ExecutionError(String),
+    InvalidDirection(String),
 }
 impl Display for DagError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -32,6 +33,7 @@ impl Display for DagError {
             DagError::RefNotFound(r) => write!(f, "Ref {r} not found!"),
             DagError::ExecutionError(e) => write!(f, "Execution error: {e}"),
             DagError::AstSyntax(e) => write!(f, "Unexpected AST error: {e}"),
+            DagError::InvalidDirection(e) => write!(f, "Invalid direction: {e}"),
         }
     }
 }
