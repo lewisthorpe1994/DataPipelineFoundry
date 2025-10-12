@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use serde::Deserialize;
 
 ///  ---------------- Connections Config ----------------
@@ -36,3 +37,9 @@ impl AdapterConnectionDetails {
     }
 }
 pub type ConnectionsConfig = HashMap<String, HashMap<String, AdapterConnectionDetails>>;
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Connections {
+    pub profile: String,
+    pub path: PathBuf,
+}

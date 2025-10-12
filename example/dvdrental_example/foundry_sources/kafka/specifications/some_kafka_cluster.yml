@@ -1,0 +1,6 @@
+name: some_kafka_cluster
+bootstrap:
+  servers: "localhost:9092"
+connect:
+  host: "localhost"
+  port: "8083"

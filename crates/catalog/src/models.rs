@@ -68,6 +68,7 @@ pub struct KafkaConnectorMeta {
     pub sql: CreateKafkaConnector,
     pub pipelines: Option<Vec<String>>,
     pub cluster_name: String,
+    pub target: String
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -93,6 +94,7 @@ impl KafkaConnectorMeta {
             con_type: KafkaConnectorType::from(ast.connector_type),
             config: KvPairs(ast.with_properties).into(),
             cluster_name: ast.cluster_ident.value,
+            target: ast.db_ident.value,
             sql,
             pipelines,
         }
@@ -107,6 +109,7 @@ pub struct ModelDecl {
     pub materialize: Option<Materialize>,
     pub refs: Vec<ModelRef>,
     pub sources: Vec<SourceRef>,
+    pub target: String
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

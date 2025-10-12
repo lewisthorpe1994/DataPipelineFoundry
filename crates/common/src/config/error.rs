@@ -7,6 +7,8 @@ pub enum ConfigError {
     MissingConnection(String),
     ParseError(String),
     PathError(std::io::Error),
+    DuplicateDatabaseSpecification(String),
+    NotFound(String),
 }
 
 impl Error for ConfigError {}
@@ -17,6 +19,8 @@ impl Display for ConfigError {
             Self::ParseError(err) => write!(f, "Parse error: {}", err),
             Self::MissingConnection(path) => write!(f, "Missing connection: {}", path),
             Self::PathError(err) => write!(f, "Path error: {}", err),
+            Self::DuplicateDatabaseSpecification(path) => write!(f, "Duplicate database specification: {}", path),
+            Self::NotFound(path) => write!(f, "Not found: {}", path),
         }
     }
 }

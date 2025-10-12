@@ -1,4 +1,4 @@
-use crate::config::components::model::ModelConfig;
+use crate::config::components::model::{ModelConfig, ResolvedModelConfig};
 use crate::types::Materialize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -166,7 +166,7 @@ pub struct ParsedInnerNode {
 pub enum ParsedNode {
     Model {
         node: ParsedInnerNode,
-        config: Option<ModelConfig>,
+        config: Option<ResolvedModelConfig>,
     },
     KafkaConnector {
         node: ParsedInnerNode,

@@ -44,10 +44,11 @@ pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalo
     // ---------------------------------------------------------------------
     // 1️⃣  Parse models and build the dependency DAG
     // ---------------------------------------------------------------------
-    let nodes = match &config.project.paths.models.layers {
-        Some(layers) => parse_nodes(&config).map_err(|e| FFError::Compile(e.into()))?,
-        None => return Err(FFError::Compile("No models found to compile".into())),
-    };
+
+    let nodes = parse_nodes(&config).map_err(|e| FFError::Compile(e.into()))?;
+    if nodes.is_empty() {
+        return Err(FFError::Compile("No nodes found to compile".into()));
+    }
 
     let mut dag = ModelsDag::new();
     let wh_config = config.warehouse_source.clone();

@@ -1,10 +1,15 @@
 pub mod types;
+use common::config::components::global::FoundryConfig;
 use dag::types::{DagNode, DagNodeType};
-use shared_clients::{create_db_adapter, AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError};
+use shared_clients::kafka::{
+    KafkaConnectClient, KafkaConnectClientError, KafkaConnectorDeployConfig,
+};
+use shared_clients::{
+    create_db_adapter, AsyncDatabaseAdapter, DatabaseAdapter, DatabaseAdapterError,
+};
 use std::error::Error;
 use std::fmt;
-use common::config::components::global::FoundryConfig;
-use shared_clients::kafka::{KafkaConnectClient, KafkaConnectClientError, KafkaConnectorDeployConfig};
+use std::fmt::format;
 
 pub trait ExecutorHost {
     fn host(&self) -> &str;
@@ -34,7 +39,7 @@ impl fmt::Display for ExecutorError {
             ExecutorError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             ExecutorError::UnexpectedError(msg) => write!(f, "Unexpected error: {}", msg),
             ExecutorError::IoError(err) => write!(f, "IO error: {}", err),
-            ExecutorError::ResourceNotFound(msg) => write!(f, "resource not found: {}", msg)
+            ExecutorError::ResourceNotFound(msg) => write!(f, "resource not found: {}", msg),
         }
     }
 }
@@ -67,77 +72,97 @@ impl Executor {
 impl Executor {
     pub async fn execute(
         node: &DagNode,
-        config: &FoundryConfig
+        config: &FoundryConfig,
     ) -> Result<ExecutorResponse, ExecutorError> {
         match node.node_type {
             DagNodeType::Model => {
-                let executable = node.compiled_obj.as_ref().ok_or(
-                    ExecutorError::ConfigError("Expected a executable string for a model but got none".to_string())
-                )?;
+                let executable = node
+                    .compiled_obj
+                    .as_ref()
+                    .ok_or(ExecutorError::ConfigError(
+                        "Expected a executable string for a model but got none".to_string(),
+                    ))?;
 
                 let adapter_connection_obj = config
-                    .get_adapter_connection_details()
-                    .ok_or_else(|| ExecutorError::ConfigError("missing adapter connection details".into()))?;
+                    .get_adapter_connection_details(&node.target.ok_or(
+                        ExecutorError::ConfigError(format!(
+                            "Missing node target for {}",
+                            node.name
+                        )),
+                    )?)
+                    .ok_or_else(|| {
+                        ExecutorError::ConfigError("missing adapter connection details".into())
+                    })?;
 
                 let mut adapter = create_db_adapter(adapter_connection_obj).await?;
                 adapter.execute(&executable).await?;
                 Ok(ExecutorResponse::Ok)
             }
             DagNodeType::KafkaSourceConnector | DagNodeType::KafkaSinkConnector => {
-                let executable = node.compiled_obj.as_ref().ok_or(
-                    ExecutorError::ConfigError("Expected a executable string for a model but got none".to_string())
-                )?;
-                let kafka_conn_name = node.target.as_ref().ok_or(ExecutorError::ConfigError(
-                    "Expected a kafka connection name but got none".to_string()
-                ))?;
-                let kafka_conn = config.get_kafka_cluster_conn(&kafka_conn_name)
+                let executable = node
+                    .compiled_obj
+                    .as_ref()
                     .ok_or(ExecutorError::ConfigError(
-                        format!("No kafka cluster connection details found for {}", kafka_conn_name)
+                        "Expected a executable string for a model but got none".to_string(),
                     ))?;
+                let kafka_conn_name = node.target.as_ref().ok_or(ExecutorError::ConfigError(
+                    "Expected a kafka connection name but got none".to_string(),
+                ))?;
+                let kafka_conn = config.get_kafka_cluster_conn(&kafka_conn_name).ok_or(
+                    ExecutorError::ConfigError(format!(
+                        "No kafka cluster connection details found for {}",
+                        kafka_conn_name
+                    )),
+                )?;
 
-                let kafka_client = KafkaConnectClient::new(
-                    &kafka_conn.connect.host,
-                    &kafka_conn.connect.port
-                );
+                let kafka_client =
+                    KafkaConnectClient::new(&kafka_conn.connect.host, &kafka_conn.connect.port);
 
                 println!("{:#?}", kafka_client);
 
                 println!("{}", &executable);
                 let conn_config: KafkaConnectorDeployConfig = serde_json::from_str(&executable)
-                    .map_err(|e|
-                        ExecutorError::ConfigError(
-                            format!("failed to parse kafka connector config: {}", e))
-                    )?;
+                    .map_err(|e| {
+                        ExecutorError::ConfigError(format!(
+                            "failed to parse kafka connector config: {}",
+                            e
+                        ))
+                    })?;
 
                 kafka_client.deploy_connector(&conn_config).await?;
 
                 Ok(ExecutorResponse::Ok)
             }
-            _ => Err(ExecutorError::UnexpectedError("Unexpected node type".to_string())),
+            _ => Err(ExecutorError::UnexpectedError(
+                "Unexpected node type".to_string(),
+            )),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-    use test_utils::{NET_HOST, PG_DB, PG_PASSWORD, PG_USER};
-    use std::time::Duration;
-    use tokio::time::sleep;
+    use crate::{Executor, ExecutorError};
     use common::config::components::connections::AdapterConnectionDetails;
-    use common::config::components::sources::kafka::{KafkaBootstrap, KafkaConnect, KafkaSourceConfig, KafkaSourceConfigs};
+    use common::config::components::sources::kafka::{
+        KafkaBootstrap, KafkaConnect, KafkaSourceConfig, KafkaSourceConfigs,
+    };
     use common::config::loader::read_config;
     use common::types::kafka::KafkaConnectorType;
     use dag::types::{DagNode, DagNodeType};
     use shared_clients::create_db_adapter;
     use shared_clients::kafka::KafkaConnectClient;
+    use std::collections::HashMap;
+    use std::time::Duration;
     use test_utils::{get_root_dir, setup_kafka, setup_postgres, with_chdir_async};
+    use test_utils::{NET_HOST, PG_DB, PG_PASSWORD, PG_USER};
+    use tokio::time::sleep;
     use uuid::Uuid;
-    use crate::{Executor, ExecutorError};
 
     async fn set_up_table(pg_conn: AdapterConnectionDetails) {
-            let mut adapter = create_db_adapter(pg_conn).await.unwrap();
-            adapter.execute(
+        let mut adapter = create_db_adapter(pg_conn).await.unwrap();
+        adapter
+            .execute(
                 "
             DROP TABLE IF EXISTS test_connector_src;
             CREATE TABLE test_connector_src (
@@ -149,7 +174,7 @@ mod test {
             )
             .await
             .expect("prepare table");
-        }
+    }
 
     #[tokio::test]
     async fn test_execute_db() {
@@ -161,9 +186,12 @@ mod test {
             is_executable: false,
             relations: None,
             target: None,
-            compiled_obj: Some("DROP TABLE IF EXISTS public.orders CASCADE;
-CREATE TABLE public.orders AS SELECT 'test' as col".to_string()),
-            ast: None
+            compiled_obj: Some(
+                "DROP TABLE IF EXISTS public.orders CASCADE;
+CREATE TABLE public.orders AS SELECT 'test' as col"
+                    .to_string(),
+            ),
+            ast: None,
         };
         let project_root = get_root_dir();
         with_chdir_async(&project_root, || {
@@ -186,10 +214,7 @@ CREATE TABLE public.orders AS SELECT 'test' as col".to_string()),
                 let db_adapter_con = config.get_adapter_connection_details().unwrap();
                 let mut adapter = create_db_adapter(db_adapter_con).await.unwrap();
 
-                let res = adapter
-                    .query("select * from public.orders")
-                    .await
-                    .unwrap();
+                let res = adapter.query("select * from public.orders").await.unwrap();
 
                 assert_eq!(res.len(), 1);
                 assert_eq!(res[0].get::<_, String>("col"), "test".to_string());
@@ -250,18 +275,19 @@ CREATE TABLE public.orders AS SELECT 'test' as col".to_string()),
                 }
             }
 
-            config.kafka_source = Some(KafkaSourceConfigs(HashMap::from([
-                (node.target.clone().unwrap(), KafkaSourceConfig {
+            config.kafka_source = KafkaSourceConfigs(HashMap::from([(
+                node.target.clone().unwrap(),
+                KafkaSourceConfig {
                     name: node.target.clone().unwrap(),
                     bootstrap: KafkaBootstrap {
-                        servers: kafka_test_containers.kafka_broker.host.clone(), },
+                        servers: kafka_test_containers.kafka_broker.host.clone(),
+                    },
                     connect: KafkaConnect {
                         host: NET_HOST.to_string(),
-                        port: kafka_test_containers.kafka_connect.port
+                        port: kafka_test_containers.kafka_connect.port,
                     },
-                })
-            ])));
-
+                },
+            )]));
 
             let db_adapter_con = config.get_adapter_connection_details().unwrap();
             async move {
@@ -270,8 +296,8 @@ CREATE TABLE public.orders AS SELECT 'test' as col".to_string()),
                 let _ = Executor::execute(&node, &config).await.unwrap();
             }
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         let conn_exists = kafka_client.connector_exists(con_name).await?;
         assert!(conn_exists);
         let conn_config = kafka_client.get_connector_config(con_name).await.unwrap();

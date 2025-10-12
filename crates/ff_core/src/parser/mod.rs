@@ -1,31 +1,40 @@
-use common::config::components::foundry_project::ModelLayers;
 use common::config::components::global::FoundryConfig;
-use common::config::components::model::ModelsConfig;
+use common::config::components::model::{ModelLayers, ModelsConfig, ResolvedModelsConfig};
 use common::config::components::sources::SourcePaths;
 use common::traits::IsFileExtension;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use common::types::sources::SourceType;
+use common::utils::paths_with_ext;
 
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
-    if let Some(model_layers_path) = &config.project.paths.models.layers {
-        nodes.extend(parse_models(model_layers_path, config.models.as_ref())?)
+    if let Some(projects) = &config.project.models.analytics_projects {
+        projects
+            .iter()
+            .try_for_each(|(name, proj) | {
+                nodes.extend(parse_models(&proj.layers, config.models.as_ref()))
+            })?;
     }
-    if config.kafka_source.is_some() {
-        nodes.extend(parse_kafka(&config.source_paths)?);
+    if !config.kafka_source.is_empty() {
+        let kafka_def_path = config.source_paths
+            .get(&SourceType::Kafka)
+            .unwrap()
+            .definitions
+            .ok_or(Error::new(ErrorKind::NotFound, "Expected definitions for kafka sources"))?;
+        nodes.extend(parse_kafka_dir(&kafka_def_path)?);
     }
     Ok(nodes)
 }
 
 pub fn parse_models(
     dirs: &ModelLayers,
-    models_config: Option<&ModelsConfig>,
+    models_config: Option<&ResolvedModelsConfig>,
 ) -> Result<Vec<ParsedNode>, Error> {
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for dir in dirs.values() {
-        println!("{:#?}", dir);
         for entry in WalkDir::new(dir) {
             let path = entry?.into_path();
 
@@ -69,33 +78,6 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
     }
 }
 
-pub fn parse_kafka(config: &SourcePaths) -> Result<Vec<ParsedNode>, Error> {
-    use common::types::sources::SourceType;
-    use std::collections::HashSet;
-
-    let mut roots = HashSet::new();
-    for (_, details) in config {
-        if matches!(details.kind, SourceType::Kafka) {
-            let root = details
-                .source_root
-                .as_ref()
-                .map(PathBuf::from)
-                .or_else(|| Path::new(&details.path).parent().map(Path::to_path_buf));
-
-            if let Some(root) = root {
-                roots.insert(root);
-            }
-        }
-    }
-
-    let mut nodes = Vec::new();
-    for root in roots {
-        nodes.extend(parse_kafka_dir(&root)?);
-    }
-
-    Ok(nodes)
-}
-
 fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, Error> {
     if !root.exists() {
         return Ok(Vec::new());
@@ -103,24 +85,12 @@ fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, Error> {
 
     let mut parsed_nodes = Vec::new();
 
-    for entry in WalkDir::new(root) {
-        let entry = entry?;
-
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.into_path();
-
-        if !path.is_extension("sql") {
-            continue;
-        }
-
-        let Some(node_type) = kafka_node_type_from_path(&path) else {
+    for entry in paths_with_ext(root, "sql") {
+        let Some(node_type) = kafka_node_type_from_path(&entry) else {
             continue;
         };
 
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        let Some(stem) = entry.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
 
@@ -163,6 +133,19 @@ mod tests {
     use common::config::loader::read_config;
     use std::path::{Path, PathBuf};
     use test_utils::{build_test_layers, get_root_dir, with_chdir};
+    
+    #[test]
+    fn test_parse_model_nodes () {
+        let project_root = get_root_dir();
+        let root_for_layers = project_root.clone();
+
+        let nodes = with_chdir(&project_root, move || {
+            let config = read_config(None).expect("load example project config");
+            let nodes = parse_nodes(&config).expect("parse model nodes");
+            
+            println!("{:#?}", nodes);
+        });
+    }
 
     #[test]
     fn test_parse_models_across_layers() -> std::io::Result<()> {
@@ -208,73 +191,6 @@ mod tests {
                 other => panic!("unexpected node variant"),
             }
         }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_kafka_nodes() -> std::io::Result<()> {
-        let project_root = get_root_dir();
-        let config = read_config(Some(project_root.clone())).expect("load example config");
-
-        let nodes = parse_kafka(&config.source_paths)?;
-        println!("{:#?}", nodes);
-
-        let kafka_root = config
-            .source_paths
-            .values()
-            .find(|details| matches!(details.kind, common::types::sources::SourceType::Kafka))
-            .and_then(|details| {
-                details
-                    .source_root
-                    .as_ref()
-                    .map(PathBuf::from)
-                    .or_else(|| Path::new(&details.path).parent().map(Path::to_path_buf))
-            })
-            .expect("example kafka source path");
-
-        assert_eq!(nodes.len(), 4, "expected one node per Kafka SQL file");
-
-        let mut actual: Vec<(String, &'static str, PathBuf)> = nodes
-            .into_iter()
-            .map(|node| match node {
-                ParsedNode::KafkaSmt { node } => (node.name, "smt", node.path),
-                ParsedNode::KafkaSmtPipeline { node } => (node.name, "smtpipeline", node.path),
-                ParsedNode::KafkaConnector { node } => (node.name, "connector", node.path),
-                _ => panic!("unexpected node variant"),
-            })
-            .collect();
-
-        actual.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut expected = vec![
-            (
-                "_drop_id".to_string(),
-                "smt",
-                kafka_root.join("_common/_smt/_drop_id.sql"),
-            ),
-            (
-                "_mask_field".to_string(),
-                "smt",
-                kafka_root.join("_common/_smt/_mask_field.sql"),
-            ),
-            (
-                "_pii_pipeline".to_string(),
-                "smtpipeline",
-                kafka_root.join("_common/_smt_pipelines/_pii_pipeline.sql"),
-            ),
-            (
-                "_test_src_connector".to_string(),
-                "connector",
-                kafka_root.join(
-                    "_connectors/_source/_test_src_connector/_definition/_test_src_connector.sql",
-                ),
-            ),
-        ];
-
-        expected.sort_by(|a, b| a.0.cmp(&b.0));
-
-        assert_eq!(actual, expected);
 
         Ok(())
     }

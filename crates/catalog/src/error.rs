@@ -16,4 +16,6 @@ pub enum CatalogError {
     Unsupported(String),
     #[error("sql parser error: {0}")]
     SqlParser(String),
+    #[error("{0}")]
+    MissingConfig(String),
 }

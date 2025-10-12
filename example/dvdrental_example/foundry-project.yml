@@ -1,0 +1,34 @@
+name: dvdrental_example
+description: "This is a generated description for the dvdrental_example project. Overwrite this with
+a description of the project"
+version: "1.0.0"
+
+compile_path: "compiled"
+
+models:
+  dir: foundry_models
+  analytics_projects:
+    dvd_rentals_analytics:
+      target_connection: dvd_rentals_analytics
+      layers:
+          bronze: dvd_rental_analytics/bronze
+          silver: dvd_rental_analytics/silver
+          gold: dvd_rental_analytics/gold
+        
+sources:
+  warehouse:
+    specifications: foundry_sources/warehouse/specifications
+    source_root: foundry_sources/warehouse
+  kafka:
+    specifications: foundry_sources/kafka/specifications
+    source_root: foundry_sources/kafka/
+    definitions: foundry_sources/kafka/definitions
+  source_db:
+    specifications: foundry_sources/database
+    source_root: foundry_sources/database
+
+modelling_architecture: medallion
+connection_profile:
+  profile: dev
+  path: connections.yml
+

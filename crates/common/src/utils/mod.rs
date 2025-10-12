@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
+use crate::traits::IsFileExtension;
 
 pub fn read_sql_file(
     models_dir: &str,
@@ -22,4 +24,14 @@ pub fn read_sql_file_from_path(path: &Path) -> Result<String, std::io::Error> {
     buf_reader.read_to_string(&mut contents)?;
 
     Ok(contents)
+}
+
+pub fn paths_with_ext(root: impl AsRef<Path>, ext: &str) -> impl Iterator<Item = PathBuf> {
+    let ext = ext.to_owned(); // capture for the 'move' below
+    WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())              // ignore entries with errors
+        .filter(|e| e.file_type().is_file()) // only files
+        .map(|e| e.into_path())
+        .filter(move |p| p.is_extension(&ext)) // ← your trait method
 }

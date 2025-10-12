@@ -11,9 +11,8 @@ use petgraph::Direction;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
-use catalog::{Compile, Getter, IntoRelation, MemoryCatalog, NodeDec, Resolve};
+use catalog::{Compile, Getter, IntoRelation, MemoryCatalog, NodeDec};
 use common::config::components::global::FoundryConfig;
-use common::error::FFError;
 use common::types::kafka::KafkaConnectorType;
 use sqlparser::ast::ModelSqlCompileError;
 
@@ -80,12 +79,12 @@ impl ModelsDag {
         }
     }
     pub fn build(
-        &mut self, 
+        &mut self,
         registry: &MemoryCatalog,
-        config: &FoundryConfig
+        config: &FoundryConfig,
     ) -> DagResult<()> {
         let started = Instant::now();
-        
+
         // First Pass - build all the nodes
         for c_node in registry.collect_catalog_nodes().iter() {
             match &c_node.declaration {
@@ -100,7 +99,7 @@ impl ModelsDag {
                             compiled_obj: None,
                             is_executable: false,
                             relations: None,
-                            target: None
+                            target: None,
                         },
                     )?;
                 }
@@ -115,26 +114,27 @@ impl ModelsDag {
 
                     let mut resolved_srcs = HashSet::new();
                     for src in model.sources.iter() {
-                        resolved_srcs.insert(registry.resolve_warehouse_source(src).map_err(
-                            |_| {
-                                DagError::RefNotFound(format!(
-                                    "Source {} not found",
-                                    src.source_name
-                                ))
-                            },
-                        )?);
+                        resolved_srcs.insert(config
+                            .resolve_db_source(&src.source_name, &src.source_table)
+                            .map_err(
+                                |_| {
+                                    DagError::RefNotFound(format!(
+                                        "Source {} not found",
+                                        src.source_name
+                                    ))
+                                },
+                            )?);
                     }
                     rels.extend(refs);
                     rels.extend(resolved_srcs);
-                    
-                   let compiled_obj = model.sql.compile(|src, table| {
-                       config
-                           .warehouse_source
-                           .resolve(src, table)
-                           .map_err(|e| ModelSqlCompileError(e.to_string()))
-                   })
-                       .map_err(|e| DagError::AstSyntax(e.to_string()))?;
-                    
+
+                    let compiled_obj = model.sql.compile(|src, table| {
+                        config
+                            .resolve_db_source(src, table)
+                            .map_err(|e| ModelSqlCompileError(e.to_string()))
+                    })
+                        .map_err(|e| DagError::AstSyntax(e.to_string()))?;
+
                     self.upsert_node(
                         c_node.name.clone(),
                         true,
@@ -145,7 +145,7 @@ impl ModelsDag {
                             is_executable: true,
                             relations: Some(rels),
                             compiled_obj: Some(compiled_obj),
-                            target: Some(config.warehouse_db_connection.clone()),
+                            target: c_node.target.clone(),
                         },
                     )?;
                 }
@@ -167,7 +167,7 @@ impl ModelsDag {
                             is_executable: false,
                             relations: Some(rels),
                             compiled_obj: Some(pipe.sql.to_string()),
-                            target: None
+                            target: None,
                         },
                     )?;
                 }
@@ -182,7 +182,7 @@ impl ModelsDag {
                             is_executable: false,
                             relations: None, // TODO - needs revisiting
                             compiled_obj: Some(smt.sql.to_string()),
-                            target: None
+                            target: None,
                         },
                     )?;
                 }
@@ -220,7 +220,7 @@ impl ModelsDag {
                                         is_executable: false,
                                         relations: None,
                                         compiled_obj: None,
-                                        target: None
+                                        target: None,
                                     },
                                 )?;
                             }
@@ -273,7 +273,7 @@ impl ModelsDag {
                                         is_executable: false,
                                         relations: Some(BTreeSet::from([conn.name.clone()])),
                                         compiled_obj: None,
-                                        target: None
+                                        target: None,
                                     },
                                 )?;
                             }
@@ -299,7 +299,7 @@ impl ModelsDag {
                                                 is_executable: false,
                                                 relations: Some(src_db_rels.clone()),
                                                 compiled_obj: None,
-                                                target: None
+                                                target: None,
                                             },
                                         )?
                                     }
@@ -322,7 +322,7 @@ impl ModelsDag {
                                     is_executable: true,
                                     relations: Some(conn_rels.clone()),
                                     compiled_obj: Some(compiled),
-                                    target: Some(conn.cluster_name.clone()),
+                                    target: c_node.target.clone(),
                                 },
                             )?;
                         }
@@ -332,9 +332,9 @@ impl ModelsDag {
                             let mut rels = match (topic_prefix, topics) {
                                 (Some(tp), Some(t)) => {
                                     return Err(DagError::AstSyntax(format!(
-                                    "Expected either topic.prefix or topics to be declared in {}",
-                                    conn.name.clone()
-                                )))
+                                        "Expected either topic.prefix or topics to be declared in {}",
+                                        conn.name.clone()
+                                    )))
                                 }
                                 (Some(tp), _) => {
                                     let rels = tp
@@ -380,7 +380,7 @@ impl ModelsDag {
                                                 is_executable: false,
                                                 relations: Some(rels.clone()),
                                                 compiled_obj: None,
-                                                target: None
+                                                target: None,
                                             },
                                         )?
                                     }
@@ -392,9 +392,9 @@ impl ModelsDag {
                                 Some(warehouse_src) => warehouse_src.as_str().unwrap().to_string(),
                                 None => {
                                     return Err(DagError::AstSyntax(format!(
-                                    "Unexpected issue with table.name.format in kafka connector {}",
-                                    conn.name
-                                )))
+                                        "Unexpected issue with table.name.format in kafka connector {}",
+                                        conn.name
+                                    )))
                                 }
                             };
 
@@ -422,7 +422,7 @@ impl ModelsDag {
                                     is_executable: true,
                                     relations: Some(rels),
                                     compiled_obj: Some(compiled),
-                                    target: Some(conn.cluster_name.clone()),
+                                    target: c_node.target.clone(),
                                 },
                             )?;
 
@@ -436,7 +436,7 @@ impl ModelsDag {
                                     is_executable: false,
                                     relations: Some(BTreeSet::from([conn.name.clone()])),
                                     compiled_obj: None,
-                                    target: None
+                                    target: None,
                                 },
                             )?;
                         }
@@ -753,7 +753,7 @@ impl ModelsDag {
                 edge.source().index(),
                 edge.target().index(),
             )
-            .unwrap();
+                .unwrap();
         }
         writeln!(dot, "}}").unwrap();
 
@@ -769,7 +769,7 @@ impl ModelsDag {
 #[cfg(test)]
 mod tests {
     use catalog::Register;
-use super::*;
+    use super::*;
     use common::config::loader::read_config;
     use ff_core::parser::parse_nodes;
     use test_utils::{get_root_dir, with_chdir};

@@ -55,13 +55,12 @@ pub use self::ddl::{
     AlterTableAlgorithm, AlterTableLock, AlterTableOperation, AlterType, AlterTypeAddValue,
     AlterTypeAddValuePosition, AlterTypeOperation, AlterTypeRename, AlterTypeRenameValue,
     ClusteredBy, ColumnDef, ColumnOption, ColumnOptionDef, ColumnPolicy, ColumnPolicyProperty,
-    ConstraintCharacteristics, CreateConnector, CreateFunction, CreateKafkaConnector, CreateModel,
-    CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Deduplicate,
+    ConstraintCharacteristics, CreateConnector, CreateFunction, Deduplicate,
     DeferrableInitial, DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters,
     IdentityProperty, IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder,
-    IndexOption, IndexType, KeyOrIndexDisplay, ModelDef, ModelSqlCompileError, NullsDistinctOption,
+    IndexOption, IndexType, KeyOrIndexDisplay, NullsDistinctOption,
     Owner, Partition, ProcedureParam, ReferentialAction, TableConstraint, TagsColumnOption,
-    TransformCall, UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation,
+    UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation,
     ViewColumnDef,
 };
 pub use self::dml::{CreateIndex, CreateTable, Delete, IndexColumn, Insert};
@@ -105,6 +104,8 @@ pub use visitor::*;
 
 pub use self::data_type::GeometricTypeKind;
 
+pub use self::foundry_ast::*;
+
 mod data_type;
 mod dcl;
 mod ddl;
@@ -120,6 +121,7 @@ mod value;
 
 #[cfg(feature = "visitor")]
 mod visitor;
+mod foundry_ast;
 
 pub struct DisplaySeparated<'a, T>
 where

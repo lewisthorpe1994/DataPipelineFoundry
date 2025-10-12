@@ -72,32 +72,6 @@ impl From<HashMap<String, KafkaSourceConfig>> for KafkaSourceConfigs {
     }
 }
 
-impl TryFrom<SourcePaths> for KafkaSourceConfigs {
-    type Error = KafkaSourceConfigError;
-
-    fn try_from(value: SourcePaths) -> Result<Self, KafkaSourceConfigError> {
-        let mut configs: KafkaSourceConfigs = KafkaSourceConfigs::empty();
-        let mut found = false;
-        value
-            .into_iter()
-            .filter(|(_, details)| details.kind == SourceType::Kafka)
-            .for_each(|(_, details)| {
-                found = true;
-                let c: KafkaSourceConfigs =
-                    load_config::<KafkaSourceConfig, KafkaSourceFileConfigs, KafkaSourceConfigs>(
-                        (&details.path).as_ref(),
-                    )
-                    .expect("load kafka source config");
-                configs.extend(c);
-            });
-        if !found {
-            return Err(KafkaSourceConfigError::NoSources);
-        }
-
-        Ok(configs)
-    }
-}
-
 impl KafkaSourceConfigs {
     pub fn new(configs: HashMap<String, KafkaSourceConfig>) -> Self {
         Self(configs)

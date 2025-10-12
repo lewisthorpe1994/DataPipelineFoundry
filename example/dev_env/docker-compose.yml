@@ -1,14 +1,14 @@
 services:
-  postgres-source:
+  source_db:
     build:
       context: ./dvdrental
-    container_name: dvdrental-postgres
+    container_name: dvdrental-source-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dvdrental
     ports:
-      - "5433:5432"
+      - "15432:5432"
     networks:
       - example-net
 

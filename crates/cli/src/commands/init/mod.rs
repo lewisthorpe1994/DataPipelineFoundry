@@ -18,20 +18,14 @@ const CONNECTIONS_TEMPLATE: &str = include_str!("templates/connections.yml.j2");
 // Warehouse source templates
 const WAREHOUSE_FILE_NAME: &str = "warehouse-sources.yml";
 const WAREHOUSE_SOURCE_TEMPLATE: &str = include_str!("templates/warehouse-sources.yml.j2");
-const FOUNDRY_WAREHOUSE_SOURCE_PATH: &str = "foundry-sources/warehouse/warehouse-sources.yml";
+const FOUNDRY_WAREHOUSE_SOURCE_PATH: &str = "foundry_sources/warehouse/warehouse-sources.yml";
 
 // Kafka source templates
 const KAFKA_FILE_NAME: &str = "kafka-sources.yml";
 const KAFKA_SOURCE_TEMPLATE: &str = include_str!("templates/kafka-sources.yml.j2");
-const FOUNDRY_KAFKA_SOURCE_PATH: &str = "foundry-sources/kafka/kafka-sources.yml";
+const FOUNDRY_KAFKA_SOURCE_PATH: &str = "foundry_sources/kafka/kafka-sources.yml";
 
-// Api source templates
-const API_FILE_NAME: &str = "api-sources.yml";
-const API_SOURCE_TEMPLATE: &str = include_str!("templates/api-sources.yml.j2");
-const FOUNDRY_API_SOURCE_PATH: &str = "foundry-sources/api/api-sources.yml";
-
-const FOUNDRY_DB_SOURCE_PATH: &str = "foundry-sources/db/db.yml";
-const FOUNDRY_SOURCES_ROOT: &str = "foundry-sources";
+const FOUNDRY_SOURCES_ROOT: &str = "foundry_sources";
 
 // Default dirs
 const DEFAULT_MODELS_DIR: &str = "foundry_models";
@@ -39,7 +33,6 @@ const DEFAULT_MODELS_DIR: &str = "foundry_models";
 // example source names
 const DEFAULT_WAREHOUSE_SOURCE_NAME: &str = "some_orders";
 const DEFAULT_KAFKA_SOURCE_NAME: &str = "some_kafka_cluster";
-const DEFAULT_API_SOURCE_NAME: &str = "some_api";
 
 const SAMPLE_BRONZE_SQL: &str = "-- create model bronze.bronze_orders as\n--   drop table if exists bronze.bronze_orders cascade;\n--   create table bronze.bronze_orders as\nselect\n  o.order_id,\n  o.customer_id,\n  o.order_date,\n  o.total_amount\nfrom {{ source('some_orders','raw_orders') }} as o;\n";
 const SAMPLE_BRONZE_YAML: &str = "config:\n  name: bronze_orders\n  materialization: table\n";
@@ -124,7 +117,6 @@ enum FileTemplates {
     Connections,
     WarehouseSources,
     KafkaSources,
-    ApiSources,
 }
 impl Display for FileTemplates {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -133,7 +125,6 @@ impl Display for FileTemplates {
             FileTemplates::Connections => write!(f, "connections.yml"),
             FileTemplates::WarehouseSources => write!(f, "warehouse-sources.yml"),
             FileTemplates::KafkaSources => write!(f, "kafka-sources.yml"),
-            FileTemplates::ApiSources => write!(f, "api-sources.yml"),
         }
     }
 }
@@ -150,7 +141,6 @@ impl FileTemplate for FileTemplates {
             FileTemplates::Connections => CONNECTIONS_TEMPLATE,
             FileTemplates::WarehouseSources => WAREHOUSE_SOURCE_TEMPLATE,
             FileTemplates::KafkaSources => KAFKA_SOURCE_TEMPLATE,
-            FileTemplates::ApiSources => API_SOURCE_TEMPLATE,
         }
     }
     fn path(&self) -> &'static str {
@@ -159,7 +149,6 @@ impl FileTemplate for FileTemplates {
             FileTemplates::Connections => CONNECTIONS_FILE_NAME,
             FileTemplates::WarehouseSources => FOUNDRY_WAREHOUSE_SOURCE_PATH,
             FileTemplates::KafkaSources => FOUNDRY_KAFKA_SOURCE_PATH,
-            FileTemplates::ApiSources => FOUNDRY_API_SOURCE_PATH,
         }
     }
 }
@@ -240,12 +229,9 @@ fn setup_sources_structure(project_path: &Path) -> std::io::Result<()> {
     let sources_root = project_path.join(FOUNDRY_SOURCES_ROOT);
     fs::create_dir_all(&sources_root)?;
 
-    fs::create_dir_all(sources_root.join("api"))?;
     fs::create_dir_all(sources_root.join("warehouse"))?;
-    fs::create_dir_all(sources_root.join("db"))?;
     fs::create_dir_all(sources_root.join("kafka"))?;
 
-    write_file_if_missing(project_path.join(FOUNDRY_DB_SOURCE_PATH), "")?;
 
     let kafka_common_smt = sources_root.join("kafka/_common/_smt");
     fs::create_dir_all(&kafka_common_smt)?;
@@ -315,10 +301,6 @@ pub fn handle_init(
         None
     };
 
-    // create macro folder
-    let macros_path = proj_path.join("macros");
-    fs::create_dir(&macros_path)?;
-
     // create flow layer dirs
     let mut modelling_layers: Vec<FlowLayer> = Vec::new();
     if let Some(arch) = modelling_arch {
@@ -338,20 +320,14 @@ pub fn handle_init(
         SourceTemplate::new(
             DEFAULT_WAREHOUSE_SOURCE_NAME,
             FileTemplates::WarehouseSources.path(),
-            "foundry-sources/warehouse",
+            "foundry_sources/warehouse",
             SourceType::Warehouse,
         ),
         SourceTemplate::new(
             DEFAULT_KAFKA_SOURCE_NAME,
             FileTemplates::KafkaSources.path(),
-            "foundry-sources/kafka/",
+            "foundry_sources/kafka/",
             SourceType::Kafka,
-        ),
-        SourceTemplate::new(
-            DEFAULT_API_SOURCE_NAME,
-            FileTemplates::ApiSources.path(),
-            "foundry-sources/api/",
-            SourceType::Api,
         ),
     ];
 
@@ -393,14 +369,6 @@ pub fn handle_init(
         &proj_path,
         FileTemplates::KafkaSources,
         Some(context! {example_kafka_source_name => DEFAULT_KAFKA_SOURCE_NAME}),
-    )?;
-
-    // create api sources file
-    create_component(
-        &mut env,
-        &proj_path,
-        FileTemplates::ApiSources,
-        Some(context! {example_api_source_name => DEFAULT_API_SOURCE_NAME}),
     )?;
 
     setup_sources_structure(&proj_path)?;
@@ -470,7 +438,6 @@ mod tests {
 
         // baseline folders
         assert!(proj_path.exists());
-        assert!(proj_path.join("macros").exists());
         assert!(proj_path.join("foundry_models").exists());
 
         // medallion layers
@@ -508,35 +475,31 @@ mod tests {
             "connections.yml",
             FOUNDRY_WAREHOUSE_SOURCE_PATH,
             FOUNDRY_KAFKA_SOURCE_PATH,
-            FOUNDRY_API_SOURCE_PATH,
-            FOUNDRY_DB_SOURCE_PATH,
         ] {
             assert!(proj_path.join(file).exists(), "file {} missing", file);
         }
 
         // new source structure
-        assert!(proj_path.join("foundry-sources/db").exists());
         assert!(proj_path
-            .join("foundry-sources/kafka/_common/_smt")
+            .join("foundry_sources/kafka/_common/_smt")
             .exists());
         assert!(proj_path
-            .join("foundry-sources/kafka/_common/_smt_pipelines")
+            .join("foundry_sources/kafka/_common/_smt_pipelines")
             .exists());
         assert!(proj_path
-            .join("foundry-sources/kafka/_connectors/_source/_test_src_connector")
+            .join("foundry_sources/kafka/_connectors/_source/_test_src_connector")
             .exists());
-        assert!(proj_path.join("foundry-sources/api").exists());
-        assert!(proj_path.join("foundry-sources/warehouse").exists());
+        assert!(proj_path.join("foundry_sources/warehouse").exists());
 
         // sample kafka artifacts
-        let drop_id = proj_path.join("foundry-sources/kafka/_common/_smt/_drop_id.sql");
+        let drop_id = proj_path.join("foundry_sources/kafka/_common/_smt/_drop_id.sql");
         assert!(drop_id.exists());
         assert!(fs::read_to_string(&drop_id)
             .expect("drop_id sql")
             .contains("CREATE SIMPLE MESSAGE TRANSFORM drop_id"));
 
         let connector_sql = proj_path.join(
-            "foundry-sources/kafka/_connectors/_source/_test_src_connector/_definition/_test_src_connector.sql",
+            "foundry_sources/kafka/_connectors/_source/_test_src_connector/_definition/_test_src_connector.sql",
         );
         assert!(connector_sql.exists());
         assert!(fs::read_to_string(&connector_sql)
@@ -544,19 +507,12 @@ mod tests {
             .contains("CREATE SOURCE KAFKA CONNECTOR"));
 
         assert!(proj_path
-            .join("foundry-sources/kafka/_connectors/_source/_test_src_connector/_smt")
+            .join("foundry_sources/kafka/_connectors/_source/_test_src_connector/_smt")
             .exists());
         assert!(proj_path
-            .join("foundry-sources/kafka/_connectors/_source/_test_src_connector/_smt_pipelines")
+            .join("foundry_sources/kafka/_connectors/_source/_test_src_connector/_smt_pipelines")
             .exists());
 
-        // db placeholder file should exist (may be empty)
-        let db_yaml = proj_path.join(FOUNDRY_DB_SOURCE_PATH);
-        assert!(db_yaml.exists());
-        assert!(fs::read_to_string(&db_yaml)
-            .expect("db yaml")
-            .trim()
-            .is_empty());
 
         // quick sanity: project YAML contains project name
         let project_yaml = fs::read_to_string(proj_path.join("foundry-project.yml")).unwrap();
@@ -576,7 +532,7 @@ mod tests {
                 .get("source_root")
                 .and_then(Value::as_str)
                 .unwrap(),
-            "foundry-sources/kafka/"
+            "foundry_sources/kafka/"
         );
 
         let warehouse_entry = sources
@@ -587,7 +543,7 @@ mod tests {
                 .get("source_root")
                 .and_then(Value::as_str)
                 .unwrap(),
-            "foundry-sources/warehouse"
+            "foundry_sources/warehouse"
         );
 
         // keep TempDir alive until here

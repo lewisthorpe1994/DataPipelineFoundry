@@ -10,13 +10,13 @@ dev:
     password: postgres
     database: postgres
     adapter_type: postgres
-  db_source:
+  dvd_rentals:
     adapter: postgres
     host: localhost
     port: 5432
     user: postgres
     password: postgres
-    database: postgres
+    database: dvdrental
     adapter_type: postgres
 
 # example for another environment

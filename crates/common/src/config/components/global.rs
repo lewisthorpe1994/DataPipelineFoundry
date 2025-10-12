@@ -1,31 +1,35 @@
-use crate::config::components::connections::{AdapterConnectionDetails, ConnectionsConfig};
+use crate::config::components::connections::{
+    AdapterConnectionDetails, Connections, ConnectionsConfig,
+};
 use crate::config::components::foundry_project::FoundryProjectConfig;
-use crate::config::components::model::ModelsConfig;
-use crate::config::components::sources::kafka::{KafkaSourceConfig, KafkaSourceConfigs};
-use crate::config::components::sources::warehouse_source::WarehouseSourceConfigs;
+use crate::config::components::model::{ResolvedModelsConfig};
+use crate::config::components::sources::kafka::KafkaSourceConfig;
+use crate::config::components::sources::warehouse_source::{DbConfig, DbConfigError};
 use crate::config::components::sources::SourcePaths;
+use std::collections::HashMap;
+use crate::config::error::ConfigError;
 
 // ---------------- global config ----------------
 #[derive(Debug)]
 pub struct FoundryConfig {
     pub project: FoundryProjectConfig,
-    pub warehouse_source: WarehouseSourceConfigs,
-    pub kafka_source: Option<KafkaSourceConfigs>,
+    pub warehouse_source: HashMap<String, DbConfig>,
+    pub kafka_source: HashMap<String, KafkaSourceConfig>,
+    pub source_db_configs: HashMap<String, DbConfig>,
     pub connections: ConnectionsConfig,
-    pub warehouse_db_connection: String,
-    pub models: Option<ModelsConfig>,
-    pub connection_profile: String,
+    pub models: Option<ResolvedModelsConfig>,
+    pub connection_profile: Connections,
     pub source_paths: SourcePaths,
 }
 impl FoundryConfig {
     pub fn new(
         project: FoundryProjectConfig,
-        warehouse_source: WarehouseSourceConfigs,
+        warehouse_source: HashMap<String, DbConfig>,
         connections: ConnectionsConfig,
-        models: Option<ModelsConfig>,
-        connection_profile: String,
-        warehouse_db_connection: String,
-        kafka_source: Option<KafkaSourceConfigs>,
+        models: Option<ResolvedModelsConfig>,
+        source_db_configs: HashMap<String, DbConfig>,
+        connection_profile: Connections,
+        kafka_source: HashMap<String, KafkaSourceConfig>,
         source_paths: SourcePaths,
     ) -> Self {
         Self {
@@ -33,8 +37,8 @@ impl FoundryConfig {
             warehouse_source,
             connections,
             models,
+            source_db_configs,
             connection_profile,
-            warehouse_db_connection,
             kafka_source,
             source_paths,
         }
@@ -42,20 +46,46 @@ impl FoundryConfig {
 }
 
 impl FoundryConfig {
-    pub fn get_adapter_connection_details(
-        &self,
-    ) -> Option<AdapterConnectionDetails> {
+    pub fn get_adapter_connection_details(&self, name: &str) -> Option<AdapterConnectionDetails> {
         self.connections
-            .get(&self.connection_profile)
-            .and_then(|sources| sources.get(&self.warehouse_db_connection))
+            .get(&self.connection_profile.profile)
+            .and_then(|sources| sources.get(name))
             .cloned()
     }
-    
+
     pub fn get_kafka_cluster_conn(&self, cluster_name: &str) -> Option<&KafkaSourceConfig> {
-        if let Some(s) = &self.kafka_source {
-            s.get(cluster_name)
-        } else {
-            None
+        self.kafka_source.get(cluster_name)
+    }
+
+    pub fn resolve_db_source(&self, name: &str, table: &str) -> Result<String, ConfigError> {
+        let source_db_config = self.source_db_configs.get(name);
+        let warehouse_db_config = self.warehouse_source.get(name);
+        
+        let config = match (source_db_config, warehouse_db_config) {
+            (Some(source_db_config), Some(warehouse_db_config)) => {
+                return Err(ConfigError::DuplicateDatabaseSpecification(
+                    format!("Found entries for both source and warehouse dbs for {}", name)
+                ))
+            }
+            (Some(source_db_config), None) => source_db_config,
+            (None, Some(warehouse_db_config)) => warehouse_db_config,
+            (None, None) => return Err(ConfigError::NotFound(format!("No db config for {}", name))),
+        };
+        
+        let resolved = config
+            .database
+            .schemas
+            .iter()
+            .flat_map(|(name, obj)| {
+                obj.tables.iter().map(move |(t_name, table)| {
+                    (config.database.name.clone(), name, t_name.clone())
+                })
+            })
+            .find(|(_, _, t)| t == table);
+
+        match resolved {
+            Some((database, schema, table)) => Ok(format!("{}.{}.{}", database, schema, table)),
+            None => Err(ConfigError::NotFound(format!("No table config for {}", name))),
         }
     }
 }
