@@ -1,15 +1,25 @@
 use crate::parser::parse_nodes;
-use catalog::{Compile, MemoryCatalog, Register};
-use common::config::loader::read_config;
+use catalog::{Compile, KafkaConnectorDecl, MemoryCatalog, Register};
+use common::config::components::global::FoundryConfig;
 use common::error::FFError;
-use dag::types::{DagNodeType, NodeAst};
+use dag::types::DagNodeType;
 use dag::ModelsDag;
 use serde::Serialize;
-use sqlparser::ast::ModelSqlCompileError;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+
+#[derive(Debug, Default)]
+pub struct CompileOptions {
+    pub kafka_connector: Option<String>,
+}
+
+pub struct CompileOutput {
+    pub dag: Arc<ModelsDag>,
+    pub catalog: Arc<MemoryCatalog>,
+    pub kafka_connector: Option<KafkaConnectorDecl>,
+}
 
 #[derive(Debug, Serialize)]
 pub enum ManifestNodeType {
@@ -37,15 +47,15 @@ struct Manifest {
     nodes: Vec<ManifestModel>,
 }
 
-pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalog>), FFError> {
+pub fn compile(config: &FoundryConfig, options: CompileOptions) -> Result<CompileOutput, FFError> {
     let catalog = MemoryCatalog::new();
-    let config = read_config(None).map_err(FFError::compile)?;
+    let compile_path = &config.project.compile_path;
 
     // ---------------------------------------------------------------------
     // 1️⃣  Parse models and build the dependency DAG
     // ---------------------------------------------------------------------
 
-    let nodes = parse_nodes(&config).map_err(FFError::compile)?;
+    let nodes = parse_nodes(config).map_err(FFError::compile)?;
     if nodes.is_empty() {
         return Err(FFError::compile_msg("No nodes found to compile"));
     }
@@ -55,10 +65,10 @@ pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalo
     catalog
         .register_nodes(nodes, wh_config)
         .map_err(FFError::compile)?;
-    dag.build(&catalog, &config).map_err(FFError::compile)?;
+    dag.build(&catalog, config).map_err(FFError::compile)?;
 
     // ensure compile directory exists
-    fs::create_dir_all(&compile_path).map_err(FFError::compile)?;
+    fs::create_dir_all(compile_path).map_err(FFError::compile)?;
 
     // ---------------------------------------------------------------------
     // 2️⃣  Prepare Jinja environment for template rendering
@@ -93,29 +103,48 @@ pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalo
     // ---------------------------------------------------------------------
     // 3️⃣  Export the DAG and manifest
     // ---------------------------------------------------------------------
-    let dag_path = Path::new(&compile_path).join("dag.dot");
+    let dag_path = Path::new(compile_path).join("dag.dot");
     dag_arc.export_dot_to(&dag_path).map_err(FFError::compile)?;
 
     let manifest = Manifest {
         nodes: manifest_models,
     };
-    let manifest_path = Path::new(&compile_path).join("manifest.json");
+    let manifest_path = Path::new(compile_path).join("manifest.json");
     let file = fs::File::create(&manifest_path).map_err(FFError::compile)?;
     serde_json::to_writer_pretty(file, &manifest).map_err(FFError::compile)?;
 
-    Ok((dag_arc, Arc::new(catalog)))
+    let catalog = Arc::new(catalog);
+    let kafka_connector = if let Some(name) = options.kafka_connector {
+        Some(
+            catalog
+                .compile_kafka_decl(&name, config)
+                .map_err(FFError::compile)?,
+        )
+    } else {
+        None
+    };
+
+    Ok(CompileOutput {
+        dag: dag_arc,
+        catalog,
+        kafka_connector,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use super::CompileOptions;
     use crate::functions::compile::compile;
+    use common::config::loader::read_config;
     use test_utils::{get_root_dir, with_chdir};
 
     #[test]
     fn test() {
         let project_root = get_root_dir();
         with_chdir(&project_root, move || {
-            let (dag, cat) = compile(".compiled".to_string()).unwrap();
+            let config = read_config(None).expect("load project config");
+            let result = compile(&config, CompileOptions::default()).unwrap();
+            assert!(result.dag.graph.node_count() > 0);
         })
         .expect("compile failed");
     }

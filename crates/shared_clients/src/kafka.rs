@@ -27,6 +27,8 @@ pub enum KafkaConnectClientError {
     FailedToConnect { context: DiagnosticMessage },
     #[error("deployment failed: {context}")]
     FailedToDeploy { context: DiagnosticMessage },
+    #[error("validation failed: {context}")]
+    ValidationFailed { context: DiagnosticMessage },
     #[error("unexpected response: {context}")]
     UnexpectedError { context: DiagnosticMessage },
 }
@@ -56,6 +58,13 @@ impl KafkaConnectClientError {
     #[track_caller]
     pub fn unexpected(message: impl Into<String>) -> Self {
         Self::UnexpectedError {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn validation_failed(message: impl Into<String>) -> Self {
+        Self::ValidationFailed {
             context: DiagnosticMessage::new(message.into()),
         }
     }
@@ -173,6 +182,60 @@ impl KafkaConnectClient {
                 status.to_string(),
                 status.as_u16()
             ))),
+        }
+    }
+
+    pub async fn validate_connector(
+        &self,
+        connector_class: &str,
+        connector_name: &str,
+        config: &Value,
+    ) -> Result<(), KafkaConnectClientError> {
+        let client = Client::new();
+        let url = format!(
+            "{}/connector-plugins/{}/config/validate",
+            &self.host, connector_class
+        );
+        let payload = KafkaConnectorDeployConfig {
+            name: connector_name.to_string(),
+            config: config.clone(),
+        };
+
+        let resp = client.post(url).json(&payload).send().await?;
+        let status = resp.status();
+
+        if status.is_success() {
+            let body: Value = resp.json().await?;
+            let error_count = body
+                .get("error_count")
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default();
+
+            if error_count > 0 {
+                let message =
+                    serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string());
+                Err(KafkaConnectClientError::validation_failed(message))
+            } else {
+                Ok(())
+            }
+        } else {
+            let fallback = format!("validation request failed with status {status}");
+            let body_message = resp
+                .json::<ConnectErrorBody>()
+                .await
+                .map(|body| body.message)
+                .unwrap_or(fallback);
+
+            match status {
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                    Err(KafkaConnectClientError::validation_failed(body_message))
+                }
+                StatusCode::NOT_FOUND => Err(KafkaConnectClientError::not_found(body_message)),
+                _ => Err(KafkaConnectClientError::unexpected(format!(
+                    "Unexpected error during connector validation: {} (status {})",
+                    body_message, status
+                ))),
+            }
         }
     }
 }

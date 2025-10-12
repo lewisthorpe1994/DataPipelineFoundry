@@ -1,4 +1,4 @@
-use crate::functions::compile::compile;
+use crate::functions::compile::{compile, CompileOptions};
 use common::config::components::global::FoundryConfig;
 use common::error::FFError;
 use dag::types::{DagNode, TransitiveDirection};
@@ -26,7 +26,8 @@ async fn execute_dag_nodes(nodes: Vec<&DagNode>, config: &FoundryConfig) -> Resu
 }
 
 async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
-    let (nodes, catalog) = compile(config.project.compile_path.clone())?;
+    let compiled = compile(&config, CompileOptions::default())?;
+    let nodes = compiled.dag;
 
     match model {
         Some(model) => {

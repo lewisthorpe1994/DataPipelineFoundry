@@ -13,6 +13,7 @@ use crate::config::error::ConfigError;
 use crate::config::traits::{ConfigName, FromFileConfigList, IntoConfigVec};
 use crate::types::sources::SourceType;
 use crate::utils::paths_with_ext;
+use log::info;
 use serde::de::{DeserializeOwned, Error};
 use serde::Deserialize;
 use serde_yaml::{self, Error as YamlError, Value};
@@ -20,7 +21,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use log::info;
 
 pub fn load_config<V>(path: &Path) -> Result<HashMap<String, V>, ConfigError>
 where

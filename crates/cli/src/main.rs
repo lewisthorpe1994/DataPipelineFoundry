@@ -1,6 +1,6 @@
 mod commands;
 
-use crate::commands::compile::handle_compile;
+use crate::commands::compile::{handle_compile, CompileArgs};
 use crate::commands::handle_init;
 use crate::commands::init::InitArgs;
 use crate::commands::run::RunArgs;
@@ -30,7 +30,7 @@ pub enum Cmd {
     /// Create a new project scaffold
     Init(InitArgs),
     /// Compile the DAG and emit SQL
-    Compile,
+    Compile(CompileArgs),
     /// Run the model DAG using the chosen target
     Run(RunArgs),
     /// Print the model dependency graph
@@ -73,8 +73,8 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Cmd::Compile => {
-            if let Err(e) = handle_compile() {
+        Cmd::Compile(args) => {
+            if let Err(e) = handle_compile(&args, cli.config_path.clone()) {
                 eprintln!("Compilation failed: {}", e);
                 std::process::exit(1);
             }

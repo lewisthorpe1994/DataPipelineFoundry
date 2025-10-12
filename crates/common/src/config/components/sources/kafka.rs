@@ -142,7 +142,8 @@ impl KafkaConnectorConfig {
         self.tables
             .iter()
             .flat_map(|(table_name, table_meta)| {
-                table_meta.columns
+                table_meta
+                    .columns
                     .iter()
                     .map(|c| format!("{}.{}", table_name.clone(), c.name.clone()))
             })

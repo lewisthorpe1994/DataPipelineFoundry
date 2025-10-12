@@ -142,6 +142,12 @@ impl From<KafkaConnectClientError> for ExecutorError {
                 context,
                 source: None,
             },
+            KafkaConnectClientError::ValidationFailed { context } => {
+                ExecutorError::FailedToExecute {
+                    context,
+                    source: None,
+                }
+            }
             KafkaConnectClientError::UnexpectedError { context } => {
                 ExecutorError::UnexpectedError {
                     context,
