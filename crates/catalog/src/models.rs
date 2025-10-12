@@ -1,17 +1,17 @@
-use std::collections::HashSet;
-use common::types::kafka::KafkaConnectorType;
+use crate::CatalogError;
 use chrono::{DateTime, Utc};
+use common::types::kafka::KafkaConnectorType;
 use common::types::{Materialize, ModelRef, SourceRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
+use sqlparser::ast::helpers::foundry_helpers::KvPairs;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline,
 };
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
-use sqlparser::ast::helpers::foundry_helpers::KvPairs;
-use crate::CatalogError;
 
 /// A single SMT / transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +68,7 @@ pub struct KafkaConnectorMeta {
     pub sql: CreateKafkaConnector,
     pub pipelines: Option<Vec<String>>,
     pub cluster_name: String,
-    pub target: String
+    pub target: String,
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -109,7 +109,7 @@ pub struct ModelDecl {
     pub materialize: Option<Materialize>,
     pub refs: Vec<ModelRef>,
     pub sources: Vec<SourceRef>,
-    pub target: String
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,22 +166,21 @@ pub trait ExecutionTarget {
 
 impl ExecutionTarget for ModelDecl {
     fn target_name(&self) -> Result<String, CatalogError> {
-        let source_names = self.sources
+        let source_names = self
+            .sources
             .iter()
             .map(|s| s.source_name.clone())
             .collect::<HashSet<String>>();
         if source_names.len() > 1 {
-            return Err(CatalogError::Unsupported(
-                "Cannot execute model with multiple sources".to_string(),
+            return Err(CatalogError::unsupported(
+                "Cannot execute model with multiple sources",
             ));
         } else if source_names.is_empty() {
-            return Err(CatalogError::NotFound(
-                "Cannot compile a model with no sources".to_string(),
-            ))
+            return Err(CatalogError::not_found(
+                "Cannot compile a model with no sources",
+            ));
         }
 
         Ok(source_names.into_iter().next().unwrap())
-
     }
-
 }

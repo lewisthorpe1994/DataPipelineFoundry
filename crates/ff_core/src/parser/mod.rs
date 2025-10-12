@@ -2,28 +2,35 @@ use common::config::components::global::FoundryConfig;
 use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
 use common::config::components::sources::SourcePaths;
 use common::traits::IsFileExtension;
+use common::types::sources::SourceType;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
+use common::utils::paths_with_ext;
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use common::types::sources::SourceType;
-use common::utils::paths_with_ext;
 
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
-    println!("Parsing nodes from config: {:#?}", config);
     if let Some(projects) = &config.project.models.analytics_projects {
         for (name, proj) in projects {
-            nodes.extend(parse_models(&proj.layers, (&config.project.models.dir).as_ref(), config.models.as_ref())?)
+            nodes.extend(parse_models(
+                &proj.layers,
+                (&config.project.models.dir).as_ref(),
+                config.models.as_ref(),
+            )?)
         }
     }
     if !config.kafka_source.is_empty() {
-        let kafka_def_path = &config.source_paths
+        let kafka_def_path = &config
+            .source_paths
             .get(&SourceType::Kafka)
             .unwrap()
             .definitions
             .as_ref()
-            .ok_or(Error::new(ErrorKind::NotFound, "Expected definitions for kafka sources"))?;
+            .ok_or(Error::new(
+                ErrorKind::NotFound,
+                "Expected definitions for kafka sources",
+            ))?;
         nodes.extend(parse_kafka_dir(&kafka_def_path)?);
     }
     Ok(nodes)
@@ -134,16 +141,16 @@ mod tests {
     use common::config::loader::read_config;
     use std::path::{Path, PathBuf};
     use test_utils::{build_test_layers, get_root_dir, with_chdir};
-    
+
     #[test]
-    fn test_parse_model_nodes () {
+    fn test_parse_model_nodes() {
         let project_root = get_root_dir();
         let root_for_layers = project_root.clone();
 
         let nodes = with_chdir(&project_root, move || {
             let config = read_config(None).expect("load example project config");
             let nodes = parse_nodes(&config).expect("parse model nodes");
-            
+
             println!("{:#?}", nodes);
         });
     }
@@ -156,10 +163,12 @@ mod tests {
         let nodes = with_chdir(&project_root, move || {
             let config = read_config(None).expect("load example project config");
             let layers = build_test_layers(root_for_layers.clone());
-            parse_models(&layers, (
-                config.project.models.dir).as_ref(),
-                         config.models.as_ref()
-            ).expect("parse example models")
+            parse_models(
+                &layers,
+                (config.project.models.dir).as_ref(),
+                config.models.as_ref(),
+            )
+            .expect("parse example models")
         })?;
 
         assert_eq!(nodes.len(), 3, "expected one parsed node per SQL model");

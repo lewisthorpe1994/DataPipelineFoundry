@@ -1,6 +1,6 @@
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::Deserialize;
 
 ///  ---------------- Connections Config ----------------
 #[derive(Deserialize, Debug, Clone)]

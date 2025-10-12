@@ -1,7 +1,9 @@
-use crate::ast::{CreateKafkaConnector, CreateModel, CreateModelView, CreateSimpleMessageTransform, 
-                 CreateSimpleMessageTransformPipeline, DropStmt, Ident, KafkaConnectorType, ModelDef, 
-                 ObjectNamePart, ObjectType, Statement, TransformCall, ValueWithSpan};
 use crate::ast::helpers::foundry_helpers::collect_ref_source_calls;
+use crate::ast::{
+    CreateKafkaConnector, CreateModel, CreateModelView, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, DropStmt, Ident, KafkaConnectorType, ModelDef,
+    ObjectNamePart, ObjectType, Statement, TransformCall, ValueWithSpan,
+};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
@@ -40,7 +42,6 @@ impl KafkaParse for Parser<'_> {
     }
 
     fn parse_create_kafka_connector(&mut self) -> Result<Statement, ParserError> {
-
         if !self.parse_keyword(Keyword::KIND) {
             return Err(ParserError::ParserError("Expected KIND".to_string()));
         };
@@ -51,11 +52,14 @@ impl KafkaParse for Parser<'_> {
 
         let name = self.parse_identifier()?;
 
-        let cluster_ident = if self.parse_keywords(&[Keyword::USING, Keyword::KAFKA, Keyword::CLUSTER]) {
-            self.parse_identifier()?
-        } else {
-            return Err(ParserError::ParserError("Expected USING KAFKA CLUSTER".to_string()));
-        };
+        let cluster_ident =
+            if self.parse_keywords(&[Keyword::USING, Keyword::KAFKA, Keyword::CLUSTER]) {
+                self.parse_identifier()?
+            } else {
+                return Err(ParserError::ParserError(
+                    "Expected USING KAFKA CLUSTER".to_string(),
+                ));
+            };
 
         let mut properties = vec![];
         if self.consume_token(&Token::LParen) {
@@ -89,14 +93,18 @@ impl KafkaParse for Parser<'_> {
                     println!("parsing db source");
                     self.parse_identifier()?
                 } else {
-                    return Err(ParserError::ParserError("Expected database identifier".to_string()))
+                    return Err(ParserError::ParserError(
+                        "Expected database identifier".to_string(),
+                    ));
                 }
             }
             KafkaConnectorType::Sink => {
                 if self.parse_keywords(&[Keyword::TO, Keyword::TARGET, Keyword::DATABASE]) {
                     self.parse_identifier()?
                 } else {
-                    return Err(ParserError::ParserError("Expected database identifier".to_string()))
+                    return Err(ParserError::ParserError(
+                        "Expected database identifier".to_string(),
+                    ));
                 }
             }
         };
@@ -108,7 +116,7 @@ impl KafkaParse for Parser<'_> {
             connector_type,
             with_properties: properties,
             with_pipelines: pipeline_idents,
-            cluster_ident
+            cluster_ident,
         }))
     }
 

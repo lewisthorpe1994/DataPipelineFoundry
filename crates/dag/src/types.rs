@@ -1,11 +1,11 @@
 use crate::error::DagError;
+use petgraph::Direction;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline,
 };
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
-use petgraph::Direction;
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -85,7 +85,7 @@ pub enum TransitiveDirection {
 
 impl From<TransitiveDirection> for Direction {
     fn from(value: TransitiveDirection) -> Self {
-        match value { 
+        match value {
             TransitiveDirection::Incoming => Direction::Incoming,
             TransitiveDirection::Outgoing => Direction::Outgoing,
         }

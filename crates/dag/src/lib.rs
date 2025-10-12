@@ -3,18 +3,18 @@ pub mod types;
 
 use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, TransitiveDirection};
+use catalog::{Compile, Getter, IntoRelation, MemoryCatalog, NodeDec};
+use common::config::components::global::FoundryConfig;
+use common::types::kafka::KafkaConnectorType;
 use log::{info, warn};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
+use sqlparser::ast::ModelSqlCompileError;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
-use catalog::{Compile, Getter, IntoRelation, MemoryCatalog, NodeDec};
-use common::config::components::global::FoundryConfig;
-use common::types::kafka::KafkaConnectorType;
-use sqlparser::ast::ModelSqlCompileError;
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -78,11 +78,7 @@ impl ModelsDag {
             Some(db.to_string())
         }
     }
-    pub fn build(
-        &mut self,
-        registry: &MemoryCatalog,
-        config: &FoundryConfig,
-    ) -> DagResult<()> {
+    pub fn build(&mut self, registry: &MemoryCatalog, config: &FoundryConfig) -> DagResult<()> {
         let started = Instant::now();
 
         // First Pass - build all the nodes
@@ -114,26 +110,28 @@ impl ModelsDag {
 
                     let mut resolved_srcs = HashSet::new();
                     for src in model.sources.iter() {
-                        resolved_srcs.insert(config
-                            .resolve_db_source(&src.source_name, &src.source_table)
-                            .map_err(
-                                |_| {
-                                    DagError::RefNotFound(format!(
+                        resolved_srcs.insert(
+                            config
+                                .resolve_db_source(&src.source_name, &src.source_table)
+                                .map_err(|_| {
+                                    DagError::ref_not_found(format!(
                                         "Source {} not found",
                                         src.source_name
                                     ))
-                                },
-                            )?);
+                                })?,
+                        );
                     }
                     rels.extend(refs);
                     rels.extend(resolved_srcs);
 
-                    let compiled_obj = model.sql.compile(|src, table| {
-                        config
-                            .resolve_db_source(src, table)
-                            .map_err(|e| ModelSqlCompileError(e.to_string()))
-                    })
-                        .map_err(|e| DagError::AstSyntax(e.to_string()))?;
+                    let compiled_obj = model
+                        .sql
+                        .compile(|src, table| {
+                            config
+                                .resolve_db_source(src, table)
+                                .map_err(|e| ModelSqlCompileError(e.to_string()))
+                        })
+                        .map_err(|e| DagError::ast_syntax(e.to_string()))?;
 
                     self.upsert_node(
                         c_node.name.clone(),
@@ -196,15 +194,16 @@ impl ModelsDag {
                                 if let Some(src_str) = src.as_str() {
                                     src_str
                                         .split(",")
-                                        .map(|s| s.to_string())
+                                        .map(|s| s.to_string().trim().to_owned())
                                         .collect::<BTreeSet<String>>()
                                 } else {
-                                    return Err(DagError::MissingExpectedDependency(
-                                        conn.name.clone(),
-                                    ));
+                                    return Err(DagError::missing_dependency(format!("Connector '{}' expected 'table.include.list' to be a string", conn.name)));
                                 }
                             } else {
-                                return Err(DagError::MissingExpectedDependency(conn.name.clone()));
+                                return Err(DagError::missing_dependency(format!(
+                                    "Connector '{}' is missing 'table.include.list' configuration",
+                                    conn.name
+                                )));
                             };
                             conn_rels.extend(src_db_rels.clone());
 
@@ -240,7 +239,7 @@ impl ModelsDag {
                                             .collect::<Vec<String>>();
                                         t
                                     } else {
-                                        return Err(DagError::AstSyntax(format!(
+                                        return Err(DagError::ast_syntax(format!(
                                             "Unexpected error processing topics from {}",
                                             conn.config
                                         )));
@@ -252,15 +251,19 @@ impl ModelsDag {
                                             .map(|r| format!("{}.{}", src_str, r))
                                             .collect::<Vec<String>>()
                                     } else {
-                                        return Err(DagError::MissingExpectedDependency(
-                                            conn.name.clone(),
-                                        ));
+                                        return Err(DagError::missing_dependency(format!(
+                                            "Connector '{}' expected reroute prefix to be a string",
+                                            conn.name
+                                        )));
                                     }
                                 } else {
                                     reroute_topics
                                 }
                             } else {
-                                return Err(DagError::MissingExpectedDependency(conn.name.clone()));
+                                return Err(DagError::missing_dependency(format!(
+                                    "Connector '{}' is missing 'topic.prefix' configuration",
+                                    conn.name
+                                )));
                             };
                             for topic in topics {
                                 self.upsert_node(
@@ -283,12 +286,12 @@ impl ModelsDag {
                                 for p in pipelines {
                                     let pipe_dec = registry
                                         .get_smt_pipeline(&p)
-                                        .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                        .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                     let pipe_name = pipe_dec.name.clone();
                                     for t_id in pipe_dec.transforms {
                                         let t = registry
                                             .get_kafka_smt(t_id)
-                                            .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                            .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                         self.upsert_node(
                                             t.name.to_string(),
                                             false,
@@ -308,8 +311,10 @@ impl ModelsDag {
 
                             let compiled = registry
                                 .compile_kafka_decl(&c_node.name, &config)
-                                .map_err(|e| DagError::AstSyntax(e.to_string()))?
+                                .map_err(|e| DagError::ast_syntax(e.to_string()))?
                                 .to_string();
+
+                            println!("Compiled kafka connector: {}", compiled);
 
                             // Add connector
                             self.upsert_node(
@@ -331,10 +336,10 @@ impl ModelsDag {
                             let topics = conn.config.get("topics");
                             let mut rels = match (topic_prefix, topics) {
                                 (Some(tp), Some(t)) => {
-                                    return Err(DagError::AstSyntax(format!(
-                                        "Expected either topic.prefix or topics to be declared in {}",
-                                        conn.name.clone()
-                                    )))
+                                    return Err(DagError::ast_syntax(format!(
+                                    "Expected either topic.prefix or topics to be declared in {}",
+                                    conn.name.clone()
+                                )))
                                 }
                                 (Some(tp), _) => {
                                     let rels = tp
@@ -354,7 +359,7 @@ impl ModelsDag {
                                         .collect::<BTreeSet<String>>();
                                     rels
                                 }
-                                (None, None) => return Err(DagError::MissingExpectedDependency(
+                                (None, None) => return Err(DagError::missing_dependency(
                                     "Expected either topic.prefix or topics to be declared in {}"
                                         .to_string(),
                                 )),
@@ -364,12 +369,12 @@ impl ModelsDag {
                                 for p in &pipelines {
                                     let pipe_dec = registry
                                         .get_smt_pipeline(&p)
-                                        .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                        .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                     let pipe_name = pipe_dec.name.clone();
                                     for t_id in pipe_dec.transforms {
                                         let t = registry
                                             .get_kafka_smt(t_id)
-                                            .map_err(|_| DagError::RefNotFound(p.clone()))?;
+                                            .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                         self.upsert_node(
                                             t.name.to_string(),
                                             false,
@@ -391,10 +396,10 @@ impl ModelsDag {
                             let mut warehouse_src = match conn.config.get("table.name.format") {
                                 Some(warehouse_src) => warehouse_src.as_str().unwrap().to_string(),
                                 None => {
-                                    return Err(DagError::AstSyntax(format!(
-                                        "Unexpected issue with table.name.format in kafka connector {}",
-                                        conn.name
-                                    )))
+                                    return Err(DagError::ast_syntax(format!(
+                                    "Unexpected issue with table.name.format in kafka connector {}",
+                                    conn.name
+                                )))
                                 }
                             };
 
@@ -409,7 +414,7 @@ impl ModelsDag {
 
                             let compiled = registry
                                 .compile_kafka_decl(&c_node.name, &config)
-                                .map_err(|e| DagError::AstSyntax(e.to_string()))?
+                                .map_err(|e| DagError::ast_syntax(e.to_string()))?
                                 .to_string();
 
                             self.upsert_node(
@@ -453,7 +458,7 @@ impl ModelsDag {
                         let from_idx = match self.ref_to_index.get(rel) {
                             Some(idx) => *idx,
                             None => {
-                                return Err(DagError::MissingExpectedDependency(format!(
+                                return Err(DagError::missing_dependency(format!(
                                     "missing deps for {}. Expecting {} to exist",
                                     node.name.clone(),
                                     rel
@@ -475,7 +480,7 @@ impl ModelsDag {
                     .iter()
                     .map(|&node_idx| self.graph[node_idx].name.clone())
                     .collect::<Vec<String>>();
-                return Err(DagError::CycleDetected(cyclic_models));
+                return Err(DagError::cycle_detected(cyclic_models));
             }
         }
 
@@ -499,7 +504,7 @@ impl ModelsDag {
                 .expect("ref_to_index and graph out of sync");
 
             if raise_duplicate_error {
-                return Err(DagError::DuplicateNode(node_key));
+                return Err(DagError::duplicate_node(node_key));
             }
 
             if let Some(new_rels) = node.relations {
@@ -525,7 +530,7 @@ impl ModelsDag {
     fn check_node_exists(&self, key: &str, raise_error: bool) -> Result<bool, DagError> {
         if self.ref_to_index.contains_key(key) {
             if raise_error {
-                Err(DagError::DuplicateNode(key.to_string()))
+                Err(DagError::duplicate_node(key.to_string()))
             } else {
                 Ok(true)
             }
@@ -753,7 +758,7 @@ impl ModelsDag {
                 edge.source().index(),
                 edge.target().index(),
             )
-                .unwrap();
+            .unwrap();
         }
         writeln!(dot, "}}").unwrap();
 
@@ -768,8 +773,8 @@ impl ModelsDag {
 
 #[cfg(test)]
 mod tests {
-    use catalog::Register;
     use super::*;
+    use catalog::Register;
     use common::config::loader::read_config;
     use ff_core::parser::parse_nodes;
     use test_utils::{get_root_dir, with_chdir};
@@ -793,6 +798,7 @@ mod tests {
 
             let mut dag = ModelsDag::new();
             dag.build(&cat, &config).expect("build models");
+            println!("{:#?}", dag)
         })?;
 
         Ok(())
@@ -861,7 +867,7 @@ mod tests {
     //     assert_eq!(fq, "silver.slvr_orders");
     //
     //     let missing = dag.resolve_ref("does_not_exist");
-    //     assert!(matches!(missing, Err(DagError::RefNotFound(_))));
+    //     assert!(matches!(missing, Err(DagError::ref_not_found(_))));
     //
     //     Ok(())
     // }
@@ -906,7 +912,7 @@ mod tests {
     //
     //     match ModelsDag::new(models) {
     //         Ok(_) => panic!("Expected cycle detection error, but got Ok"),
-    //         Err(DagError::CycleDetected(ref cycle)) => {
+    //         Err(DagError::cycle_detected(ref cycle)) => {
     //             assert!(cycle.contains(&model_ref_a));
     //             assert!(cycle.contains(&model_ref_b));
     //         }

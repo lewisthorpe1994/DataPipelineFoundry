@@ -22,5 +22,5 @@ tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 common = { workspace = true }
 dag = { workspace = true }
 shared_clients = { workspace = true }
-
+thiserror = { workspace = true }
 

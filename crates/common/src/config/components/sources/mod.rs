@@ -11,7 +11,7 @@ pub struct SourcePathConfig {
     pub specifications: PathBuf,
     #[serde(default)]
     pub source_root: Option<PathBuf>,
-    pub definitions: Option<PathBuf>
+    pub definitions: Option<PathBuf>,
 }
 
 pub type SourcePaths = HashMap<SourceType, SourcePathConfig>;

@@ -7,4 +7,4 @@ USING KAFKA CLUSTER 'some_kafka_cluster' (
         "topic.prefix" = "postgres-"
 )
 WITH PIPELINES(pii_pipeline)
-FROM SOURCE DATABASE 'dvd_rentals';
+FROM SOURCE DATABASE 'dvd_rental';

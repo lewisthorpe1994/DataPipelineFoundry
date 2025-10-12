@@ -232,7 +232,6 @@ fn setup_sources_structure(project_path: &Path) -> std::io::Result<()> {
     fs::create_dir_all(sources_root.join("warehouse"))?;
     fs::create_dir_all(sources_root.join("kafka"))?;
 
-
     let kafka_common_smt = sources_root.join("kafka/_common/_smt");
     fs::create_dir_all(&kafka_common_smt)?;
     write_file_if_missing(kafka_common_smt.join("_drop_id.sql"), SAMPLE_KAFKA_DROP_ID)?;
@@ -512,7 +511,6 @@ mod tests {
         assert!(proj_path
             .join("foundry_sources/kafka/_connectors/_source/_test_src_connector/_smt_pipelines")
             .exists());
-
 
         // quick sanity: project YAML contains project name
         let project_yaml = fs::read_to_string(proj_path.join("foundry-project.yml")).unwrap();

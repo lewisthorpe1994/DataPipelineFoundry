@@ -1,11 +1,14 @@
-
+use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
+use crate::ast::{
+    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Ident,
+    KafkaConnectorType, ObjectName, ObjectType, Query, Statement, ValueWithSpan, ViewColumnDef,
+};
+use crate::parser::ParserError;
 use core::fmt;
 use core::fmt::{Debug, Display, Formatter};
 #[cfg(feature = "json_example")]
-use serde::{Deserialize, Serialize};use std::collections::HashMap;
-use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
-use crate::ast::{display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Ident, KafkaConnectorType, ObjectName, ObjectType, Query, Statement, ValueWithSpan, ViewColumnDef};
-use crate::parser::ParserError;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -49,7 +52,7 @@ impl fmt::Display for CreateKafkaConnector {
 
         let db_ident = match self.connector_type {
             KafkaConnectorType::Source => format!("FROM SOURCE DATABASE '{}'", self.db_ident),
-            KafkaConnectorType::Sink => format!("TO TARGET DATABASE '{}'", self.db_ident)
+            KafkaConnectorType::Sink => format!("TO TARGET DATABASE '{}'", self.db_ident),
         };
 
         // 2️⃣  emit the final statement
@@ -170,7 +173,6 @@ impl fmt::Display for CreateSimpleMessageTransformPipeline {
         )
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -497,9 +499,9 @@ impl CreateModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Statement;
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
+    use Statement;
 
     #[test]
     fn compile_replaces_ref_and_source_macros() {

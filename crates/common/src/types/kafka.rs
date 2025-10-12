@@ -1,6 +1,6 @@
+use crate::config::components::connections::AdapterConnectionDetails;
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::KafkaConnectorType as SqlParserKafkaConnectorType;
-use crate::config::components::connections::AdapterConnectionDetails;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -38,7 +38,7 @@ impl From<AdapterConnectionDetails> for SourceDbConnectionInfo {
             port: value.port,
             user: value.user,
             password: value.password,
-            dbname: value.database
+            dbname: value.database,
         }
     }
 }

@@ -86,18 +86,14 @@ impl DbConfigs {
             .schemas
             .iter()
             .flat_map(|(name, obj)| {
-                obj
-                    .tables
-                    .iter()
-                    .map(move |(t_name, table)|
-                        (config.database.name.clone(), name, t_name.clone()))
+                obj.tables.iter().map(move |(t_name, table)| {
+                    (config.database.name.clone(), name, t_name.clone())
+                })
             })
             .find(|(_, _, t)| t == table);
 
         match resolved {
-            Some((database, schema, table)) => {
-                Ok(format!("{}.{}.{}", database, schema, table))
-            }
+            Some((database, schema, table)) => Ok(format!("{}.{}.{}", database, schema, table)),
             None => Err(DbConfigError::TableNotFound(table.to_string())),
         }
     }

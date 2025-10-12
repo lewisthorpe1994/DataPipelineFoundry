@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Debug;
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct Table {

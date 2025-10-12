@@ -2,12 +2,12 @@ use crate::config::components::connections::{
     AdapterConnectionDetails, Connections, ConnectionsConfig,
 };
 use crate::config::components::foundry_project::FoundryProjectConfig;
-use crate::config::components::model::{ResolvedModelsConfig};
+use crate::config::components::model::ResolvedModelsConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::{DbConfig, DbConfigError};
 use crate::config::components::sources::SourcePaths;
-use std::collections::HashMap;
 use crate::config::error::ConfigError;
+use std::collections::HashMap;
 
 // ---------------- global config ----------------
 #[derive(Debug)]
@@ -63,18 +63,18 @@ impl FoundryConfig {
     pub fn resolve_db_source(&self, name: &str, table: &str) -> Result<String, ConfigError> {
         let source_db_config = self.source_db_configs.get(name);
         let warehouse_db_config = self.warehouse_source.get(name);
-        
+
         let config = match (source_db_config, warehouse_db_config) {
-            (Some(source_db_config), Some(warehouse_db_config)) => {
-                return Err(ConfigError::DuplicateDatabaseSpecification(
-                    format!("Found entries for both source and warehouse dbs for {}", name)
-                ))
-            }
+            (Some(_), Some(_)) => return Err(ConfigError::duplicate_database(name)),
             (Some(source_db_config), None) => source_db_config,
             (None, Some(warehouse_db_config)) => warehouse_db_config,
-            (None, None) => return Err(ConfigError::NotFound(format!("No db config for {}", name))),
+            (None, None) => {
+                return Err(ConfigError::not_found(format!(
+                    "Database config '{name}' was not found"
+                )))
+            }
         };
-        
+
         let resolved = config
             .database
             .schemas
@@ -88,7 +88,9 @@ impl FoundryConfig {
 
         match resolved {
             Some((database, schema, table)) => Ok(format!("{}.{}.{}", database, schema, table)),
-            None => Err(ConfigError::NotFound(format!("No table config for {}", name))),
+            None => Err(ConfigError::not_found(format!(
+                "No table configuration for '{name}' matched '{table}'"
+            ))),
         }
     }
 }

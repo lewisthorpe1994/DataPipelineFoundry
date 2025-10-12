@@ -4,14 +4,14 @@ use crate::config::traits::{ConfigName, IntoConfigVec};
 use crate::traits::IsFileExtension;
 use crate::types::schema::Column;
 use crate::types::Materialize;
+use crate::utils::paths_with_ext;
+use log::error;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
-use log::error;
 use walkdir::WalkDir;
-use crate::utils::paths_with_ext;
 
 pub type ModelLayerName = String;
 pub type ModelLayerDir = String;
@@ -27,7 +27,7 @@ pub struct ResolvedModelLayerConfig {
 #[derive(Debug, Deserialize)]
 pub struct AnalyticsProject {
     pub target_connection: String,
-    pub layers: ModelLayers
+    pub layers: ModelLayers,
 }
 
 // ---------------- Models Paths  ----------------
@@ -58,9 +58,9 @@ pub struct ModelConfig {
     #[serde(default)]
     pub columns: Option<Vec<Column>>,
     #[serde(default)]
-    pub serve: bool,                        // TODO - requires implementation
+    pub serve: bool, // TODO - requires implementation
     #[serde(default)]
-    pub pipelines: Option<Vec<String>>,     // TODO - requires its own type
+    pub pipelines: Option<Vec<String>>, // TODO - requires its own type
     // pub quality_tests: Option<Vec<String>>, // Todo - requires its own type
     #[serde(default)]
     pub meta: Option<Value>,
@@ -76,7 +76,7 @@ impl ConfigName for ModelConfig {
 #[derive(Deserialize, Debug, Clone)]
 pub struct ResolvedModelConfig {
     pub config: ModelConfig,
-    pub target: String
+    pub target: String,
 }
 
 impl ConfigName for ResolvedModelConfig {
@@ -111,8 +111,13 @@ impl TryFrom<&HashMap<String, ResolvedModelLayerConfig>> for ResolvedModelsConfi
             for p in paths_with_ext(&v.path, "yml").into_iter() {
                 let config = load_config::<ModelConfig>(&p)?;
                 for cfg in config.values() {
-                    resolved.0.insert(v.name.clone(), ResolvedModelConfig {
-                        config: cfg.clone(), target: v.target.clone() });
+                    resolved.0.insert(
+                        v.name.clone(),
+                        ResolvedModelConfig {
+                            config: cfg.clone(),
+                            target: v.target.clone(),
+                        },
+                    );
                 }
             }
         }

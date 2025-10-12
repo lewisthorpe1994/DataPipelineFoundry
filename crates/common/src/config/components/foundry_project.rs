@@ -1,7 +1,7 @@
-use crate::config::components::model::{ModelsProjects};
+use crate::config::components::connections::Connections;
+use crate::config::components::model::ModelsProjects;
 use crate::config::components::sources::SourcePaths;
 use serde::Deserialize;
-use crate::config::components::connections::Connections;
 
 // ---------------- Foundry Project Config ----------------
 #[derive(Debug, Deserialize)]

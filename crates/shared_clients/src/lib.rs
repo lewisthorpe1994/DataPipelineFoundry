@@ -1,66 +1,69 @@
-pub mod postgres;
 pub mod kafka;
+pub mod postgres;
 
 use crate::postgres::PostgresAdapter;
 use async_trait::async_trait;
-use std::fmt::{Debug, Display};
 use common::config::components::connections::{AdapterConnectionDetails, DatabaseAdapterType};
+use common::error::diagnostics::DiagnosticMessage;
+use std::fmt::Debug;
+use thiserror::Error;
 
+#[derive(Debug, Error)]
 pub enum DatabaseAdapterError {
-    InvalidConnectionError(String),
-    SyntaxError(String),
-    UnexpectedError(String),
-    IoError(std::io::Error),
-    ConfigError(String),
+    #[error("invalid connection details: {context}")]
+    InvalidConnectionError { context: DiagnosticMessage },
+    #[error("SQL syntax error: {context}")]
+    SyntaxError { context: DiagnosticMessage },
+    #[error("unexpected database error: {context}")]
+    UnexpectedError { context: DiagnosticMessage },
+    #[error("I/O error: {context}")]
+    IoError {
+        context: DiagnosticMessage,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("configuration error: {context}")]
+    ConfigError { context: DiagnosticMessage },
 }
 
-impl Display for DatabaseAdapterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DatabaseAdapterError::InvalidConnectionError(err) => {
-                write!(f, "Invalid connection details: {}", err)
-            }
-            DatabaseAdapterError::SyntaxError(err) => {
-                write!(f, "Syntax error: {}", err)
-            }
-            DatabaseAdapterError::UnexpectedError(err) => {
-                write!(f, "Unexpected error: {}", err)
-            }
-            DatabaseAdapterError::IoError(err) => {
-                write!(f, "I/O error: {}", err)
-            }
-            DatabaseAdapterError::ConfigError(err) => {
-                write!(f, "Configuration error: {}", err)
-            }
+impl DatabaseAdapterError {
+    #[track_caller]
+    pub fn invalid_connection(message: impl Into<String>) -> Self {
+        Self::InvalidConnectionError {
+            context: DiagnosticMessage::new(message.into()),
         }
     }
-}
 
-impl Debug for DatabaseAdapterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DatabaseAdapterError::InvalidConnectionError(err) => {
-                write!(f, "Invalid connection details: {}", err)
-            }
-            DatabaseAdapterError::SyntaxError(err) => {
-                write!(f, "Syntax error: {}", err)
-            }
-            DatabaseAdapterError::UnexpectedError(err) => {
-                write!(f, "Unexpected error: {}", err)
-            }
-            DatabaseAdapterError::IoError(err) => {
-                write!(f, "I/O error: {}", err)
-            }
-            DatabaseAdapterError::ConfigError(err) => {
-                write!(f, "Configuration error: {}", err)
-            }
+    #[track_caller]
+    pub fn syntax(message: impl Into<String>) -> Self {
+        Self::SyntaxError {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn unexpected(message: impl Into<String>) -> Self {
+        Self::UnexpectedError {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn config(message: impl Into<String>) -> Self {
+        Self::ConfigError {
+            context: DiagnosticMessage::new(message.into()),
         }
     }
 }
 
 impl From<std::io::Error> for DatabaseAdapterError {
+    #[track_caller]
     fn from(err: std::io::Error) -> Self {
-        DatabaseAdapterError::IoError(err)
+        let message = err.to_string();
+        DatabaseAdapterError::IoError {
+            context: DiagnosticMessage::new(message),
+            source: err,
+        }
     }
 }
 
@@ -91,7 +94,6 @@ pub trait AsyncDatabaseAdapter: Send + Sync {
     type Row: Send + 'static;
     async fn execute(&mut self, sql: &str) -> Result<(), DatabaseAdapterError>;
     async fn query(&self, sql: &str) -> Result<Vec<Self::Row>, DatabaseAdapterError>;
-
 }
 
 #[async_trait] // ← leave the default (Send) mode
@@ -113,7 +115,8 @@ where
 }
 
 // TODO - needs revisiting when more dbs are supported
-pub type AsyncDbAdapter = Box<dyn AsyncDatabaseAdapter<Row = tokio_postgres::Row> + Send + Sync + 'static>;
+pub type AsyncDbAdapter =
+    Box<dyn AsyncDatabaseAdapter<Row = tokio_postgres::Row> + Send + Sync + 'static>;
 
 pub async fn create_db_adapter(
     conn_details: AdapterConnectionDetails,

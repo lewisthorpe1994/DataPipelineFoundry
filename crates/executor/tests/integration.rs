@@ -4,11 +4,11 @@
 // use engine::Engine;
 // use tokio::time::{sleep, Duration};
 // use tokio_postgres::NoTls;
-// 
+//
 // use crate::common_test_utils::setup_postgres;
-// 
+//
 // mod common_test_utils;
-// 
+//
 // #[cfg(test)]
 // mod tests {
 //     use crate::common_test_utils;
@@ -25,7 +25,7 @@
 //     use tokio_postgres::NoTls;
 //     use engine::registry::Getter;
 //     use engine::types::KafkaConnectorType;
-// 
+//
 //     async fn set_up_table(pg_conn: String) {
 //         let (mut pg, pg_conn) = tokio_postgres::connect(&pg_conn, NoTls)
 //             .await
@@ -36,7 +36,7 @@
 //                 eprintln!("pg connection error: {e}");
 //             }
 //         });
-// 
+//
 //         pg.batch_execute(
 //             "
 //         DROP TABLE IF EXISTS test_connector_src;
@@ -50,17 +50,17 @@
 //         .await
 //         .expect("prepare table");
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_create_connector() -> Result<(), EngineError> {
 //         let postgres_test_container = setup_postgres().await.unwrap();
 //         let kafka_test_containers = setup_kafka().await.unwrap();
 //         sleep(Duration::from_secs(5)).await;
 //         set_up_table(postgres_test_container.conn_string(false)).await;
-// 
+//
 //         let con_name = "test";
 //         println!("{}", postgres_test_container.port);
-// 
+//
 //         let sql = format!(
 //             r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS {con_name} (
 //         "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
@@ -76,9 +76,9 @@
 //         "topic.prefix" = "postgres-");"#,
 //             5432, postgres_test_container.docker_host, kafka_test_containers.kafka_broker.host
 //         );
-// 
+//
 //         println!("{}", sql);
-// 
+//
 //         let engine = Engine::new();
 //         let connect_host = format!("http://{}", kafka_test_containers.kafka_connect.host);
 //         let kafka_args = SourceConnArgs {
@@ -102,14 +102,14 @@
 //         assert_eq!(conn_config.config["topic.prefix"], "postgres-");
 //         Ok(())
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_create_connector_with_pipeline() -> Result<(), EngineError> {
 //         let postgres_test_container = setup_postgres().await.unwrap();
 //         let kafka_test_containers = setup_kafka().await.unwrap();
 //         sleep(Duration::from_secs(5)).await;
 //         set_up_table(postgres_test_container.conn_string(false)).await;
-// 
+//
 //         let con_name = "test";
 //         let sql = format!(
 //             r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS {con_name} (
@@ -127,9 +127,9 @@
 //         WITH PIPELINES(pii_pipeline);"#,
 //             5432, postgres_test_container.docker_host, kafka_test_containers.kafka_broker.host
 //         );
-// 
+//
 //         let engine = Engine::new();
-// 
+//
 //         // ---- create required transforms and pipeline ----------------------
 //         let smt_mask = r#"CREATE SIMPLE MESSAGE TRANSFORM mask_field (
 //             type = 'org.apache.kafka.connect.transforms.MaskField$Value',
@@ -145,7 +145,7 @@
 //                 None,
 //             )
 //             .await?;
-// 
+//
 //         let smt_drop = r#"CREATE SIMPLE MESSAGE TRANSFORM drop_id (
 //             type = 'org.apache.kafka.connect.transforms.ReplaceField$Value',
 //             blacklist = 'id'
@@ -159,7 +159,7 @@
 //                 None,
 //             )
 //             .await?;
-// 
+//
 //         let pipe_sql = r#"
 // CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
 //     mask_field,
@@ -175,14 +175,14 @@
 //                 None,
 //             )
 //             .await?;
-// 
+//
 //         // ---- deploy connector --------------------------------------------
 //         let connect_host = format!("http://{}", kafka_test_containers.kafka_connect.host);
 //         let kafka_args = SourceConnArgs {
 //             kafka_connect: Some(connect_host.clone()),
 //         };
 //         engine.execute(sql.as_str(), &kafka_args, None).await?;
-// 
+//
 //         let kafka_executor = KafkaConnectTestClient { host: connect_host };
 //         let conn_exists = kafka_executor.connector_exists(con_name).await.unwrap();
 //         assert!(conn_exists);
@@ -214,7 +214,7 @@
 //         );
 //         Ok(())
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_create_transform_via_executor() {
 //         let engine = Engine::new();
@@ -245,11 +245,11 @@
 //         assert_eq!(smt.config["spec"], "${spec}");
 //         assert_eq!(smt.config["predicate"], "${predicate}");
 //     }
-// 
+//
 //     #[tokio::test]
 //     async fn test_create_pipeline_via_executor() {
 //         let engine = Engine::new();
-// 
+//
 //         engine
 //             .execute(
 //                 "CREATE SIMPLE MESSAGE TRANSFORM hash_email (type = 'hash');",
@@ -260,7 +260,7 @@
 //             )
 //             .await
 //             .unwrap();
-// 
+//
 //         engine
 //             .execute(
 //                 "CREATE SIMPLE MESSAGE TRANSFORM drop_pii (type = 'drop');",
@@ -271,7 +271,7 @@
 //             )
 //             .await
 //             .unwrap();
-// 
+//
 //         let sql = r#"
 // CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
 //     hash_email(email_addr_reg = '.*@example.com'),
@@ -288,7 +288,7 @@
 //             )
 //             .await
 //             .unwrap();
-// 
+//
 //         let pipe = engine
 //             .catalog
 //             .get_smt_pipeline("some_pipeline")
@@ -300,15 +300,15 @@
 //         assert_eq!(pipe.predicate.as_deref(), Some("some_predicate"));
 //     }
 // }
-// 
+//
 // #[tokio::test]
 // async fn test_execute_db_query_against_postgres() -> anyhow::Result<()> {
 //     tracing_subscriber::fmt::init();
-// 
+//
 //     let pg = setup_postgres().await.unwrap();
-// 
+//
 //     sleep(Duration::from_secs(5)).await;
-// 
+//
 //     let adapter = PostgresAdapter::new(
 //         &pg.local_host,
 //         pg.port.parse().unwrap(),
@@ -319,7 +319,7 @@
 //     .await
 //     .unwrap();
 //     let mut boxed: Box<dyn AsyncDatabaseAdapter> = Box::new(adapter);
-// 
+//
 //     let engine = Engine::new();
 //     engine
 //         .execute(
@@ -331,12 +331,12 @@
 //         )
 //         .await
 //         .unwrap();
-// 
+//
 //     let (mut client, conn) = tokio_postgres::connect(&pg.conn_string(false), NoTls).await?;
 //     tokio::spawn(async move {
 //         let _ = conn.await;
 //     });
-// 
+//
 //     let row = client
 //         .query_one(
 //             "SELECT to_regclass('public.ints') IS NOT NULL AS exists",
@@ -345,6 +345,6 @@
 //         .await?;
 //     let exists: bool = row.get(0);
 //     assert!(exists);
-// 
+//
 //     Ok(())
 // }

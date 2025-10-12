@@ -1,4 +1,9 @@
-use crate::ast::{display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr, Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident, KafkaConnectorType, ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor, TableWithJoins, Value, ValueWithSpan, ViewColumnDef};
+use crate::ast::{
+    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr,
+    Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
+    KafkaConnectorType, ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor,
+    TableWithJoins, Value, ValueWithSpan, ViewColumnDef,
+};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
@@ -6,8 +11,7 @@ use core::fmt::{Display, Formatter};
 #[cfg(feature = "json_example")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "json_example")]
-use serde_json::{Value as Json, Map};
-
+use serde_json::{Map, Value as Json};
 
 use std::fmt;
 
@@ -90,7 +94,7 @@ fn collect_in_table_with_joins(
     table: &TableWithJoins,
     refs: &mut Vec<Function>,
     sources: &mut Vec<Function>,
-) -> Result<(), ParserError>{
+) -> Result<(), ParserError> {
     collect_in_table_factor(&table.relation, refs, sources)?;
     for join in &table.joins {
         collect_in_table_factor(&join.relation, refs, sources)?;
@@ -109,13 +113,13 @@ fn collect_in_table_factor(
                 match func.name.to_string().to_lowercase().as_str() {
                     "ref" => Ok(refs.push(func.clone())),
                     "source" => Ok(sources.push(func.clone())),
-                    _ => {Ok(())}
+                    _ => Ok(()),
                 }
             } else {
                 Ok(())
             }
         }
-        TableFactor::Function {name, args, ..} => {
+        TableFactor::Function { name, args, .. } => {
             let func = Function {
                 name: name.clone(),
                 uses_odbc_syntax: false,
@@ -133,13 +137,14 @@ fn collect_in_table_factor(
             match name.to_string().to_lowercase().as_str() {
                 "ref" => Ok(refs.push(func.clone())),
                 "source" => Ok(sources.push(func.clone())),
-                _ => {Ok(())}
+                _ => Ok(()),
             }
         }
-        TableFactor::Table {name, args, .. } => {
-            let fn_args = args.clone().ok_or(
-                ParserError::ParserError(format!("expected fn {} to have args", name))
-            )?;
+        TableFactor::Table { name, args, .. } => {
+            let fn_args = args.clone().ok_or(ParserError::ParserError(format!(
+                "expected fn {} to have args",
+                name
+            )))?;
             let func = Function {
                 name: name.clone(),
                 uses_odbc_syntax: false,
@@ -157,16 +162,20 @@ fn collect_in_table_factor(
             match name.to_string().to_lowercase().as_str() {
                 "ref" => Ok(refs.push(func.clone())),
                 "source" => Ok(sources.push(func.clone())),
-                _ => {Ok(())}
+                _ => Ok(()),
             }
         }
-        TableFactor::Derived { subquery, .. } => Ok(collect_in_set_expr(&subquery.body, refs, sources)),
+        TableFactor::Derived { subquery, .. } => {
+            Ok(collect_in_set_expr(&subquery.body, refs, sources))
+        }
         TableFactor::NestedJoin {
             table_with_joins, ..
-        } => {
-            Ok(collect_in_table_with_joins(table_with_joins, refs, sources)?)
-        }
-        _ => {Ok(())}
+        } => Ok(collect_in_table_with_joins(
+            table_with_joins,
+            refs,
+            sources,
+        )?),
+        _ => Ok(()),
     }
 }
 

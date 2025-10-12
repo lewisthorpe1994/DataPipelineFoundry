@@ -32,11 +32,9 @@ use recursion::RecursionCounter;
 use IsLateral::*;
 use IsOptional::*;
 
-use crate::ast::helpers::{
-    stmt_create_table::{CreateTableBuilder, CreateTableConfiguration},
-};
+use crate::ast::helpers::stmt_create_table::{CreateTableBuilder, CreateTableConfiguration};
 
-use crate::ast::helpers::foundry_helpers::{collect_ref_source_calls};
+use crate::ast::helpers::foundry_helpers::collect_ref_source_calls;
 use crate::ast::Statement::CreatePolicy;
 use crate::ast::*;
 use crate::dialect::*;
@@ -44,8 +42,8 @@ use crate::keywords::{Keyword, ALL_KEYWORDS};
 use crate::parser::foundry_parsers::{KafkaParse, ModelParse, SourceParse};
 use crate::tokenizer::*;
 mod alter;
-mod parser_helpers;
 mod foundry_parsers;
+mod parser_helpers;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParserError {

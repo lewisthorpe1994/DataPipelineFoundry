@@ -1,15 +1,15 @@
-use std::fmt::{Debug, Display, Formatter};
+use common::error::diagnostics::DiagnosticMessage;
+use common::types::kafka::KafkaConnectorType;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use common::types::kafka::KafkaConnectorType;
+use thiserror::Error;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KafkaConnectorDeployConfig {
     pub name: String,
     pub config: Value,
 }
-
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KafkaConnectorDeployedConfig {
@@ -19,47 +19,44 @@ pub struct KafkaConnectorDeployedConfig {
     pub conn_type: Option<KafkaConnectorType>,
 }
 
+#[derive(Debug, Error)]
 pub enum KafkaConnectClientError {
-    NotFound(String),
-    FailedToConnect(String),
-    FailedToDeploy(String),
-    UnexpectedError(String),
+    #[error("connector not found: {context}")]
+    NotFound { context: DiagnosticMessage },
+    #[error("connectivity error: {context}")]
+    FailedToConnect { context: DiagnosticMessage },
+    #[error("deployment failed: {context}")]
+    FailedToDeploy { context: DiagnosticMessage },
+    #[error("unexpected response: {context}")]
+    UnexpectedError { context: DiagnosticMessage },
 }
 
-impl Debug for KafkaConnectClientError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            KafkaConnectClientError::FailedToConnect(err) => {
-                write!(f, "Failed to connect: {}", err)
-            }
-            KafkaConnectClientError::FailedToDeploy(err) => {
-                write!(f, "Failed to deploy: {}", err)
-            }
-            KafkaConnectClientError::NotFound(err) => {
-                write!(f, "{} not found", err)
-            }
-            KafkaConnectClientError::UnexpectedError(err) => {
-                write!(f, "Unexpected response: {}", err)
-            }
+impl KafkaConnectClientError {
+    #[track_caller]
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::NotFound {
+            context: DiagnosticMessage::new(message.into()),
         }
     }
-}
 
-impl Display for KafkaConnectClientError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            KafkaConnectClientError::FailedToConnect(err) => {
-                write!(f, "Failed to connect: {}", err)
-            }
-            KafkaConnectClientError::FailedToDeploy(err) => {
-                write!(f, "Failed to deploy: {}", err)
-            }
-            KafkaConnectClientError::NotFound(err) => {
-                write!(f, "{} not found", err)
-            }
-            KafkaConnectClientError::UnexpectedError(err) => {
-                write!(f, "Unexpected response: {}", err)
-            }
+    #[track_caller]
+    pub fn failed_to_connect(message: impl Into<String>) -> Self {
+        Self::FailedToConnect {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn failed_to_deploy(message: impl Into<String>) -> Self {
+        Self::FailedToDeploy {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn unexpected(message: impl Into<String>) -> Self {
+        Self::UnexpectedError {
+            context: DiagnosticMessage::new(message.into()),
         }
     }
 }
@@ -69,26 +66,28 @@ struct ConnectErrorBody {
     message: String,
 }
 
-impl std::error::Error for KafkaConnectClientError {}
 impl From<reqwest::Error> for KafkaConnectClientError {
+    #[track_caller]
     fn from(err: reqwest::Error) -> Self {
         if err.is_timeout() {
-            KafkaConnectClientError::FailedToConnect(err.to_string())
+            KafkaConnectClientError::failed_to_connect(err.to_string())
         } else if let Some(err) = err.status() {
             match err {
                 StatusCode::BAD_REQUEST => {
-                    KafkaConnectClientError::FailedToDeploy(err.to_string())
+                    KafkaConnectClientError::failed_to_deploy(err.to_string())
                 }
-                StatusCode::NOT_FOUND => {
-                    KafkaConnectClientError::NotFound(err.to_string())
-                }
-                _ => KafkaConnectClientError::UnexpectedError(
-                    format!("Unexpected error due to {} - status code {}", err.to_string(), err)),
+                StatusCode::NOT_FOUND => KafkaConnectClientError::not_found(err.to_string()),
+                _ => KafkaConnectClientError::unexpected(format!(
+                    "Unexpected error due to {} - status code {}",
+                    err.to_string(),
+                    err
+                )),
             }
         } else {
-            KafkaConnectClientError::UnexpectedError(
-                format!("Unexpected error trying to send kafka connect request: {}"
-                        , err.to_string()))
+            KafkaConnectClientError::unexpected(format!(
+                "Unexpected error trying to send kafka connect request: {}",
+                err
+            ))
         }
     }
 }
@@ -115,7 +114,7 @@ impl KafkaConnectClient {
                 Ok(false)
             }
         } else {
-            Err(KafkaConnectClientError::UnexpectedError(
+            Err(KafkaConnectClientError::unexpected(
                 "Failed to check if connector is running".to_string(),
             ))
         }
@@ -133,7 +132,7 @@ impl KafkaConnectClient {
             let config: KafkaConnectorDeployedConfig = resp.json().await?;
             Ok(config)
         } else {
-            Err(KafkaConnectClientError::UnexpectedError(
+            Err(KafkaConnectClientError::unexpected(
                 "Failed to fetch connector config".to_string(),
             ))
         }
@@ -160,16 +159,20 @@ impl KafkaConnectClient {
                     resp.json().await.unwrap_or_else(|_| ConnectErrorBody {
                         message: "could not parse error body".into(),
                     });
-                Err(KafkaConnectClientError::FailedToDeploy(body.message))
+                Err(KafkaConnectClientError::failed_to_deploy(body.message))
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
                 let body: ConnectErrorBody = resp.json().await?;
-                Err(KafkaConnectClientError::UnexpectedError(
-                    format!("Failed to deploy connector due to unexpected issue: {}", body.message)))
+                Err(KafkaConnectClientError::unexpected(format!(
+                    "Failed to deploy connector due to unexpected issue: {}",
+                    body.message
+                )))
             }
-            status => Err(KafkaConnectClientError::UnexpectedError(
-                format!("Unexpected error trying to deploy connector due to {} - status code {}",
-                        status.to_string(), status.as_u16()))),
+            status => Err(KafkaConnectClientError::unexpected(format!(
+                "Unexpected error trying to deploy connector due to {} - status code {}",
+                status.to_string(),
+                status.as_u16()
+            ))),
         }
     }
 }

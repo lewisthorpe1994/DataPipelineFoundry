@@ -10,17 +10,16 @@ impl From<Error> for DatabaseAdapterError {
         if let Some(e) = err.as_db_error() {
             match e.code() {
                 &SqlState::CONNECTION_DOES_NOT_EXIST => {
-                    DatabaseAdapterError::InvalidConnectionError(e.to_string())
+                    DatabaseAdapterError::invalid_connection(e.to_string())
                 }
-                &SqlState::SYNTAX_ERROR => DatabaseAdapterError::SyntaxError(e.to_string()),
-                &SqlState::IO_ERROR => DatabaseAdapterError::IoError(std::io::Error::new(
-                    ErrorKind::Other,
-                    e.to_string(),
-                )),
-                _ => DatabaseAdapterError::UnexpectedError(e.to_string()),
+                &SqlState::SYNTAX_ERROR => DatabaseAdapterError::syntax(e.to_string()),
+                &SqlState::IO_ERROR => {
+                    DatabaseAdapterError::from(std::io::Error::new(ErrorKind::Other, e.to_string()))
+                }
+                _ => DatabaseAdapterError::unexpected(e.to_string()),
             }
         } else {
-            DatabaseAdapterError::UnexpectedError(err.to_string())
+            DatabaseAdapterError::unexpected(err.to_string())
         }
     }
 }

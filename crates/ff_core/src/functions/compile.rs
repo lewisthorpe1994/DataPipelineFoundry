@@ -1,4 +1,5 @@
 use crate::parser::parse_nodes;
+use catalog::{Compile, MemoryCatalog, Register};
 use common::config::loader::read_config;
 use common::error::FFError;
 use dag::types::{DagNodeType, NodeAst};
@@ -9,13 +10,12 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use catalog::{Compile, MemoryCatalog, Register};
 
 #[derive(Debug, Serialize)]
 pub enum ManifestNodeType {
     Kafka,
     DPF,
-    DB
+    DB,
 }
 
 /// Description of a compiled model written to `manifest.json`.
@@ -39,27 +39,26 @@ struct Manifest {
 
 pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalog>), FFError> {
     let catalog = MemoryCatalog::new();
-    let config = read_config(None).map_err(|e| FFError::Compile(e.into()))?;
+    let config = read_config(None).map_err(FFError::compile)?;
 
     // ---------------------------------------------------------------------
     // 1️⃣  Parse models and build the dependency DAG
     // ---------------------------------------------------------------------
 
-    let nodes = parse_nodes(&config).map_err(|e| FFError::Compile(e.into()))?;
+    let nodes = parse_nodes(&config).map_err(FFError::compile)?;
     if nodes.is_empty() {
-        return Err(FFError::Compile("No nodes found to compile".into()));
+        return Err(FFError::compile_msg("No nodes found to compile"));
     }
 
     let mut dag = ModelsDag::new();
     let wh_config = config.warehouse_source.clone();
     catalog
         .register_nodes(nodes, wh_config)
-        .map_err(|e| FFError::Compile(e.into()))?;
-    dag.build(&catalog, &config)
-        .map_err(|e| FFError::Compile(e.into()))?;
+        .map_err(FFError::compile)?;
+    dag.build(&catalog, &config).map_err(FFError::compile)?;
 
     // ensure compile directory exists
-    fs::create_dir_all(&compile_path).map_err(|e| FFError::Compile(e.into()))?;
+    fs::create_dir_all(&compile_path).map_err(FFError::compile)?;
 
     // ---------------------------------------------------------------------
     // 2️⃣  Prepare Jinja environment for template rendering
@@ -95,24 +94,22 @@ pub fn compile(compile_path: String) -> Result<(Arc<ModelsDag>, Arc<MemoryCatalo
     // 3️⃣  Export the DAG and manifest
     // ---------------------------------------------------------------------
     let dag_path = Path::new(&compile_path).join("dag.dot");
-    dag_arc
-        .export_dot_to(&dag_path)
-        .map_err(|e| FFError::Compile(e.into()))?;
+    dag_arc.export_dot_to(&dag_path).map_err(FFError::compile)?;
 
     let manifest = Manifest {
         nodes: manifest_models,
     };
     let manifest_path = Path::new(&compile_path).join("manifest.json");
-    let file = fs::File::create(&manifest_path).map_err(|e| FFError::Compile(e.into()))?;
-    serde_json::to_writer_pretty(file, &manifest).map_err(|e| FFError::Compile(e.into()))?;
+    let file = fs::File::create(&manifest_path).map_err(FFError::compile)?;
+    serde_json::to_writer_pretty(file, &manifest).map_err(FFError::compile)?;
 
     Ok((dag_arc, Arc::new(catalog)))
 }
 
 #[cfg(test)]
 mod tests {
-    use test_utils::{get_root_dir, with_chdir};
     use crate::functions::compile::compile;
+    use test_utils::{get_root_dir, with_chdir};
 
     #[test]
     fn test() {
@@ -120,6 +117,6 @@ mod tests {
         with_chdir(&project_root, move || {
             let (dag, cat) = compile(".compiled".to_string()).unwrap();
         })
-            .expect("compile failed");
+        .expect("compile failed");
     }
 }

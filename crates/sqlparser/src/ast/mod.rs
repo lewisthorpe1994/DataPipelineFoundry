@@ -55,13 +55,12 @@ pub use self::ddl::{
     AlterTableAlgorithm, AlterTableLock, AlterTableOperation, AlterType, AlterTypeAddValue,
     AlterTypeAddValuePosition, AlterTypeOperation, AlterTypeRename, AlterTypeRenameValue,
     ClusteredBy, ColumnDef, ColumnOption, ColumnOptionDef, ColumnPolicy, ColumnPolicyProperty,
-    ConstraintCharacteristics, CreateConnector, CreateFunction, Deduplicate,
-    DeferrableInitial, DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters,
-    IdentityProperty, IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder,
-    IndexOption, IndexType, KeyOrIndexDisplay, NullsDistinctOption,
-    Owner, Partition, ProcedureParam, ReferentialAction, TableConstraint, TagsColumnOption,
-    UserDefinedTypeCompositeAttributeDef, UserDefinedTypeRepresentation,
-    ViewColumnDef,
+    ConstraintCharacteristics, CreateConnector, CreateFunction, Deduplicate, DeferrableInitial,
+    DropBehavior, GeneratedAs, GeneratedExpressionMode, IdentityParameters, IdentityProperty,
+    IdentityPropertyFormatKind, IdentityPropertyKind, IdentityPropertyOrder, IndexOption,
+    IndexType, KeyOrIndexDisplay, NullsDistinctOption, Owner, Partition, ProcedureParam,
+    ReferentialAction, TableConstraint, TagsColumnOption, UserDefinedTypeCompositeAttributeDef,
+    UserDefinedTypeRepresentation, ViewColumnDef,
 };
 pub use self::dml::{CreateIndex, CreateTable, Delete, IndexColumn, Insert};
 pub use self::operator::{BinaryOperator, UnaryOperator};
@@ -97,11 +96,9 @@ pub use self::value::{
 };
 
 pub use crate::ast::foundry_ast::{
-    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, CreateModelView, DropStmt, ModelDef, TransformCall,
-    ModelSqlCompileError
+    CreateKafkaConnector, CreateModel, CreateModelView, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, DropStmt, ModelDef, ModelSqlCompileError, TransformCall,
 };
-
 
 use crate::ast::helpers::key_value_options::KeyValueOptions;
 use crate::ast::helpers::stmt_data_loading::StageParamsObject;
@@ -110,8 +107,6 @@ use crate::ast::helpers::stmt_data_loading::StageParamsObject;
 pub use visitor::*;
 
 pub use self::data_type::GeometricTypeKind;
-
-
 
 mod data_type;
 mod dcl;
@@ -126,9 +121,9 @@ pub use spans::Spanned;
 mod trigger;
 mod value;
 
+mod foundry_ast;
 #[cfg(feature = "visitor")]
 mod visitor;
-mod foundry_ast;
 
 pub struct DisplaySeparated<'a, T>
 where
