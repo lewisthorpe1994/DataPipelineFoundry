@@ -1,7 +1,7 @@
 use crate::config::components::foundry_project::{FoundryProjectConfig};
 use crate::config::components::global::FoundryConfig;
 use crate::config::components::model::{ModelLayers, ResolvedModelLayerConfig, ResolvedModelsConfig};
-use crate::config::components::sources::kafka::{KafkaSourceConfig, KafkaSourceConfigs};
+use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig, KafkaSourceConfigs};
 use crate::config::components::sources::warehouse_source::{DbConfig};
 use crate::config::components::sources::{SourcePathConfig, SourcePaths};
 use crate::config::error::ConfigError;
@@ -23,6 +23,7 @@ where
 {
     let mut sources: HashMap<String, V> = HashMap::new();
     for entry in paths_with_ext(path, "yml") {
+        println!("loading source from {}", entry.display());
         let file = fs::File::open(&entry)?;
         let source: V = serde_yaml::from_reader(file)?;
         sources.insert(source.name().to_string(), source);
@@ -68,6 +69,13 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         .iter()
         .map(|(name, details)| {
             let resolved = resolve_path(&config_root, Path::new(&details.specifications));
+            let resolved_definitions = match &details.definitions {
+                Some(def) => {
+                    let resolved_definitions = resolve_path(&config_root, Path::new(def));
+                    Some(resolved_definitions)
+                },
+                None => None,
+            };
             let resolved_root = details
                 .source_root
                 .as_ref()
@@ -79,7 +87,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
                 SourcePathConfig {
                     specifications: resolved,
                     source_root: Some(resolved_root),
-                    definitions: details.definitions.clone(),
+                    definitions: resolved_definitions,
                 },
             )
         })
@@ -92,11 +100,22 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         load_config::<DbConfig>(&config.specifications)?
     };
 
-    let k_sources = {
+    let (k_sources, k_definitions) = {
         let config = resolved_sources.get(&SourceType::Kafka);
+        println!("kafka config {:#?}", config);
         match config {
-            Some(config) => load_config::<KafkaSourceConfig>(&config.specifications)?,
-            None => HashMap::new(),
+            Some(config) => {
+                let definitions_config = match &config.definitions {
+                    Some(def) => {
+                        println!("def config {:#?}", def);
+                        let def_config = load_config::<KafkaConnectorConfig>(def)?;
+                        def_config
+                    },
+                    None => HashMap::new()
+                };
+                (load_config::<KafkaSourceConfig>(&config.specifications)?, definitions_config)
+            },
+            None => (HashMap::new(), HashMap::new()),
         }
     };
 
@@ -133,6 +152,8 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         None
     };
 
+
+
     let conn_profile = proj_config.connection_profile.clone();
 
     let config = FoundryConfig::new(
@@ -144,6 +165,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         conn_profile,
         k_sources,
         resolved_sources,
+        k_definitions,
     );
 
     Ok(config)
@@ -265,7 +287,7 @@ mod tests {
     fn test_read_config_from_example_project() {
         let project_root = get_root_dir();
         let config = read_config(Some(project_root.clone())).expect("should load example config");
-        
+
         println!("{:#?}", config);
         // assert_eq!(config.project.name, "foundry-project");
         // assert_eq!(config.project.version, "1.0.0");

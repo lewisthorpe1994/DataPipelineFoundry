@@ -84,7 +84,7 @@ impl Executor {
                     ))?;
 
                 let adapter_connection_obj = config
-                    .get_adapter_connection_details(&node.target.ok_or(
+                    .get_adapter_connection_details(&node.target.clone().ok_or(
                         ExecutorError::ConfigError(format!(
                             "Missing node target for {}",
                             node.name

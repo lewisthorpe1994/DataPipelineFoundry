@@ -1,4 +1,4 @@
-CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS film_rental_inv_cust_pymt
+CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS film_rental_inventory_customer_payment
 USING KAFKA CLUSTER 'some_kafka_cluster' (
         "connector.class" =  "io.debezium.connector.postgresql.PostgresConnector",
         "tasks.max" = "1",

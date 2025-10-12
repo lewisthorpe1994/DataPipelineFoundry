@@ -3,7 +3,7 @@ use crate::config::components::connections::{
 };
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::{ResolvedModelsConfig};
-use crate::config::components::sources::kafka::KafkaSourceConfig;
+use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::{DbConfig, DbConfigError};
 use crate::config::components::sources::SourcePaths;
 use std::collections::HashMap;
@@ -18,6 +18,7 @@ pub struct FoundryConfig {
     pub source_db_configs: HashMap<String, DbConfig>,
     pub connections: ConnectionsConfig,
     pub models: Option<ResolvedModelsConfig>,
+    pub kafka_connectors: HashMap<String, KafkaConnectorConfig>,
     pub connection_profile: Connections,
     pub source_paths: SourcePaths,
 }
@@ -31,6 +32,7 @@ impl FoundryConfig {
         connection_profile: Connections,
         kafka_source: HashMap<String, KafkaSourceConfig>,
         source_paths: SourcePaths,
+        kafka_connectors: HashMap<String, KafkaConnectorConfig>,
     ) -> Self {
         Self {
             project,
@@ -41,6 +43,7 @@ impl FoundryConfig {
             connection_profile,
             kafka_source,
             source_paths,
+            kafka_connectors,
         }
     }
 }

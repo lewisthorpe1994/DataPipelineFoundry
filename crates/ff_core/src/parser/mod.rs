@@ -1,5 +1,5 @@
 use common::config::components::global::FoundryConfig;
-use common::config::components::model::{ModelLayers, ModelsConfig, ResolvedModelsConfig};
+use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
 use common::config::components::sources::SourcePaths;
 use common::traits::IsFileExtension;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
@@ -11,18 +11,18 @@ use common::utils::paths_with_ext;
 
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
+    println!("Parsing nodes from config: {:#?}", config);
     if let Some(projects) = &config.project.models.analytics_projects {
-        projects
-            .iter()
-            .try_for_each(|(name, proj) | {
-                nodes.extend(parse_models(&proj.layers, config.models.as_ref()))
-            })?;
+        for (name, proj) in projects {
+            nodes.extend(parse_models(&proj.layers, (&config.project.models.dir).as_ref(), config.models.as_ref())?)
+        }
     }
     if !config.kafka_source.is_empty() {
-        let kafka_def_path = config.source_paths
+        let kafka_def_path = &config.source_paths
             .get(&SourceType::Kafka)
             .unwrap()
             .definitions
+            .as_ref()
             .ok_or(Error::new(ErrorKind::NotFound, "Expected definitions for kafka sources"))?;
         nodes.extend(parse_kafka_dir(&kafka_def_path)?);
     }
@@ -31,11 +31,12 @@ pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
 
 pub fn parse_models(
     dirs: &ModelLayers,
+    parent_model_dir: &Path,
     models_config: Option<&ResolvedModelsConfig>,
 ) -> Result<Vec<ParsedNode>, Error> {
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for dir in dirs.values() {
-        for entry in WalkDir::new(dir) {
+        for entry in WalkDir::new(parent_model_dir.join(dir)) {
             let path = entry?.into_path();
 
             if !path.is_extension("sql") {
@@ -96,7 +97,7 @@ fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, Error> {
 
         let pi_node = ParsedInnerNode {
             name: stem.to_string(),
-            path,
+            path: entry.to_path_buf(),
         };
 
         let node = match node_type {
@@ -155,7 +156,10 @@ mod tests {
         let nodes = with_chdir(&project_root, move || {
             let config = read_config(None).expect("load example project config");
             let layers = build_test_layers(root_for_layers.clone());
-            parse_models(&layers, config.models.as_ref()).expect("parse example models")
+            parse_models(&layers, (
+                config.project.models.dir).as_ref(),
+                         config.models.as_ref()
+            ).expect("parse example models")
         })?;
 
         assert_eq!(nodes.len(), 3, "expected one parsed node per SQL model");

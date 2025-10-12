@@ -96,6 +96,13 @@ pub use self::value::{
     NormalizationForm, TrimWhereField, Value, ValueWithSpan,
 };
 
+pub use crate::ast::foundry_ast::{
+    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, CreateModelView, DropStmt, ModelDef, TransformCall,
+    ModelSqlCompileError
+};
+
+
 use crate::ast::helpers::key_value_options::KeyValueOptions;
 use crate::ast::helpers::stmt_data_loading::StageParamsObject;
 
@@ -104,7 +111,7 @@ pub use visitor::*;
 
 pub use self::data_type::GeometricTypeKind;
 
-pub use self::foundry_ast::*;
+
 
 mod data_type;
 mod dcl;

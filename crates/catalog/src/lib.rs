@@ -2,6 +2,7 @@ pub mod error;
 pub mod models;
 mod tests;
 
+use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, ModelDef};
 pub use models::*;
 
 use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
@@ -11,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, Value};
 use sqlparser::ast::helpers::foundry_helpers::{AstValueFormatter, MacroFnCall, MacroFnCallType};
 use sqlparser::ast::{
-    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, ModelDef, ObjectName, ObjectNamePart, Statement,
+     ObjectName, ObjectNamePart, Statement,
 };
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
@@ -570,6 +570,13 @@ impl Compile for MemoryCatalog {
                 } else {
                     return Err(CatalogError::NotFound(format!("Cluster {} not found", conn.cluster_name)))
                 };
+                
+                let schema_config = &foundry_config.kafka_connectors.get(&conn.name);
+                if let Some(schema_config) = schema_config {
+                    config.insert("table.include.list".to_string(), Json::String(schema_config.table_include_list()));
+                    config.insert("column.include.list".to_string(), Json::String(schema_config.column_include_list()));
+
+                }
 
                 config.insert("kafka.bootstrap.servers".to_string(), Json::String(cluster_config.bootstrap.servers.clone()));
                 

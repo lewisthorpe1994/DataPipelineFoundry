@@ -1,0 +1,51 @@
+name: film_rental_inventory_customer_payment
+tables:
+  public.rental:
+    columns:
+      - name: rental_id
+      - name: rental_date
+      - name: inventory_id
+      - name: customer_id
+      - name: return_date
+      - name: staff_id
+      - name: last_update
+
+  public.film:
+    columns:
+      - name: film_id
+      - name: title
+      - name: description
+      - name: release_year
+      - name: language_id
+      - name: rental_duration
+      - name: rental_date
+      - name: length
+      - name: replacement_cost
+      - name: rating
+      - name: last_update
+
+  public.inventory:
+    columns:
+      - name: inventory_id
+      - name: film_id
+      - name: store_id
+      - name: last_update
+
+  public.customer:
+    columns:
+      - name: customer_id
+      - name: store_id
+      - name: address_id
+      - name: activebool
+      - name: create_date
+      - name: last_update
+      - name: active
+        
+  public.payment:
+    columns:
+      - name: payment_id
+      - name: customer_id
+      - name: staff_id
+      - name: rental_id
+      - name: amount
+      - name: payment_date

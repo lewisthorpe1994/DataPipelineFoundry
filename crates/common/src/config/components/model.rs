@@ -108,9 +108,7 @@ impl TryFrom<&HashMap<String, ResolvedModelLayerConfig>> for ResolvedModelsConfi
         let mut resolved = ResolvedModelsConfig::empty();
 
         for (k, v) in value.iter() {
-            println!("resolved layer name {} resolved layer config {:#?}", k, v);
             for p in paths_with_ext(&v.path, "yml").into_iter() {
-                println!("path for model yml {}", p.display());
                 let config = load_config::<ModelConfig>(&p)?;
                 for cfg in config.values() {
                     resolved.0.insert(v.name.clone(), ResolvedModelConfig {

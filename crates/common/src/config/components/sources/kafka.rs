@@ -5,8 +5,9 @@ use crate::types::sources::SourceType;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{format, Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
+use crate::types::schema::Table;
 
 // ---------------- KafkaSource Config ----------------
 #[derive(Debug, Deserialize, Clone)]
@@ -119,5 +120,31 @@ impl From<KafkaSourceConfigError> for JinjaError {
                 "No sources found".to_string(),
             ),
         }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct KafkaConnectorConfig {
+    pub tables: HashMap<String, Table>,
+    pub name: String,
+}
+
+impl KafkaConnectorConfig {
+    pub fn table_include_list(&self) -> String {
+        self.tables.keys().map(|k| k.to_string()).collect::<Vec<String>>().join(",")
+    }
+    
+    pub fn column_include_list(&self) -> String {
+        self.tables
+            .values()
+            .flat_map(|t| t.columns.iter().map(|c| format!("{}.{}", self.name.clone(), c.name.clone())))
+            .collect::<Vec<String>>()
+            .join(",")
+    }
+}
+
+impl ConfigName for KafkaConnectorConfig {
+    fn name(&self) -> &str {
+        &self.name
     }
 }
