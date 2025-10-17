@@ -1,4 +1,4 @@
-use crate::parser::parse_nodes;
+use crate::parser::{maybe_parse_kafka_nodes, parse_nodes};
 use catalog::{Compile, KafkaConnectorDecl, MemoryCatalog, Register};
 use common::config::components::global::FoundryConfig;
 use common::error::FFError;
@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use log::info;
 
 #[derive(Debug, Default)]
 pub struct CompileOptions {
@@ -17,8 +18,7 @@ pub struct CompileOptions {
 
 pub struct CompileOutput {
     pub dag: Arc<ModelsDag>,
-    pub catalog: Arc<MemoryCatalog>,
-    pub kafka_connector: Option<KafkaConnectorDecl>,
+    pub catalog: Arc<MemoryCatalog>
 }
 
 #[derive(Debug, Serialize)]
@@ -47,13 +47,14 @@ struct Manifest {
     nodes: Vec<ManifestModel>,
 }
 
-pub fn compile(config: &FoundryConfig, options: CompileOptions) -> Result<CompileOutput, FFError> {
+pub fn compile(config: &FoundryConfig) -> Result<CompileOutput, FFError> {
     let catalog = MemoryCatalog::new();
     let compile_path = &config.project.compile_path;
 
     // ---------------------------------------------------------------------
     // 1️⃣  Parse models and build the dependency DAG
     // ---------------------------------------------------------------------
+
 
     let nodes = parse_nodes(config).map_err(FFError::compile)?;
     if nodes.is_empty() {
@@ -65,14 +66,12 @@ pub fn compile(config: &FoundryConfig, options: CompileOptions) -> Result<Compil
     catalog
         .register_nodes(nodes, wh_config)
         .map_err(FFError::compile)?;
+
     dag.build(&catalog, config).map_err(FFError::compile)?;
 
     // ensure compile directory exists
     fs::create_dir_all(compile_path).map_err(FFError::compile)?;
 
-    // ---------------------------------------------------------------------
-    // 2️⃣  Prepare Jinja environment for template rendering
-    // ---------------------------------------------------------------------
     let dag_arc = Arc::new(dag);
 
     // hold manifest data
@@ -114,21 +113,29 @@ pub fn compile(config: &FoundryConfig, options: CompileOptions) -> Result<Compil
     serde_json::to_writer_pretty(file, &manifest).map_err(FFError::compile)?;
 
     let catalog = Arc::new(catalog);
-    let kafka_connector = if let Some(name) = options.kafka_connector {
-        Some(
-            catalog
-                .compile_kafka_decl(&name, config)
-                .map_err(FFError::compile)?,
-        )
-    } else {
-        None
-    };
 
     Ok(CompileOutput {
         dag: dag_arc,
         catalog,
-        kafka_connector,
     })
+}
+
+pub fn compile_kafka_connector(
+    config: &FoundryConfig,
+    name: &str
+) -> Result<KafkaConnectorDecl, FFError> {
+    let catalog = MemoryCatalog::new();
+    let nodes = maybe_parse_kafka_nodes(config)
+        .map_err(FFError::compile)?
+        .ok_or_else(|| FFError::compile_msg("No nodes found to compile"))?;
+
+    let wh_config = config.warehouse_source.clone();
+    catalog
+        .register_nodes(nodes, wh_config)
+        .map_err(FFError::compile)?;
+
+    info!("connector name: {}", name);
+    catalog.compile_kafka_decl(name, &config).map_err(FFError::compile)
 }
 
 #[cfg(test)]
@@ -143,7 +150,7 @@ mod tests {
         let project_root = get_root_dir();
         with_chdir(&project_root, move || {
             let config = read_config(None).expect("load project config");
-            let result = compile(&config, CompileOptions::default()).unwrap();
+            let result = compile(&config).unwrap();
             assert!(result.dag.graph.node_count() > 0);
         })
         .expect("compile failed");

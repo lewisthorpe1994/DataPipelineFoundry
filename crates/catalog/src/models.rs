@@ -1,15 +1,12 @@
 use crate::CatalogError;
 use chrono::{DateTime, Utc};
 use common::types::kafka::KafkaConnectorType;
-use common::types::{Materialize, ModelRef, SourceRef};
+use common::types::{KafkaConnectorProvider, Materialize, ModelRef, PredicateRef, SourceRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use sqlparser::ast::helpers::foundry_helpers::KvPairs;
-use sqlparser::ast::{
-    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline,
-};
-use std::collections::HashSet;
+use sqlparser::ast::{AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate};
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
@@ -21,25 +18,36 @@ pub struct TransformDecl {
     pub config: serde_json::Value,
     pub created: DateTime<Utc>,
     pub sql: CreateSimpleMessageTransform,
+    pub predicate: Option<PredicateRef>
 }
 impl TransformDecl {
     pub fn new(ast: CreateSimpleMessageTransform) -> Self {
         let sql = ast.clone();
+
         Self {
             id: Uuid::new_v4(),
             name: ast.name.to_string(),
             config: KvPairs(ast.config).into(),
             created: Utc::now(),
             sql,
+            predicate: ast.predicate.map(|p| PredicateRef{ name: p.name.formatted_string(), negate})
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PipelineTransformDecl {
+    pub name: String,
+    pub id: Uuid,
+    pub args: Option<HashMap<String, String>>,
+    pub alias: Option<String>
 }
 
 // src/declarations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineDecl {
     pub name: String,
-    pub transforms: Vec<Uuid>, // ordered IDs
+    pub transforms: Vec<PipelineTransformDecl>, // ordered IDs
     pub created: DateTime<Utc>,
     pub predicate: Option<String>,
     pub sql: CreateSimpleMessageTransformPipeline,
@@ -47,7 +55,7 @@ pub struct PipelineDecl {
 impl PipelineDecl {
     pub fn new(
         name: String,
-        transforms: Vec<Uuid>,
+        transforms: Vec<PipelineTransformDecl>,
         predicate: Option<String>,
         sql: CreateSimpleMessageTransformPipeline,
     ) -> Self {
@@ -69,6 +77,8 @@ pub struct KafkaConnectorMeta {
     pub pipelines: Option<Vec<String>>,
     pub cluster_name: String,
     pub target: String,
+    pub target_schema: Option<String>, // this is only used on sink connectors
+    pub conn_provider: KafkaConnectorProvider
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -95,8 +105,10 @@ impl KafkaConnectorMeta {
             config: KvPairs(ast.with_properties).into(),
             cluster_name: ast.cluster_ident.value,
             target: ast.db_ident.value,
+            target_schema: ast.schema_ident.and_then(|s| Some(s.value)),
             sql,
             pipelines,
+            conn_provider: ast.connector_provider
         }
     }
 }

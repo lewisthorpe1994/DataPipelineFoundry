@@ -646,10 +646,23 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sqlparser",
  "test_utils",
  "thiserror",
  "walkdir",
+]
+
+[[package]]
+name = "components"
+version = "0.1.0"
+dependencies = [
+ "catalog",
+ "common",
+ "ff_core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "test_utils",
+ "thiserror",
 ]
 
 [[package]]
@@ -994,6 +1007,7 @@ dependencies = [
  "serde_json",
  "sqlparser",
  "test_utils",
+ "thiserror",
  "tokio",
  "walkdir",
 ]
@@ -1069,6 +1083,7 @@ dependencies = [
  "clap",
  "common",
  "ff_core",
+ "log",
  "minijinja",
  "serde",
  "serde_json",
@@ -2829,6 +2844,7 @@ name = "sqlparser"
 version = "0.56.0"
 dependencies = [
  "bigdecimal",
+ "common",
  "log",
  "matches",
  "pretty_assertions",

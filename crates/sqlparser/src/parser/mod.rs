@@ -39,7 +39,11 @@ use crate::ast::Statement::CreatePolicy;
 use crate::ast::*;
 use crate::dialect::*;
 use crate::keywords::{Keyword, ALL_KEYWORDS};
-use crate::parser::foundry_parsers::{KafkaParse, ModelParse, SourceParse};
+use crate::parser::foundry_parsers::{ModelParse};
+
+#[cfg(feature = "kafka")]
+use crate::parser::foundry_parsers::KafkaParse;
+
 use crate::tokenizer::*;
 mod alter;
 mod foundry_parsers;
@@ -4594,10 +4598,9 @@ impl<'a> Parser<'a> {
             self.parse_create_procedure(or_alter)
         } else if self.parse_keyword(Keyword::CONNECTOR) {
             self.parse_create_connector()
-        } else if self.parse_keyword(Keyword::SOURCE) {
-            self.parse_source()
-        } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM]) {
-            self.parse_smt()
+        }
+        else if self.parse_keyword(Keyword::KAFKA) {
+            self.parse_kafka()
         } else if self.parse_keyword(Keyword::MODEL) {
             self.parse_model()
         } else {

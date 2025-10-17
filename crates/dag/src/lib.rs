@@ -288,16 +288,16 @@ impl ModelsDag {
                                         .get_smt_pipeline(&p)
                                         .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                     let pipe_name = pipe_dec.name.clone();
-                                    for t_id in pipe_dec.transforms {
-                                        let t = registry
-                                            .get_kafka_smt(t_id)
+                                    for t in pipe_dec.transforms {
+                                        let transform = registry
+                                            .get_kafka_smt(t.id)
                                             .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                         self.upsert_node(
                                             t.name.to_string(),
                                             false,
                                             DagNode {
                                                 name: t.name.to_string(),
-                                                ast: Some(NodeAst::KafkaSmt(t.sql.clone())),
+                                                ast: Some(NodeAst::KafkaSmt(transform.sql.clone())),
                                                 node_type: DagNodeType::KafkaSmt,
                                                 is_executable: false,
                                                 relations: Some(src_db_rels.clone()),
@@ -313,8 +313,6 @@ impl ModelsDag {
                                 .compile_kafka_decl(&c_node.name, &config)
                                 .map_err(|e| DagError::ast_syntax(e.to_string()))?
                                 .to_string();
-
-                            println!("Compiled kafka connector: {}", compiled);
 
                             // Add connector
                             self.upsert_node(
@@ -332,13 +330,13 @@ impl ModelsDag {
                             )?;
                         }
                         KafkaConnectorType::Sink => {
-                            let topic_prefix = conn.config.get("topic.prefix");
+                            let topic_prefix = conn.config.get("topics.regex");
                             let topics = conn.config.get("topics");
                             let mut rels = match (topic_prefix, topics) {
                                 (Some(tp), Some(t)) => {
                                     return Err(DagError::ast_syntax(format!(
-                                    "Expected either topic.prefix or topics to be declared in {}",
-                                    conn.name.clone()
+                                    "Expected either topic.regex or topics to be declared in connector config {}",
+                                    conn.config
                                 )))
                                 }
                                 (Some(tp), _) => {
@@ -370,17 +368,16 @@ impl ModelsDag {
                                     let pipe_dec = registry
                                         .get_smt_pipeline(&p)
                                         .map_err(|_| DagError::ref_not_found(p.clone()))?;
-                                    let pipe_name = pipe_dec.name.clone();
-                                    for t_id in pipe_dec.transforms {
-                                        let t = registry
-                                            .get_kafka_smt(t_id)
+                                    for t in pipe_dec.transforms {
+                                        let transform = registry
+                                            .get_kafka_smt(t.id)
                                             .map_err(|_| DagError::ref_not_found(p.clone()))?;
                                         self.upsert_node(
                                             t.name.to_string(),
                                             false,
                                             DagNode {
                                                 name: t.name.to_string(),
-                                                ast: Some(NodeAst::KafkaSmt(t.sql.clone())),
+                                                ast: Some(NodeAst::KafkaSmt(transform.sql.clone())),
                                                 node_type: DagNodeType::KafkaSmt,
                                                 is_executable: false,
                                                 relations: Some(rels.clone()),
@@ -391,25 +388,6 @@ impl ModelsDag {
                                     }
                                 }
                                 rels.extend(pipelines)
-                            }
-
-                            let mut warehouse_src = match conn.config.get("table.name.format") {
-                                Some(warehouse_src) => warehouse_src.as_str().unwrap().to_string(),
-                                None => {
-                                    return Err(DagError::ast_syntax(format!(
-                                    "Unexpected issue with table.name.format in kafka connector {}",
-                                    conn.name
-                                )))
-                                }
-                            };
-
-                            if let Some(db_name) = conn
-                                .config
-                                .get("connection.url")
-                                .and_then(|url| url.as_str())
-                                .and_then(Self::database_from_jdbc_url)
-                            {
-                                warehouse_src = format!("{}.{}", db_name, warehouse_src);
                             }
 
                             let compiled = registry
@@ -431,19 +409,38 @@ impl ModelsDag {
                                 },
                             )?;
 
-                            self.upsert_node(
-                                warehouse_src.clone(),
-                                false,
-                                DagNode {
-                                    name: warehouse_src,
-                                    ast: None,
-                                    node_type: DagNodeType::WarehouseSourceDb,
-                                    is_executable: false,
-                                    relations: Some(BTreeSet::from([conn.name.clone()])),
-                                    compiled_obj: None,
-                                    target: None,
-                                },
-                            )?;
+                            // Try to build some warehouse nodes based on config
+
+                            // TODO - need to check connector type in the future for this
+                            // will exclude warehouse nodes being created as debezium postgres dynamically
+                            // builds destination table names so this cannot be pulled out of connector config
+                            // this will look for the sink .yml config to build nodes
+
+                            if let Some(wh_config) =
+                                &config.kafka_connectors.get(conn.name.as_str())
+                            {
+                                let warehouse_src = wh_config.table_include_list();
+
+                                warehouse_src
+                                    .split(",")
+                                    .map(str::trim)                        // trim whitespace
+                                    .try_for_each(|s| -> Result<(), DagError> {
+                                        self.upsert_node(
+                                            s.to_owned(),
+                                            false,
+                                            DagNode {
+                                                name: s.to_owned(),
+                                                ast: None,
+                                                node_type: DagNodeType::WarehouseSourceDb,
+                                                is_executable: false,
+                                                relations: Some(BTreeSet::from([conn.name.clone()])),
+                                                compiled_obj: None,
+                                                target: None,
+                                            },
+                                        )?;
+                                        Ok(())
+                                    })?;
+                            }
                         }
                     }
                 }

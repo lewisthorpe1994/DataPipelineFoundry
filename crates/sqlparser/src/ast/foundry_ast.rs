@@ -1,8 +1,5 @@
 use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
-use crate::ast::{
-    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Ident,
-    KafkaConnectorType, ObjectName, ObjectType, Query, Statement, ValueWithSpan, ViewColumnDef,
-};
+use crate::ast::{display_comma_separated, value, AstValueFormatter, CreateTable, CreateTableOptions, CreateViewParams, Ident, ObjectName, ObjectType, Query, Statement, ValueWithSpan, ViewColumnDef};
 use crate::parser::ParserError;
 use core::fmt;
 use core::fmt::{Debug, Display, Formatter};
@@ -10,18 +7,81 @@ use core::fmt::{Debug, Display, Formatter};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[cfg(feature = "kafka")]
+use common::types::kafka::{KafkaConnectorType, KafkaConnectorProvider, KafkaConnectorSupportedDb, PredicateRef};
+use common::types::{Predicate, PredicateKind};
+
+fn hashmap_from_ast_kv(kv: &Vec<(Ident, ValueWithSpan)>) -> HashMap<String, String> {
+    kv
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.formatted_string()))
+        .collect()
+}
+
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg(feature = "kafka")]
 pub struct CreateKafkaConnector {
     pub name: Ident,
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
+    pub connector_provider: KafkaConnectorProvider,
     pub with_properties: Vec<(Ident, ValueWithSpan)>,
     pub with_pipelines: Vec<Ident>,
     pub cluster_ident: Ident,
     pub db_ident: Ident,
+    pub schema_ident: Option<Ident>,
+    pub db: KafkaConnectorSupportedDb
+}
+#[cfg(feature = "kafka")]
+impl CreateKafkaConnector {
+    pub fn name(&self) -> &str {
+        self.name.value.as_str()
+    }
+
+    pub fn if_not_exists(&self) -> bool {
+        self.if_not_exists
+    }
+
+    pub fn connector_type(&self) -> &KafkaConnectorType {
+        &self.connector_type
+    }
+
+    pub fn connector_provider(&self) -> &KafkaConnectorProvider {
+        &self.connector_provider
+    }
+
+    pub fn with_properties(&self) -> HashMap<String, String> {
+        hashmap_from_ast_kv(&self.with_properties)
+    }
+
+    /// Borrowed view (no allocations). Valid as long as `&self` lives.
+    pub fn with_pipelines(&self) -> Vec<&str> {
+        self.with_pipelines
+            .iter()
+            .map(|p| p.value.as_str())
+            .collect()
+    }
+
+    pub fn cluster_ident(&self) -> &str {
+        self.cluster_ident.value.as_str()
+    }
+
+    pub fn db_ident(&self) -> &str {
+        self.db_ident.value.as_str()
+    }
+
+    pub fn schema_ident(&self) -> Option<&str> {
+        self.schema_ident.as_ref().map(|s| s.value.as_str())
+    }
+
+    pub fn db(&self) -> &KafkaConnectorSupportedDb {
+        &self.db
+    }
 }
 
+#[cfg(feature = "kafka")]
 impl fmt::Display for CreateKafkaConnector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // 1️⃣  pre-compute the optional bits
@@ -52,32 +112,46 @@ impl fmt::Display for CreateKafkaConnector {
 
         let db_ident = match self.connector_type {
             KafkaConnectorType::Source => format!("FROM SOURCE DATABASE '{}'", self.db_ident),
-            KafkaConnectorType::Sink => format!("TO TARGET DATABASE '{}'", self.db_ident),
+            KafkaConnectorType::Sink => format!("INTO WAREHOUSE SOURCE DATABASE '{}' USING SCHEMA '{}'", self.db_ident, self.schema_ident.as_ref().unwrap()),
         };
 
         // 2️⃣  emit the final statement
         write!(
             f,
-            "CREATE SOURCE KAFKA CONNECTOR KIND {con_type} {if_not_exists}{name} ({props}){pipelines}\
+            "CREATE KAFKA {con_provider} {db_provider} {con_type} CONNECTOR {if_not_exists}{name} \nUSING KAFKA CLUSTER {c_ident} ({props}){pipelines}\
             \n{db}",
             if_not_exists = if_not_exists,
+            c_ident       = self.cluster_ident,
             name          = self.name,
             con_type      = self.connector_type,
             props         = props,
             pipelines     = pipelines_clause,
-            db            = db_ident
+            db            = db_ident,
+            con_provider  = self.connector_provider,
+            db_provider   = self.db,
         )
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg(feature = "kafka")]
+pub struct PredicateReference {
+    pub name: ValueWithSpan,
+    pub negate: bool
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg(feature = "kafka")]
 pub struct CreateSimpleMessageTransform {
     pub name: Ident,
     pub if_not_exists: bool,
     pub config: Vec<(Ident, ValueWithSpan)>,
+    pub predicate: Option<PredicateReference>
 }
 
+#[cfg(feature = "kafka")]
 impl fmt::Display for CreateSimpleMessageTransform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ine = if self.if_not_exists {
@@ -103,18 +177,50 @@ impl fmt::Display for CreateSimpleMessageTransform {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TransformCall {
-    pub name: Ident,
-    pub args: Vec<(Ident, ValueWithSpan)>, // may be empty
-}
-impl TransformCall {
-    pub fn new(name: Ident, args: Vec<(Ident, ValueWithSpan)>) -> Self {
-        Self { name, args }
+#[cfg(feature = "kafka")]
+impl CreateSimpleMessageTransform {
+    pub fn name(&self) -> &str {
+        &self.name.value
+    }
+
+    pub fn if_not_exists(&self) -> &bool {
+        &self.if_not_exists
+    }
+
+    pub fn config(&self) -> HashMap<String, String> {
+        hashmap_from_ast_kv(&self.config.clone())
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg(feature = "kafka")]
+pub struct TransformCall {
+    pub name: Ident,
+    pub args: Vec<(Ident, ValueWithSpan)>, // may be empty
+    pub alias: Option<Ident>,
+}
+
+#[cfg(feature = "kafka")]
+impl TransformCall {
+    pub fn new(name: Ident, args: Vec<(Ident, ValueWithSpan)>, alias: Option<Ident>) -> Self {
+        Self { name, args, alias }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name.value
+    }
+
+    pub fn args(&self) -> HashMap<String, String> {
+        hashmap_from_ast_kv(&self.args.clone())
+    }
+
+    pub fn alias(&self) -> Option<String> {
+        self.alias.clone().map(|id| id.value.to_string())
+    }
+}
+
+#[cfg(feature = "kafka")]
 impl fmt::Display for TransformCall {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.args.is_empty() {
@@ -133,15 +239,36 @@ impl fmt::Display for TransformCall {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg(feature = "kafka")]
 pub struct CreateSimpleMessageTransformPipeline {
     pub name: Ident,
     pub if_not_exists: bool,
-    pub connector_type: KafkaConnectorType,
+    //pub connector_type: KafkaConnectorType,
     /// Ordered list of SMTs to call
     pub steps: Vec<TransformCall>,
     pub pipe_predicate: Option<ValueWithSpan>,
 }
 
+#[cfg(feature = "kafka")]
+impl CreateSimpleMessageTransformPipeline {
+    pub fn name(&self) -> &str {
+        &self.name.value
+    }
+
+    pub fn if_not_exists(&self) -> &bool {
+        &self.if_not_exists
+    }
+
+    pub fn steps(&self) -> &Vec<TransformCall> {
+        &self.steps
+    }
+
+    pub fn pipe_predicate(&self) -> Option<String> {
+        self.pipe_predicate.clone().map(|p| p.formatted_string())
+    }
+}
+
+#[cfg(feature = "kafka")]
 impl fmt::Display for CreateSimpleMessageTransformPipeline {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ine = if self.if_not_exists {
@@ -164,15 +291,68 @@ impl fmt::Display for CreateSimpleMessageTransformPipeline {
 
         write!(
             f,
-            "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {ine}{name} {ctype} ({body}){pred}",
+            "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE {ine}{name} ({body}){pred}",
             ine = ine,
             name = self.name,
-            ctype = self.connector_type,
+            // ctype = self.connector_type,
             body = body,
             pred = pred_clause
         )
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg(feature = "kafka")]
+pub struct CreateSimpleMessageTransformPredicate {
+    pub name: Ident,
+    pub pred_type: Ident,
+    pub pattern: Option<ValueWithSpan>,
+}
+#[cfg(feature = "kafka")]
+impl TryFrom<CreateSimpleMessageTransformPredicate> for Predicate {
+    type Error = ParserError;
+
+    fn try_from(p: CreateSimpleMessageTransformPredicate) -> Result<Predicate, Self::Error> {
+        let kind = match p.pred_type.value.as_str() {
+            "TopicNameMatches" => PredicateKind::TopicNameMatches {
+                pattern: p.pattern.ok_or(
+                    ParserError::ParserError("Expected pattern to be provided for TopicNameMatches predicate!".to_string())
+                )?.to_string()
+            },
+            "HasHeaderKey" => PredicateKind::HasHeaderKey {
+                name: p.pattern.ok_or(
+                    ParserError::ParserError("Expected pattern to be provided for TopicNameMatches predicate!".to_string())
+                )?.to_string()
+            },
+            "RecordIsTombstone" => PredicateKind::RecordIsTombstone,
+            unsupported => return Err(ParserError::ParserError(
+                format!("predicate type {} is currently unsupported!", unsupported))
+            )
+        };
+
+        Ok(Predicate {name: p.name.value, kind})
+    }
+}
+
+#[cfg(feature = "kafka")]
+impl Display for CreateSimpleMessageTransformPredicate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        let pattern = match &self.pattern {
+            Some(p) => format!("USING PATTERN {}", p.to_string()),
+            None => String::new(),
+        };
+
+        write!(f,
+            "CREATE KAFKA SIMPLE MESSAGE TRANSFORM PREDICATE {} {} FROM KIND {}",
+            self.name,
+            pattern,
+            self.pred_type
+        )
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -247,7 +427,7 @@ impl TryFrom<Statement> for CreateModelView {
         }
     }
 }
-impl std::fmt::Display for CreateModelView {
+impl Display for CreateModelView {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
@@ -353,7 +533,7 @@ impl DropStmt {
     }
 }
 
-impl std::fmt::Display for DropStmt {
+impl Display for DropStmt {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
@@ -375,8 +555,8 @@ pub enum ModelDef {
     Table(CreateTable),
     View(CreateModelView),
 }
-impl fmt::Display for ModelDef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ModelDef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Table(table) => write!(f, "{}", table.to_string()),
             Self::View(view) => write!(f, "{}", view.to_string()),

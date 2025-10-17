@@ -1,0 +1,188 @@
+{
+  "nodes": [
+    {
+      "name": "public.customer",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "public.film",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "public.inventory",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "public.payment",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "public.rental",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "postgres-.public.customer",
+      "compiled_executable": null,
+      "depends_on": [
+        "film_rental_inventory_customer_payment"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "postgres-.public.film",
+      "compiled_executable": null,
+      "depends_on": [
+        "film_rental_inventory_customer_payment"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "postgres-.public.inventory",
+      "compiled_executable": null,
+      "depends_on": [
+        "film_rental_inventory_customer_payment"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "postgres-.public.payment",
+      "compiled_executable": null,
+      "depends_on": [
+        "film_rental_inventory_customer_payment"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "postgres-.public.rental",
+      "compiled_executable": null,
+      "depends_on": [
+        "film_rental_inventory_customer_payment"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "unwrap",
+      "compiled_executable": null,
+      "depends_on": [
+        "public.customer",
+        "public.film",
+        "public.inventory",
+        "public.payment",
+        "public.rental"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "reroute",
+      "compiled_executable": null,
+      "depends_on": [
+        "public.customer",
+        "public.film",
+        "public.inventory",
+        "public.payment",
+        "public.rental"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "film_rental_inventory_customer_payment",
+      "compiled_executable": "{\"name\": film_rental_inventory_customer_payment, \"config\": {\"column.include.list\":\"public.rental.rental_id,public.rental.rental_date,public.rental.inventory_id,public.rental.customer_id,public.rental.return_date,public.rental.staff_id,public.rental.last_update,public.inventory.inventory_id,public.inventory.film_id,public.inventory.store_id,public.inventory.last_update,public.customer.customer_id,public.customer.store_id,public.customer.address_id,public.customer.activebool,public.customer.create_date,public.customer.last_update,public.customer.active,public.film.film_id,public.film.title,public.film.description,public.film.release_year,public.film.language_id,public.film.rental_duration,public.film.rental_date,public.film.length,public.film.replacement_cost,public.film.rating,public.film.last_update,public.payment.payment_id,public.payment.customer_id,public.payment.staff_id,public.payment.rental_id,public.payment.amount,public.payment.payment_date\",\"connector.class\":\"io.debezium.connector.postgresql.PostgresConnector\",\"database.dbname\":\"dvdrental\",\"database.hostname\":\"localhost\",\"database.password\":\"postgres\",\"database.port\":\"5432\",\"database.user\":\"postgres\",\"kafka.bootstrap.servers\":\"localhost:9092\",\"snapshot.mode\":\"initial\",\"table.include.list\":\"public.rental,public.inventory,public.customer,public.film,public.payment\",\"tasks.max\":\"1\",\"topic.prefix\":\"postgres-\",\"transforms\":\"unwrap_router_unwrap,unwrap_router_reroute\",\"transforms.unwrap_router_reroute.predicate\":\"some_predicate\",\"transforms.unwrap_router_reroute.topic.regex\":\"'postgres-(*)'\",\"transforms.unwrap_router_reroute.topic.replacement\":\"\\\"$2\\\"\",\"transforms.unwrap_router_unwrap.delete.handling.mode\":\"drop\",\"transforms.unwrap_router_unwrap.delete.tombstone.handling.mode\":\"tombstone\",\"transforms.unwrap_router_unwrap.predicate\":\"some_predicate\",\"transforms.unwrap_router_unwrap.type\":\"io.debezium.transforms.ExtractNewRecordState\"}}",
+      "depends_on": [
+        "public.customer",
+        "public.film",
+        "public.inventory",
+        "public.payment",
+        "public.rental",
+        "unwrap_router"
+      ],
+      "executable": true,
+      "node_type": "Kafka",
+      "target": "dvd_rental"
+    },
+    {
+      "name": "unwrap_router",
+      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS unwrap_router SOURCE (unwrap, reroute(\"topic.regex\" = 'postgres-(*)', \"topic.replacement\" = \"$2\")) WITH PIPELINE PREDICATE 'some_predicate'",
+      "depends_on": [
+        "reroute",
+        "unwrap"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "analytics.bronze.raw_customer",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "analytics.bronze.raw_inventory",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "analytics.bronze.raw_film",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "analytics.bronze.raw_payment",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "analytics.bronze.raw_rental",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    }
+  ]
+}

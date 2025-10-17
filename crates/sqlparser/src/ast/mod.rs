@@ -28,6 +28,8 @@ use helpers::{
     stmt_data_loading::{FileStagingCommand, StageLoadSelectItemKind},
 };
 
+pub use helpers::foundry_helpers::AstValueFormatter;
+
 use core::ops::Deref;
 use core::{
     fmt::{self, Display},
@@ -39,7 +41,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "visitor")]
 use sqlparser_derive::{Visit, VisitMut};
-
+use common::types::Predicate;
 use crate::keywords::Keyword;
 use crate::tokenizer::{Span, Token};
 
@@ -96,8 +98,15 @@ pub use self::value::{
 };
 
 pub use crate::ast::foundry_ast::{
-    CreateKafkaConnector, CreateModel, CreateModelView, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, DropStmt, ModelDef, ModelSqlCompileError, TransformCall,
+    CreateModel, CreateModelView,
+    DropStmt, ModelDef, ModelSqlCompileError
+};
+
+#[cfg(feature = "kafka")]
+pub use crate::ast::foundry_ast::{
+    CreateKafkaConnector, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, TransformCall,
+    CreateSimpleMessageTransformPredicate, PredicateReference
 };
 
 use crate::ast::helpers::key_value_options::KeyValueOptions;
@@ -3174,9 +3183,14 @@ pub enum Statement {
     /// ```
     /// See [Hive](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27362034#LanguageManualDDL-CreateDataConnectorCreateConnector)
     CreateConnector(CreateConnector),
+    #[cfg(feature = "kafka")]
     CreateKafkaConnector(CreateKafkaConnector),
+    #[cfg(feature = "kafka")]
     CreateSMTPipeline(CreateSimpleMessageTransformPipeline),
+    #[cfg(feature = "kafka")]
     CreateSMTransform(CreateSimpleMessageTransform),
+    #[cfg(feature = "kafka")]
+    CreateSMTPredicate(CreateSimpleMessageTransformPredicate),
     /// ```sql
     /// ALTER TABLE
     /// ```
@@ -4699,10 +4713,17 @@ impl fmt::Display for Statement {
                 Ok(())
             }
             Statement::CreateTable(create_table) => create_table.fmt(f),
+            #[cfg(feature = "kafka")]
             Statement::CreateKafkaConnector(create_kafka_connector) => {
                 create_kafka_connector.fmt(f)
             }
+            #[cfg(feature= "kafka")]
+            Statement::CreateSMTPredicate(create_smt_pred) => {
+                create_smt_pred.fmt(f)
+            }
+            #[cfg(feature = "kafka")]
             Statement::CreateSMTPipeline(create_smtpipe) => create_smtpipe.fmt(f),
+            #[cfg(feature = "kafka")]
             Statement::CreateSMTransform(create_smt) => create_smt.fmt(f),
             Statement::CreateModel(create_model) => create_model.fmt(f),
             Statement::LoadData {
@@ -9331,21 +9352,6 @@ pub enum ReturnStatementValue {
     Expr(Expr),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
-pub enum KafkaConnectorType {
-    Sink,
-    Source,
-}
-impl Display for KafkaConnectorType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            KafkaConnectorType::Sink => write!(f, "SINK"),
-            KafkaConnectorType::Source => write!(f, "SOURCE"),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

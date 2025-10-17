@@ -5,7 +5,7 @@ database:
     bronze:
       description: some schema for raw ingested data
       tables:
-        raw_rental:
+        rental:
           columns:
             - name: rental_id
             - name: rental_date
@@ -14,7 +14,7 @@ database:
             - name: return_date
             - name: staff_id
             - name: last_update
-        raw_film:
+        film:
           columns:
             - name: film_id
             - name: title
@@ -27,13 +27,13 @@ database:
             - name: replacement_cost
             - name: rating
             - name: last_update
-        raw_inventory:
+        inventory:
           columns:
             - name: inventory_id
             - name: film_id
             - name: store_id
             - name: last_update
-        raw_customer:
+        customer:
           columns:
             - name: customer_id
             - name: store_id
@@ -45,7 +45,7 @@ database:
             - name: create_date
             - name: last_update
             - name: active
-        raw_payment:
+        payment:
           columns:
             - name: payment_id
             - name: customer_id

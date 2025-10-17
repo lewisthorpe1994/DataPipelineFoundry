@@ -1,7 +1,7 @@
 use crate::ast::{
     display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr,
     Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
-    KafkaConnectorType, ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor,
+    ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor,
     TableWithJoins, Value, ValueWithSpan, ViewColumnDef,
 };
 use crate::keywords::Keyword;

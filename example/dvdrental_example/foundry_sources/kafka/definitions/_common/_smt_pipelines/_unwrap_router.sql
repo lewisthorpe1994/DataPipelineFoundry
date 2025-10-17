@@ -1,4 +1,4 @@
-CREATE SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS pii_pipeline SOURCE (
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS unwrap_router (
     unwrap,
     reroute("topic.regex" = 'postgres-(*)', "topic.replacement" = "$2")
-) WITH PIPELINE PREDICATE 'some_predicate';
+);

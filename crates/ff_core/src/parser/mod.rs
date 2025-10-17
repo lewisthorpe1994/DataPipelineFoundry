@@ -7,6 +7,7 @@ use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
+use log::warn;
 use walkdir::WalkDir;
 
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
@@ -20,18 +21,9 @@ pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
             )?)
         }
     }
-    if !config.kafka_source.is_empty() {
-        let kafka_def_path = &config
-            .source_paths
-            .get(&SourceType::Kafka)
-            .unwrap()
-            .definitions
-            .as_ref()
-            .ok_or(Error::new(
-                ErrorKind::NotFound,
-                "Expected definitions for kafka sources",
-            ))?;
-        nodes.extend(parse_kafka_dir(&kafka_def_path)?);
+    let k_nodes = maybe_parse_kafka_nodes(&config)?;
+    if let Some(k) = k_nodes {
+        nodes.extend(k);
     }
     Ok(nodes)
 }
@@ -83,6 +75,25 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
         format!("{}{}", schema, stem)
     } else {
         format!("{}_{}", schema, stem)
+    }
+}
+
+pub fn maybe_parse_kafka_nodes(config: &FoundryConfig) -> Result<Option<Vec<ParsedNode>>, Error> {
+    if !config.kafka_source.is_empty() {
+        let kafka_def_path = &config
+            .source_paths
+            .get(&SourceType::Kafka)
+            .unwrap()
+            .definitions
+            .as_ref()
+            .ok_or(Error::new(
+                ErrorKind::NotFound,
+                "Expected definitions for kafka sources",
+            ))?;
+        Ok(Some(parse_kafka_dir(&kafka_def_path)?))
+    } else {
+        warn!("No kafka nodes found");
+        Ok(None)
     }
 }
 

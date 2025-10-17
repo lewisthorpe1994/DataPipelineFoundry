@@ -59,6 +59,11 @@ recursive-protection = [
 ]
 std = []
 visitor = ["sqlparser_derive"]
+kafka = [
+    "dep:common",        # turn on the optional dependency
+    "common/kafka-types",      # forward the kafka feature into that dependency
+    # optionally forward serde if your kafka code paths need it:
+]
 
 [lib]
 name = "sqlparser"
@@ -92,6 +97,17 @@ optional = true
 [dependencies.sqlparser_derive]
 version = "0.3.0"
 optional = true
+
+[dependencies.common]
+workspace = true
+optional = true
+default-features = false
+
+[dev-dependencies.common]
+workspace = true
+default-features = false
+features = ["kafka-types"]
+
 
 [dev-dependencies.matches]
 version = "0.1"

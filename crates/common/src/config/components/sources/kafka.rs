@@ -1,7 +1,7 @@
 use crate::config::components::sources::SourcePaths;
 use crate::config::loader::load_config;
 use crate::config::traits::{ConfigName, IntoConfigVec};
-use crate::types::schema::Table;
+use crate::types::schema::{Schema, Table};
 use crate::types::sources::SourceType;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use serde::Deserialize;
@@ -125,27 +125,35 @@ impl From<KafkaSourceConfigError> for JinjaError {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct KafkaConnectorConfig {
-    pub tables: HashMap<String, Table>,
+    pub schema: HashMap<String, Schema>,
     pub name: String,
 }
 
 impl KafkaConnectorConfig {
     pub fn table_include_list(&self) -> String {
-        self.tables
-            .keys()
-            .map(|k| k.to_string())
-            .collect::<Vec<String>>()
-            .join(",")
+        self.schema
+            .iter()
+            .flat_map(|(s_name, schema)| {
+                schema
+                    .tables
+                    .iter()
+                    .map(move |(t_name, t)| format!("{}:{}", t_name, s_name))
+            })
+        .collect::<Vec<String>>()
+        .join(",")
     }
 
     pub fn column_include_list(&self) -> String {
-        self.tables
+        self.schema
             .iter()
-            .flat_map(|(table_name, table_meta)| {
-                table_meta
-                    .columns
+            .flat_map(|(s_name, schema)| {
+                schema.tables
                     .iter()
-                    .map(|c| format!("{}.{}", table_name.clone(), c.name.clone()))
+                    .flat_map(move |(t_name, table)|  {
+                        table.columns
+                            .iter()
+                            .map(move |col| format!("{}.{}.{}", s_name, t_name, col.name))
+                    })
             })
             .collect::<Vec<String>>()
             .join(",")

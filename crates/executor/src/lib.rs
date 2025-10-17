@@ -206,15 +206,9 @@ impl Executor {
                     ExecutorError::config("Kafka connector node is missing a target cluster name")
                 })?;
 
-                let kafka_conn =
-                    config
-                        .get_kafka_cluster_conn(kafka_conn_name)
-                        .ok_or_else(|| {
-                            ExecutorError::config(format!(
-                                "Kafka cluster '{}' is not defined in the project configuration",
-                                kafka_conn_name
-                            ))
-                        })?;
+                let kafka_conn = config
+                    .get_kafka_cluster_conn(kafka_conn_name)
+                    .map_err(|e| ExecutorError::config(e.to_string()))?;
 
                 let kafka_client =
                     KafkaConnectClient::new(&kafka_conn.connect.host, &kafka_conn.connect.port);

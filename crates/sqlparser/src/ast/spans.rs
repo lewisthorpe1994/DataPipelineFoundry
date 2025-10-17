@@ -20,13 +20,15 @@ use core::iter;
 
 use crate::tokenizer::Span;
 
+#[cfg(feature = "kafka")]
+use super::{CreateKafkaConnector, CreateSimpleMessageTransformPipeline};
+
 use super::{
     dcl::SecondaryRoles, value::ValueWithSpan, AccessExpr, AlterColumnOperation,
     AlterIndexOperation, AlterTableOperation, Array, Assignment, AssignmentTarget, AttachedToken,
     BeginEndStatements, CaseStatement, CloseCursor, ClusteredIndex, ColumnDef, ColumnOption,
     ColumnOptionDef, ConditionalStatementBlock, ConditionalStatements, ConflictTarget, ConnectBy,
-    ConstraintCharacteristics, CopySource, CreateIndex, CreateKafkaConnector,
-    CreateSimpleMessageTransformPipeline, CreateTable, CreateTableOptions, Cte, Delete, DoUpdate,
+    ConstraintCharacteristics, CopySource, CreateIndex, CreateTable, CreateTableOptions, Cte, Delete, DoUpdate,
     ExceptSelectItem, ExcludeSelectItem, Expr, ExprWithAlias, Fetch, FromTable, Function,
     FunctionArg, FunctionArgExpr, FunctionArgumentClause, FunctionArgumentList, FunctionArguments,
     GroupByExpr, HavingBound, IfStatement, IlikeSelectItem, Insert, Interpolate, InterpolateExpr,
@@ -422,8 +424,13 @@ impl Spanned for Statement {
             Statement::CreateRole { .. } => Span::empty(),
             Statement::CreateSecret { .. } => Span::empty(),
             Statement::CreateConnector { .. } => Span::empty(),
+            #[cfg(feature = "kafka")]
             Statement::CreateKafkaConnector { .. } => Span::empty(),
+            #[cfg(feature = "kafka")]
+            Statement::CreateSMTPredicate { .. } => Span::empty(),
+            #[cfg(feature = "kafka")]
             Statement::CreateSMTPipeline(create_smtpipeline) => create_smtpipeline.span(),
+            #[cfg(feature = "kafka")]
             Statement::CreateSMTransform { .. } => Span::empty(),
             Statement::CreateModel { .. } => Span::empty(),
             Statement::AlterTable {
@@ -2300,6 +2307,7 @@ impl Spanned for BeginEndStatements {
     }
 }
 
+#[cfg(feature = "kafka")]
 impl Spanned for CreateKafkaConnector {
     fn span(&self) -> Span {
         let base = self.name.span;
@@ -2316,6 +2324,7 @@ impl Spanned for CreateKafkaConnector {
     }
 }
 
+#[cfg(feature = "kafka")]
 impl Spanned for CreateSimpleMessageTransformPipeline {
     fn span(&self) -> Span {
         // start with the pipeline name
