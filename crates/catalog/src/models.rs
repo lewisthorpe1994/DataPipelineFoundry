@@ -1,16 +1,18 @@
 use crate::CatalogError;
 use chrono::{DateTime, Utc};
 use common::types::kafka::KafkaConnectorType;
-use common::types::{KafkaConnectorProvider, Materialize, ModelRef, PredicateRef, SourceRef};
+use common::types::{KafkaConnectorProvider, Materialize, ModelRef, SourceRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use sqlparser::ast::helpers::foundry_helpers::KvPairs;
-use sqlparser::ast::{AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate};
+use sqlparser::ast::{
+    AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate,
+};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
-/// A single SMT / transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformDecl {
     pub id: Uuid,
@@ -18,7 +20,6 @@ pub struct TransformDecl {
     pub config: serde_json::Value,
     pub created: DateTime<Utc>,
     pub sql: CreateSimpleMessageTransform,
-    pub predicate: Option<PredicateRef>
 }
 impl TransformDecl {
     pub fn new(ast: CreateSimpleMessageTransform) -> Self {
@@ -30,7 +31,6 @@ impl TransformDecl {
             config: KvPairs(ast.config).into(),
             created: Utc::now(),
             sql,
-            predicate: ast.predicate.map(|p| PredicateRef{ name: p.name.formatted_string(), negate})
         }
     }
 }
@@ -40,7 +40,7 @@ pub struct PipelineTransformDecl {
     pub name: String,
     pub id: Uuid,
     pub args: Option<HashMap<String, String>>,
-    pub alias: Option<String>
+    pub alias: Option<String>,
 }
 
 // src/declarations
@@ -78,7 +78,7 @@ pub struct KafkaConnectorMeta {
     pub cluster_name: String,
     pub target: String,
     pub target_schema: Option<String>, // this is only used on sink connectors
-    pub conn_provider: KafkaConnectorProvider
+    pub conn_provider: KafkaConnectorProvider,
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -108,7 +108,7 @@ impl KafkaConnectorMeta {
             target_schema: ast.schema_ident.and_then(|s| Some(s.value)),
             sql,
             pipelines,
-            conn_provider: ast.connector_provider
+            conn_provider: ast.connector_provider,
         }
     }
 }

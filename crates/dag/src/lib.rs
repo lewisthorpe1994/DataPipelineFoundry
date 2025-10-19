@@ -423,7 +423,7 @@ impl ModelsDag {
 
                                 warehouse_src
                                     .split(",")
-                                    .map(str::trim)                        // trim whitespace
+                                    .map(str::trim) // trim whitespace
                                     .try_for_each(|s| -> Result<(), DagError> {
                                         self.upsert_node(
                                             s.to_owned(),
@@ -433,7 +433,9 @@ impl ModelsDag {
                                                 ast: None,
                                                 node_type: DagNodeType::WarehouseSourceDb,
                                                 is_executable: false,
-                                                relations: Some(BTreeSet::from([conn.name.clone()])),
+                                                relations: Some(BTreeSet::from([conn
+                                                    .name
+                                                    .clone()])),
                                                 compiled_obj: None,
                                                 target: None,
                                             },

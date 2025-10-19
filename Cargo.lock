@@ -538,7 +538,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "common",
- "ff_core",
  "parking_lot",
  "serde",
  "serde_json",
@@ -657,11 +656,9 @@ version = "0.1.0"
 dependencies = [
  "catalog",
  "common",
- "ff_core",
  "serde",
  "serde_json",
- "tempfile",
- "test_utils",
+ "sqlparser",
  "thiserror",
 ]
 
@@ -999,6 +996,7 @@ version = "0.1.0"
 dependencies = [
  "catalog",
  "common",
+ "components",
  "dag",
  "executor",
  "log",

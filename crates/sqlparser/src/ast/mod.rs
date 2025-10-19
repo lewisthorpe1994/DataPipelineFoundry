@@ -39,11 +39,10 @@ use core::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "visitor")]
-use sqlparser_derive::{Visit, VisitMut};
-use common::types::Predicate;
 use crate::keywords::Keyword;
 use crate::tokenizer::{Span, Token};
+#[cfg(feature = "visitor")]
+use sqlparser_derive::{Visit, VisitMut};
 
 pub use self::data_type::{
     ArrayElemTypeDef, BinaryLength, CharLengthUnits, CharacterLength, DataType, EnumMember,
@@ -98,15 +97,13 @@ pub use self::value::{
 };
 
 pub use crate::ast::foundry_ast::{
-    CreateModel, CreateModelView,
-    DropStmt, ModelDef, ModelSqlCompileError
+    CreateModel, CreateModelView, DropStmt, ModelDef, ModelSqlCompileError,
 };
 
 #[cfg(feature = "kafka")]
 pub use crate::ast::foundry_ast::{
-    CreateKafkaConnector, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, TransformCall,
-    CreateSimpleMessageTransformPredicate, PredicateReference
+    CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
+    CreateSimpleMessageTransformPredicate, PredicateReference, TransformCall,
 };
 
 use crate::ast::helpers::key_value_options::KeyValueOptions;
@@ -4717,10 +4714,8 @@ impl fmt::Display for Statement {
             Statement::CreateKafkaConnector(create_kafka_connector) => {
                 create_kafka_connector.fmt(f)
             }
-            #[cfg(feature= "kafka")]
-            Statement::CreateSMTPredicate(create_smt_pred) => {
-                create_smt_pred.fmt(f)
-            }
+            #[cfg(feature = "kafka")]
+            Statement::CreateSMTPredicate(create_smt_pred) => create_smt_pred.fmt(f),
             #[cfg(feature = "kafka")]
             Statement::CreateSMTPipeline(create_smtpipe) => create_smtpipe.fmt(f),
             #[cfg(feature = "kafka")]
@@ -9351,7 +9346,6 @@ impl fmt::Display for ReturnStatement {
 pub enum ReturnStatementValue {
     Expr(Expr),
 }
-
 
 #[cfg(test)]
 mod tests {

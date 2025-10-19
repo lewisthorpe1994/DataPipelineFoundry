@@ -56,11 +56,15 @@ impl FoundryConfig {
             .cloned()
     }
 
-    pub fn get_kafka_cluster_conn(&self, cluster_name: &str) -> Result<&KafkaSourceConfig, ConfigError> {
+    pub fn get_kafka_cluster_conn(
+        &self,
+        cluster_name: &str,
+    ) -> Result<&KafkaSourceConfig, ConfigError> {
         let conn = self.kafka_source.get(cluster_name);
-        conn.ok_or(ConfigError::not_found(
-            format!("kafka cluster config for {} not found", cluster_name),
-        ))
+        conn.ok_or(ConfigError::not_found(format!(
+            "kafka cluster config for {} not found",
+            cluster_name
+        )))
     }
 
     pub fn resolve_db_source(&self, name: &str, table: &str) -> Result<String, ConfigError> {

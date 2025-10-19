@@ -1,2 +1,5 @@
 pub mod errors;
-pub mod build;
+pub mod connector;
+pub mod smt;
+pub mod predicates;
+pub mod helpers;

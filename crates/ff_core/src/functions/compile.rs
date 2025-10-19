@@ -2,14 +2,16 @@ use crate::parser::{maybe_parse_kafka_nodes, parse_nodes};
 use catalog::{Compile, KafkaConnectorDecl, MemoryCatalog, Register};
 use common::config::components::global::FoundryConfig;
 use common::error::FFError;
+use common::types::KafkaConnector;
+use components::build::compile_from_catalog;
 use dag::types::DagNodeType;
 use dag::ModelsDag;
+use log::info;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use log::info;
 
 #[derive(Debug, Default)]
 pub struct CompileOptions {
@@ -18,7 +20,7 @@ pub struct CompileOptions {
 
 pub struct CompileOutput {
     pub dag: Arc<ModelsDag>,
-    pub catalog: Arc<MemoryCatalog>
+    pub catalog: Arc<MemoryCatalog>,
 }
 
 #[derive(Debug, Serialize)]
@@ -54,7 +56,6 @@ pub fn compile(config: &FoundryConfig) -> Result<CompileOutput, FFError> {
     // ---------------------------------------------------------------------
     // 1️⃣  Parse models and build the dependency DAG
     // ---------------------------------------------------------------------
-
 
     let nodes = parse_nodes(config).map_err(FFError::compile)?;
     if nodes.is_empty() {
@@ -122,8 +123,8 @@ pub fn compile(config: &FoundryConfig) -> Result<CompileOutput, FFError> {
 
 pub fn compile_kafka_connector(
     config: &FoundryConfig,
-    name: &str
-) -> Result<KafkaConnectorDecl, FFError> {
+    name: &str,
+) -> Result<KafkaConnector, FFError> {
     let catalog = MemoryCatalog::new();
     let nodes = maybe_parse_kafka_nodes(config)
         .map_err(FFError::compile)?
@@ -135,7 +136,10 @@ pub fn compile_kafka_connector(
         .map_err(FFError::compile)?;
 
     info!("connector name: {}", name);
-    catalog.compile_kafka_decl(name, &config).map_err(FFError::compile)
+    let conn =
+        compile_from_catalog(&catalog, name, config).map_err(|e| FFError::compile(e.into()))?;
+
+    Ok(conn)
 }
 
 #[cfg(test)]

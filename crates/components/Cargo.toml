@@ -10,15 +10,10 @@ catalog = { workspace = true, optional = true}
 thiserror = { workspace = true }
 serde = { workspace = true, optional = true}
 serde_json = { workspace = true, optional = true}
-
-[dev-dependencies]
-test_utils = { workspace = true }
-tempfile = "3.20.0"
-ff_core = { workspace = true }
+sqlparser = { workspace = true, optional = true }
 
 [features]
-kafka = ["dep:catalog", "dep:serde_json"]
-kafka-types = ["dep:serde"]
+kafka = ["dep:catalog", "dep:serde_json", "dep:sqlparser", "dep:serde"]
 
 serde = ["dep:serde"]
 
@@ -26,4 +21,3 @@ serde = ["dep:serde"]
 # show kafka APIs in docs.rs builds (optional)
 features = ["kafka-types", "serde"]
 rustdoc-args = ["--cfg", "docsrs"]
-

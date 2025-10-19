@@ -139,21 +139,20 @@ impl KafkaConnectorConfig {
                     .iter()
                     .map(move |(t_name, t)| format!("{}:{}", t_name, s_name))
             })
-        .collect::<Vec<String>>()
-        .join(",")
+            .collect::<Vec<String>>()
+            .join(",")
     }
 
     pub fn column_include_list(&self) -> String {
         self.schema
             .iter()
             .flat_map(|(s_name, schema)| {
-                schema.tables
-                    .iter()
-                    .flat_map(move |(t_name, table)|  {
-                        table.columns
-                            .iter()
-                            .map(move |col| format!("{}.{}.{}", s_name, t_name, col.name))
-                    })
+                schema.tables.iter().flat_map(move |(t_name, table)| {
+                    table
+                        .columns
+                        .iter()
+                        .map(move |col| format!("{}.{}.{}", s_name, t_name, col.name))
+                })
             })
             .collect::<Vec<String>>()
             .join(",")

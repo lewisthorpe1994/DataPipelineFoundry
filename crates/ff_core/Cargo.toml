@@ -9,6 +9,7 @@ serde = {workspace = true}
 serde_json = { workspace = true }
 common = { workspace = true}
 walkdir = "2.5.0"
+components = { workspace = true, features = ["kafka"]}
 sqlparser = { workspace = true}
 dag = { workspace = true}
 catalog = { workspace = true }

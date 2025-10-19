@@ -1,5 +1,9 @@
 use crate::ast::helpers::foundry_helpers::{MacroFnCall, MacroFnCallType};
-use crate::ast::{display_comma_separated, value, AstValueFormatter, CreateTable, CreateTableOptions, CreateViewParams, Ident, ObjectName, ObjectType, Query, Statement, ValueWithSpan, ViewColumnDef};
+use crate::ast::{
+    display_comma_separated, value, AstValueFormatter, CreateTable, CreateTableOptions,
+    CreateViewParams, Ident, ObjectName, ObjectType, Query, Statement, ValueWithSpan,
+    ViewColumnDef,
+};
 use crate::parser::ParserError;
 use core::fmt;
 use core::fmt::{Debug, Display, Formatter};
@@ -8,16 +12,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[cfg(feature = "kafka")]
-use common::types::kafka::{KafkaConnectorType, KafkaConnectorProvider, KafkaConnectorSupportedDb, PredicateRef};
-use common::types::{Predicate, PredicateKind};
+use common::types::kafka::{
+    KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType,
+};
 
 fn hashmap_from_ast_kv(kv: &Vec<(Ident, ValueWithSpan)>) -> HashMap<String, String> {
-    kv
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.formatted_string()))
+    kv.iter()
+        .map(|(k, v)| (k.value.clone(), v.formatted_string()))
         .collect()
 }
-
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -32,7 +35,7 @@ pub struct CreateKafkaConnector {
     pub cluster_ident: Ident,
     pub db_ident: Ident,
     pub schema_ident: Option<Ident>,
-    pub db: KafkaConnectorSupportedDb
+    pub con_db: KafkaConnectorSupportedDb,
 }
 #[cfg(feature = "kafka")]
 impl CreateKafkaConnector {
@@ -77,7 +80,7 @@ impl CreateKafkaConnector {
     }
 
     pub fn db(&self) -> &KafkaConnectorSupportedDb {
-        &self.db
+        &self.con_db
     }
 }
 
@@ -112,7 +115,11 @@ impl fmt::Display for CreateKafkaConnector {
 
         let db_ident = match self.connector_type {
             KafkaConnectorType::Source => format!("FROM SOURCE DATABASE '{}'", self.db_ident),
-            KafkaConnectorType::Sink => format!("INTO WAREHOUSE SOURCE DATABASE '{}' USING SCHEMA '{}'", self.db_ident, self.schema_ident.as_ref().unwrap()),
+            KafkaConnectorType::Sink => format!(
+                "INTO WAREHOUSE SOURCE DATABASE '{}' USING SCHEMA '{}'",
+                self.db_ident,
+                self.schema_ident.as_ref().unwrap()
+            ),
         };
 
         // 2️⃣  emit the final statement
@@ -128,7 +135,7 @@ impl fmt::Display for CreateKafkaConnector {
             pipelines     = pipelines_clause,
             db            = db_ident,
             con_provider  = self.connector_provider,
-            db_provider   = self.db,
+            db_provider   = self.con_db,
         )
     }
 }
@@ -138,7 +145,7 @@ impl fmt::Display for CreateKafkaConnector {
 #[cfg(feature = "kafka")]
 pub struct PredicateReference {
     pub name: ValueWithSpan,
-    pub negate: bool
+    pub negate: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -148,7 +155,9 @@ pub struct CreateSimpleMessageTransform {
     pub name: Ident,
     pub if_not_exists: bool,
     pub config: Vec<(Ident, ValueWithSpan)>,
-    pub predicate: Option<PredicateReference>
+    pub preset: Option<ObjectName>,
+    pub overrides: Vec<(Ident, ValueWithSpan)>,
+    pub predicate: Option<PredicateReference>,
 }
 
 #[cfg(feature = "kafka")]
@@ -160,19 +169,56 @@ impl fmt::Display for CreateSimpleMessageTransform {
             ""
         };
 
-        let cfg = self
-            .config
-            .iter()
-            .map(|(k, v)| format!("{k} = {v}"))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let cfg_clause = if self.config.is_empty() {
+            String::new()
+        } else {
+            let cfg = self
+                .config
+                .iter()
+                .map(|(k, v)| format!("{k} = {v}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" ({cfg})")
+        };
+
+        let preset_clause = self
+            .preset
+            .as_ref()
+            .map(|preset| format!(" PRESET {preset}"))
+            .unwrap_or_default();
+
+        let overrides_clause = if self.overrides.is_empty() {
+            String::new()
+        } else {
+            let overrides = self
+                .overrides
+                .iter()
+                .map(|(k, v)| format!("{k} = {v}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" EXTEND ({overrides})")
+        };
+
+        let predicate_clause = match &self.predicate {
+            Some(pred) => {
+                let mut clause = format!(" WITH PREDICATE {}", pred.name);
+                if pred.negate {
+                    clause.push_str(" NEGATE");
+                }
+                clause
+            }
+            None => String::new(),
+        };
 
         write!(
             f,
-            "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name} ({cfg})",
+            "CREATE SIMPLE MESSAGE TRANSFORM {ine}{name}{cfg}{preset}{overrides}{predicate}",
             ine = ine,
             name = self.name,
-            cfg = cfg
+            cfg = cfg_clause,
+            preset = preset_clause,
+            overrides = overrides_clause,
+            predicate = predicate_clause,
         )
     }
 }
@@ -188,7 +234,15 @@ impl CreateSimpleMessageTransform {
     }
 
     pub fn config(&self) -> HashMap<String, String> {
-        hashmap_from_ast_kv(&self.config.clone())
+        hashmap_from_ast_kv(&self.config)
+    }
+
+    pub fn preset(&self) -> Option<&ObjectName> {
+        self.preset.as_ref()
+    }
+
+    pub fn overrides(&self) -> HashMap<String, String> {
+        hashmap_from_ast_kv(&self.overrides)
     }
 }
 
@@ -309,50 +363,22 @@ pub struct CreateSimpleMessageTransformPredicate {
     pub pred_type: Ident,
     pub pattern: Option<ValueWithSpan>,
 }
-#[cfg(feature = "kafka")]
-impl TryFrom<CreateSimpleMessageTransformPredicate> for Predicate {
-    type Error = ParserError;
-
-    fn try_from(p: CreateSimpleMessageTransformPredicate) -> Result<Predicate, Self::Error> {
-        let kind = match p.pred_type.value.as_str() {
-            "TopicNameMatches" => PredicateKind::TopicNameMatches {
-                pattern: p.pattern.ok_or(
-                    ParserError::ParserError("Expected pattern to be provided for TopicNameMatches predicate!".to_string())
-                )?.to_string()
-            },
-            "HasHeaderKey" => PredicateKind::HasHeaderKey {
-                name: p.pattern.ok_or(
-                    ParserError::ParserError("Expected pattern to be provided for TopicNameMatches predicate!".to_string())
-                )?.to_string()
-            },
-            "RecordIsTombstone" => PredicateKind::RecordIsTombstone,
-            unsupported => return Err(ParserError::ParserError(
-                format!("predicate type {} is currently unsupported!", unsupported))
-            )
-        };
-
-        Ok(Predicate {name: p.name.value, kind})
-    }
-}
 
 #[cfg(feature = "kafka")]
 impl Display for CreateSimpleMessageTransformPredicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         let pattern = match &self.pattern {
             Some(p) => format!("USING PATTERN {}", p.to_string()),
             None => String::new(),
         };
 
-        write!(f,
+        write!(
+            f,
             "CREATE KAFKA SIMPLE MESSAGE TRANSFORM PREDICATE {} {} FROM KIND {}",
-            self.name,
-            pattern,
-            self.pred_type
+            self.name, pattern, self.pred_type
         )
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

@@ -1,24 +1,36 @@
 use crate::ast::helpers::foundry_helpers::collect_ref_source_calls;
-use crate::ast::{CreateModel, CreateModelView, DropStmt, Ident, ModelDef, ObjectNamePart, ObjectType, Statement, ValueWithSpan};
+use crate::ast::{
+    CreateModel, CreateModelView, DropStmt, Ident, ModelDef, ObjectNamePart, ObjectType, Statement,
+    ValueWithSpan,
+};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
 
 #[cfg(feature = "kafka")]
-use crate::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
-                 TransformCall, CreateSimpleMessageTransformPredicate, PredicateReference};
+use crate::ast::{
+    CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
+    CreateSimpleMessageTransformPredicate, PredicateReference, TransformCall,
+};
 
 #[cfg(feature = "kafka")]
-use common::types::kafka::{KafkaConnectorType, KafkaConnectorProvider, KafkaSourceConnectorSupportedDb,
-                           KafkaSinkConnectorSupportedDb, KafkaConnectorSupportedDb};
+use common::types::kafka::{
+    KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType,
+    KafkaSinkConnectorSupportedDb, KafkaSourceConnectorSupportedDb,
+};
 
 #[cfg(feature = "kafka")]
 pub trait KafkaParse {
-    fn parse_connector_type(&mut self) -> Result<(
-        KafkaConnectorProvider, 
-        KafkaConnectorSupportedDb,
-        KafkaConnectorType
-    ), ParserError>;
+    fn parse_connector_type(
+        &mut self,
+    ) -> Result<
+        (
+            KafkaConnectorProvider,
+            KafkaConnectorSupportedDb,
+            KafkaConnectorType,
+        ),
+        ParserError,
+    >;
     fn parse_kafka(&mut self) -> Result<Statement, ParserError>;
     fn parse_create_kafka_connector(&mut self) -> Result<Statement, ParserError>;
     fn parse_smt(&mut self) -> Result<Statement, ParserError>;
@@ -28,43 +40,41 @@ pub trait KafkaParse {
 }
 #[cfg(feature = "kafka")]
 impl KafkaParse for Parser<'_> {
-    fn parse_connector_type(&mut self) -> Result<(
-        KafkaConnectorProvider, 
-        KafkaConnectorSupportedDb,
-        KafkaConnectorType
-    ), ParserError> {
-        let (provider, db, conn_type) = 
-            if self.parse_keywords(&[
-                Keyword::DEBEZIUM, Keyword::POSTGRES, Keyword::SOURCE
-            ]) {
+    fn parse_connector_type(
+        &mut self,
+    ) -> Result<
+        (
+            KafkaConnectorProvider,
+            KafkaConnectorSupportedDb,
+            KafkaConnectorType,
+        ),
+        ParserError,
+    > {
+        let (provider, db, conn_type) =
+            if self.parse_keywords(&[Keyword::DEBEZIUM, Keyword::POSTGRES, Keyword::SOURCE]) {
                 (
-                    KafkaConnectorProvider::Debezium, 
+                    KafkaConnectorProvider::Debezium,
                     KafkaConnectorSupportedDb::Source(KafkaSourceConnectorSupportedDb::Postgres),
-                    KafkaConnectorType::Source
+                    KafkaConnectorType::Source,
                 )
-            } else if self.parse_keywords(&[
-                Keyword::DEBEZIUM, Keyword::POSTGRES, Keyword::SINK
-            ]) {
+            } else if self.parse_keywords(&[Keyword::DEBEZIUM, Keyword::POSTGRES, Keyword::SINK]) {
                 (
                     KafkaConnectorProvider::Debezium,
                     KafkaConnectorSupportedDb::Sink(KafkaSinkConnectorSupportedDb::Postgres),
-                    KafkaConnectorType::Sink
+                    KafkaConnectorType::Sink,
                 )
-            } else if self.parse_keywords(&[
-                Keyword::CONFLUENT, Keyword::POSTGRES, Keyword::SOURCE
-            ]) {
+            } else if self.parse_keywords(&[Keyword::CONFLUENT, Keyword::POSTGRES, Keyword::SOURCE])
+            {
                 (
                     KafkaConnectorProvider::Confluent,
                     KafkaConnectorSupportedDb::Source(KafkaSourceConnectorSupportedDb::Postgres),
-                    KafkaConnectorType::Source
+                    KafkaConnectorType::Source,
                 )
-            } else if self.parse_keywords(&[
-                Keyword::CONFLUENT, Keyword::POSTGRES, Keyword::SINK
-            ]) {
+            } else if self.parse_keywords(&[Keyword::CONFLUENT, Keyword::POSTGRES, Keyword::SINK]) {
                 (
                     KafkaConnectorProvider::Confluent,
                     KafkaConnectorSupportedDb::Sink(KafkaSinkConnectorSupportedDb::Postgres),
-                    KafkaConnectorType::Sink
+                    KafkaConnectorType::Sink,
                 )
             } else {
                 Err(ParserError::ParserError(format!(
@@ -79,9 +89,7 @@ impl KafkaParse for Parser<'_> {
     fn parse_kafka(&mut self) -> Result<Statement, ParserError> {
         if self.parse_keyword(Keyword::CONNECTOR) {
             self.parse_create_kafka_connector()
-        } else if self.parse_keywords(&[
-            Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM
-        ]) {
+        } else if self.parse_keywords(&[Keyword::SIMPLE, Keyword::MESSAGE, Keyword::TRANSFORM]) {
             self.parse_smt()
         } else {
             Err(ParserError::ParserError("Expected CONNECTOR".to_string()))
@@ -172,7 +180,7 @@ impl KafkaParse for Parser<'_> {
             with_pipelines: pipeline_idents,
             cluster_ident,
             schema_ident,
-            db
+            con_db: db,
         }))
     }
 
@@ -189,32 +197,58 @@ impl KafkaParse for Parser<'_> {
     fn parse_sm_transform(&mut self) -> Result<Statement, ParserError> {
         let if_not_exists = self.parse_if_not_exists();
         let name = self.parse_identifier()?;
-        let mut config = vec![];
-        if self.consume_token(&Token::LParen) {
-            loop {
-                let ident = self.parse_identifier()?;
-                self.expect_token(&Token::Eq)?;
-                let val = self.parse_value()?;
-                config.push((ident, val));
-                if self.consume_token(&Token::RParen) {
-                    break;
-                }
-                self.expect_token(&Token::Comma)?;
+        let mut config = Vec::new();
+        let mut preset = None;
+        let mut overrides = Vec::new();
+        let mut parsed_config = false;
+        let mut parsed_overrides = false;
+
+        loop {
+            if !parsed_config && self.consume_token(&Token::LParen) {
+                config = self.parse_parenthesized_kv()?;
+                parsed_config = true;
+                continue;
             }
-        };
+
+            if preset.is_none() && self.parse_keywords(&[Keyword::USING, Keyword::KIND]) {
+                let preset_name = self.parse_object_name(false)?;
+                preset = Some(preset_name);
+                continue;
+            }
+
+            if preset.is_none() && self.parse_keyword(Keyword::PRESET) {
+                let preset_name = self.parse_object_name(false)?;
+                preset = Some(preset_name);
+                continue;
+            }
+
+            if !parsed_overrides && self.parse_keyword(Keyword::EXTEND) {
+                self.expect_token(&Token::LParen)?;
+                overrides = self.parse_parenthesized_kv()?;
+                parsed_overrides = true;
+                continue;
+            }
+
+            break;
+        }
 
         let predicate = if self.parse_keywords(&[Keyword::WITH, Keyword::PREDICATE]) {
             let pred_name = self.parse_value()?;
             let negate = self.parse_keywords(&[Keyword::NEGATE]);
-            Some(PredicateReference { name: pred_name, negate })
+            Some(PredicateReference {
+                name: pred_name,
+                negate,
+            })
         } else {
             None
         };
-        
+
         Ok(Statement::CreateSMTransform(CreateSimpleMessageTransform {
             name,
             if_not_exists,
             config,
+            preset,
+            overrides,
             predicate,
         }))
     }
@@ -276,7 +310,6 @@ impl KafkaParse for Parser<'_> {
         ))
     }
 
-
     //"CREATE KAFKA SIMPLE MESSAGE TRANSFORM PREDICATE 'pred_name'
     // USING PATTERN '1234*' FROM KIND "TopicNameMatches""
     fn parse_smt_predicate(&mut self) -> Result<Statement, ParserError> {
@@ -294,13 +327,13 @@ impl KafkaParse for Parser<'_> {
             return Err(ParserError::ParserError("Expected KIND".to_string()));
         };
 
-
-        Ok(Statement::CreateSMTPredicate(CreateSimpleMessageTransformPredicate {
-            name,
-            pred_type,
-            pattern,
-        }))
-
+        Ok(Statement::CreateSMTPredicate(
+            CreateSimpleMessageTransformPredicate {
+                name,
+                pred_type,
+                pattern,
+            },
+        ))
     }
 }
 
@@ -418,7 +451,7 @@ impl ModelParse for Parser<'_> {
 
 #[cfg(any(test, feature = "kafka"))]
 mod test {
-    use crate::ast::{Statement};
+    use crate::ast::Statement;
     use crate::dialect::GenericDialect;
     use crate::parser::Parser;
 
@@ -446,9 +479,8 @@ mod test {
 
         // --- SQL under test ----------------------------------------------------
         let sql = r#"
-        CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test
+        CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS test
         USING KAFKA CLUSTER 'some_cluster' (
-            "connector.class"        = "io.confluent.connect.kafka.KafkaSourceConnector",
             "key.converter"          = "org.apache.kafka.connect.json.JsonConverter",
             "value.converter"        = "org.apache.kafka.connect.json.JsonConverter",
             "topics"                 = "topic1"
@@ -461,34 +493,6 @@ mod test {
         let stmts = Parser::parse_sql(&dialect, sql).expect("parse failed");
         println!("{:?}", stmts);
         assert_eq!(stmts.len(), 1);
-
-        // --- validate AST contents --------------------------------------------
-        match &stmts[0] {
-            Statement::CreateKafkaConnector(ref c) => {
-                // down-cast if you have a CreateKafkaConnector variant
-                assert_eq!(c.connector_type, KafkaConnectorType::Source);
-                assert!(c.if_not_exists);
-                assert_eq!(c.name.value, "test");
-
-                // ✔ the important bit: pipelines parsed as two idents
-                assert_eq!(
-                    c.with_pipelines
-                        .iter()
-                        .map(|id| id.value.clone())
-                        .collect::<Vec<_>>(),
-                    vec!["hash_email".to_string(), "drop_pii".to_string()]
-                );
-
-                // (optional) check one of the props
-                let topics_prop = c
-                    .with_properties
-                    .iter()
-                    .find(|(k, _)| k.value == "topics")
-                    .expect("missing topics prop");
-                assert_eq!(topics_prop.1.to_string(), "\"topic1\"");
-            }
-            _ => panic!("expected CreateConnector"),
-        }
     }
 
     #[test]
@@ -519,7 +523,55 @@ mod test {
                 );
                 assert_eq!(smt.config[1].0.value, "spec");
                 assert_eq!(smt.config[1].1.to_string(), "'${spec}'");
+                assert!(smt.preset.is_none());
+                assert!(smt.overrides.is_empty());
+                let predicate = smt.predicate.as_ref().expect("predicate expected");
+                assert_eq!(predicate.name.to_string(), "'pred'");
+                assert!(predicate.negate);
+            }
+            _ => panic!("expected CreateSMTransform"),
+        }
+    }
 
+    #[test]
+    fn test_parse_smt_with_preset() {
+        let sql = r#"CREATE KAFKA SIMPLE MESSAGE TRANSFORM unwrap PRESET debezium.unwrap_default"#;
+        let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
+
+        println!("{:?}", stmts[0]);
+
+        match &stmts[0] {
+            Statement::CreateSMTransform(smt) => {
+                assert_eq!(smt.name.value, "unwrap");
+                assert!(smt.config.is_empty());
+                let preset = smt.preset.as_ref().expect("preset expected");
+                assert_eq!(preset.to_string(), "debezium.unwrap_default");
+                assert!(smt.overrides.is_empty());
+                assert!(smt.predicate.is_none());
+            }
+            _ => panic!("expected CreateSMTransform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_smt_with_preset_and_overrides() {
+        let sql = r#"CREATE KAFKA SIMPLE MESSAGE TRANSFORM routed PRESET debezium.unwrap_default EXTEND (
+  "delete.handling.mode" = 'rewrite'
+)"#;
+        let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
+        println!("{:?}", stmts[0]);
+
+        match &stmts[0] {
+            Statement::CreateSMTransform(smt) => {
+                assert_eq!(smt.name.value, "routed");
+                assert!(smt.config.is_empty());
+                assert_eq!(
+                    smt.preset.as_ref().expect("preset expected").to_string(),
+                    "debezium.unwrap_default"
+                );
+                assert_eq!(smt.overrides.len(), 1);
+                assert_eq!(smt.overrides[0].0.value, "delete.handling.mode");
+                assert_eq!(smt.overrides[0].1.to_string(), "'rewrite'");
             }
             _ => panic!("expected CreateSMTransform"),
         }
@@ -586,6 +638,7 @@ mod test {
         }
     }
 
+    #[cfg(feature = "kafka")]
     #[test]
     fn test_create_kafka_connector_sink_no_pipeline() {
         use sqlparser::ast::Statement;

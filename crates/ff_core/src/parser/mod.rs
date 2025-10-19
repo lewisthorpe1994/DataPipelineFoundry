@@ -5,9 +5,9 @@ use common::traits::IsFileExtension;
 use common::types::sources::SourceType;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
+use log::warn;
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
-use log::warn;
 use walkdir::WalkDir;
 
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {

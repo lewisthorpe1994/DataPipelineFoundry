@@ -2,10 +2,10 @@ use clap::{Args, Subcommand};
 use common::config::loader::read_config;
 use common::error::FFError;
 use ff_core::functions::compile::{compile, compile_kafka_connector, CompileOptions};
+use log::info;
 use shared_clients::kafka::KafkaConnectClient;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
-use log::info;
 
 #[derive(Debug, Subcommand)]
 pub enum CompileSubcommand {
@@ -43,7 +43,6 @@ pub fn handle_compile(args: &CompileArgs, config_path: Option<PathBuf>) -> Resul
         }
         Some(CompileSubcommand::KafkaConnector(k)) => {
             let compiled = compile_kafka_connector(&cfg, &k.name)?;
-
 
             if k.validate {
                 let cluster = cfg

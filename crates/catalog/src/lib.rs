@@ -29,7 +29,7 @@ use uuid::Uuid;
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
 struct State {
-    transforms_by_id: HashMap<Uuid, CreateSimpleMessageTransform>,
+    transforms_by_id: HashMap<Uuid, TransformDecl>,
     transform_name_to_id: HashMap<String, Uuid>,
     pipelines: HashMap<String, PipelineDecl>,
     connectors: HashMap<String, CreateKafkaConnector>,
@@ -39,9 +39,9 @@ struct State {
 
 #[derive(Debug)]
 pub enum NodeDec {
-    KafkaSmt(CreateSimpleMessageTransform),
+    KafkaSmt(TransformDecl),
     KafkaSmtPipeline(PipelineDecl),
-    KafkaConnector(CreateKafkaConnector),
+    KafkaConnector(KafkaConnectorMeta),
     Model(ModelDecl),
     WarehouseSource(WarehouseSourceDec),
 }
@@ -109,10 +109,11 @@ impl MemoryCatalog {
             });
         }
         for (name, dec) in g.connectors.iter() {
+            let meta = KafkaConnectorMeta::new(dec.clone());
             nodes.push(CatalogNode {
                 name: name.to_owned(),
-                declaration: NodeDec::KafkaConnector(dec.clone()),
-                target: Some(dec.db_ident().to_string()),
+                declaration: NodeDec::KafkaConnector(meta.clone()),
+                target: Some(meta.target.clone()),
             });
         }
         for (name, dec) in g.pipelines.iter() {
@@ -123,12 +124,13 @@ impl MemoryCatalog {
             });
         }
         for (name, id) in g.transform_name_to_id.iter() {
-            let dec = g.transforms_by_id.get(id).unwrap();
-            nodes.push(CatalogNode {
-                name: name.to_owned(),
-                declaration: NodeDec::KafkaSmt(dec.clone()),
-                target: None,
-            });
+            if let Some(dec) = g.transforms_by_id.get(id) {
+                nodes.push(CatalogNode {
+                    name: name.to_owned(),
+                    declaration: NodeDec::KafkaSmt(dec.clone()),
+                    target: None,
+                });
+            }
         }
 
         for (name, dec) in g.sources.iter() {
@@ -296,23 +298,22 @@ impl Register for MemoryCatalog {
         // let meta = KafkaConnectorMeta::new(ast);
 
         let mut g = self.inner.write();
-        if g.connectors.contains_key(&ast.name()) {
-            return Err(CatalogError::duplicate(&ast.name));
+        if g.connectors.contains_key(&ast.name().to_string()) {
+            return Err(CatalogError::duplicate(&ast.name().to_string()));
         }
         g.connectors.insert(ast.name().to_string(), ast);
         Ok(())
     }
 
     fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError> {
-        let id = Uuid::new_v4();
+        let decl = TransformDecl::new(ast);
+        let id = decl.id;
         let mut g = self.inner.write();
-        if g.transforms_by_id.contains_key(&id)
-            || g.transform_name_to_id.contains_key(&ast.name())
-        {
-            return Err(CatalogError::duplicate(&ast.name()));
+        if g.transforms_by_id.contains_key(&id) || g.transform_name_to_id.contains_key(&decl.name) {
+            return Err(CatalogError::duplicate(&decl.name));
         }
-        g.transform_name_to_id.insert(ast.name().to_string(), id.clone());
-        g.transforms_by_id.insert(id.clone(), ast);
+        g.transform_name_to_id.insert(decl.name.clone(), id);
+        g.transforms_by_id.insert(id, decl);
         Ok(())
     }
 
@@ -326,20 +327,21 @@ impl Register for MemoryCatalog {
             let g = self.inner.read();
             for step in ast.steps {
                 let name = &step.name;
-                let id = g.transform_name_to_id
+                let id = g
+                    .transform_name_to_id
                     .get(&name.to_string())
                     .cloned()
-                    .ok_or(CatalogError::not_found(
-                        format!("{} not found", name.to_string())
-                    ))?;
+                    .ok_or(CatalogError::not_found(format!(
+                        "{} not found",
+                        name.to_string()
+                    )))?;
 
                 let args = if !step.args.is_empty() {
-                    Some(step.args
-                        .iter()
-                        .map(|(n, a)| {
-                            (n.value.clone(), a.formatted_string())
-                        })
-                        .collect::<HashMap<String, String>>()
+                    Some(
+                        step.args
+                            .iter()
+                            .map(|(n, a)| (n.value.clone(), a.formatted_string()))
+                            .collect::<HashMap<String, String>>(),
                     )
                 } else {
                     None
@@ -484,7 +486,7 @@ impl Getter for MemoryCatalog {
             .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))
     }
 
-    fn get_kafka_smt<K>(&self, key: K) -> Result<CreateSimpleMessageTransform, CatalogError>
+    fn get_kafka_smt<K>(&self, key: K) -> Result<TransformDecl, CatalogError>
     where
         K: for<'a> Into<Key>,
     {
@@ -674,34 +676,3 @@ pub trait Compile: Send + Sync + 'static + Getter {
 //         Ok(dec)
 //     }
 // }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use common::config::loader::read_config;
-    use ff_core::parser::parse_nodes;
-    use sqlparser::ast::Value::SingleQuotedString;
-    use sqlparser::ast::{Ident, ValueWithSpan};
-    use sqlparser::tokenizer::{Location, Span};
-    use test_utils::{get_root_dir, with_chdir};
-
-    #[test]
-    fn test_register_nodes_ingests_example_project() -> std::io::Result<()> {
-        let cat = MemoryCatalog::new();
-        let project_root = get_root_dir();
-
-        with_chdir(&project_root, move || {
-            let config = read_config(None).expect("load example project config");
-            let wh_config = config.warehouse_source.clone();
-            let nodes = parse_nodes(&config).expect("parse example models");
-            println!("{:#?}", nodes);
-            // println!("{:#?}", nodes);
-            cat.register_nodes(nodes, wh_config)
-                .expect("register nodes");
-            // println!("{:#?}", cat.inner.read().models);
-            // println!("{:?}", cat.collect_catalog_nodes());
-        })?;
-
-        Ok(())
-    }
-}

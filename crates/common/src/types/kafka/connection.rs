@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::config::components::connections::AdapterConnectionDetails;
 use crate::traits::ToSerdeMap;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SourceDbConnectionInfo {

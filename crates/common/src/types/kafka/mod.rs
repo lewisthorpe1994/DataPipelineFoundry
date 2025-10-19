@@ -1,9 +1,7 @@
-pub mod connector;
-pub mod smt;
-pub mod predicates;
 pub mod connection;
+pub mod connector;
 
-pub use connector::*;
-pub use smt::*;
-pub use predicates::*;
+
 pub use connection::*;
+pub use connector::*;
+

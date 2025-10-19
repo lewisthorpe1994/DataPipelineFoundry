@@ -1,8 +1,6 @@
 use crate::ast::{
-    display_comma_separated, value, CreateTable, CreateTableOptions, CreateViewParams, Expr,
-    Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
-    ObjectName, ObjectType, Query, SetExpr, Statement, TableFactor,
-    TableWithJoins, Value, ValueWithSpan, ViewColumnDef,
+    Expr, Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
+    Query, SetExpr, TableFactor, TableWithJoins, ValueWithSpan,
 };
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
