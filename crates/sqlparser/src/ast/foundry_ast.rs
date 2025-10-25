@@ -30,6 +30,7 @@ pub struct CreateKafkaConnector {
     pub if_not_exists: bool,
     pub connector_type: KafkaConnectorType,
     pub connector_provider: KafkaConnectorProvider,
+    pub connector_version: ValueWithSpan,
     pub with_properties: Vec<(Ident, ValueWithSpan)>,
     pub with_pipelines: Vec<Ident>,
     pub cluster_ident: Ident,

@@ -1,4 +1,3 @@
-CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS unwrap_router (
-    unwrap,
-    reroute("topic.regex" = 'postgres-(*)', "topic.replacement" = "$2")
-);
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE preset_pipe (
+    reroute
+)

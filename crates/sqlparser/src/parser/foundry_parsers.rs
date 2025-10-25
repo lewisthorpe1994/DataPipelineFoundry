@@ -96,6 +96,16 @@ impl KafkaParse for Parser<'_> {
         }
     }
 
+    //CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS test_connector
+    // USING KAFKA CLUSTER 'test_cluster' (
+    //     "connector.class" = "io.debezium.connector.postgresql.PostgresConnector",
+    //     "database.hostname" = "localhost",
+    //     "database.user" = "app",
+    //     "database.password" = "secret",
+    //     "database.dbname" = "app_db",
+    //     "topic.prefix" = "app"
+    // ) WITH CONNECTOR VERSION '3.1' AND PIPELINES(preset_pipe)
+    // FROM SOURCE DATABASE 'adapter_source'
     fn parse_create_kafka_connector(&mut self) -> Result<Statement, ParserError> {
         if !self.parse_keyword(Keyword::KIND) {
             return Err(ParserError::ParserError("Expected KIND".to_string()));
@@ -130,18 +140,26 @@ impl KafkaParse for Parser<'_> {
             }
         }
         let mut pipeline_idents = vec![];
-        if self.parse_keywords(&[Keyword::WITH, Keyword::PIPELINES]) {
-            if self.consume_token(&Token::LParen) {
-                loop {
-                    let ident = self.parse_identifier()?;
-                    pipeline_idents.push(ident);
-                    if self.consume_token(&Token::RParen) {
-                        break;
+        let version = if self.parse_keywords(&[
+            Keyword::WITH, Keyword::CONNECTOR, Keyword::VERSION
+        ]) {
+            let v_ident = self.parse_value()?;
+            if self.parse_keywords(&[Keyword::AND, Keyword::PIPELINES]) {
+                if self.consume_token(&Token::LParen) {
+                    loop {
+                        let ident = self.parse_identifier()?;
+                        pipeline_idents.push(ident);
+                        if self.consume_token(&Token::RParen) {
+                            break;
+                        }
+                        self.expect_token(&Token::Comma)?;
                     }
-                    self.expect_token(&Token::Comma)?;
                 }
             }
-        }
+            v_ident
+        } else {
+            return Err(ParserError::ParserError("Expected connector version to be specified".to_string()))
+        };
         let (db_ident, schema_ident) = match &connector_type {
             KafkaConnectorType::Source => {
                 if self.parse_keywords(&[Keyword::FROM, Keyword::SOURCE, Keyword::DATABASE]) {
@@ -176,6 +194,7 @@ impl KafkaParse for Parser<'_> {
             db_ident,
             connector_type,
             connector_provider: provider,
+            connector_version: version,
             with_properties: properties,
             with_pipelines: pipeline_idents,
             cluster_ident,
@@ -479,13 +498,15 @@ mod test {
 
         // --- SQL under test ----------------------------------------------------
         let sql = r#"
-        CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS test
-        USING KAFKA CLUSTER 'some_cluster' (
-            "key.converter"          = "org.apache.kafka.connect.json.JsonConverter",
-            "value.converter"        = "org.apache.kafka.connect.json.JsonConverter",
-            "topics"                 = "topic1"
-        ) WITH PIPELINES(hash_email, drop_pii)
-        FROM SOURCE DATABASE 'some_source_db';
+        CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE test_connector
+        USING KAFKA CLUSTER 'test_cluster' (
+            "database.hostname" = "localhost",
+            "database.user" = "app",
+            "database.password" = "secret",
+            "database.dbname" = "app_db",
+            "topic.prefix" = "app"
+        ) WITH CONNECTOR VERSION '3.1' AND PIPELINES(preset_pipe)
+        FROM SOURCE DATABASE 'adapter_source'
     "#;
 
         // --- parse -------------------------------------------------------------

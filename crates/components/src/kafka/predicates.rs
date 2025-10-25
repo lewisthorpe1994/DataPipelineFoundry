@@ -1,7 +1,9 @@
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use catalog::PredicateDecl;
 use sqlparser::ast::{AstValueFormatter, PredicateReference};
+use crate::errors::KafkaConnectorCompileError;
 /* ====================== Predicates ====================== */
 
 #[derive(Debug, Clone)]
@@ -17,6 +19,30 @@ pub enum PredicateKind {
         class: String,
         props: HashMap<String, String>,
     },
+}
+impl PredicateKind {
+    pub fn new(
+        pattern: Option<String>, 
+        kind: &str
+    ) -> Result<PredicateKind, KafkaConnectorCompileError> {
+        let pred = match kind { 
+            "TopicNameMatches" => PredicateKind::TopicNameMatches { 
+                pattern: pattern
+                    .ok_or(
+                        KafkaConnectorCompileError::missing_config(
+                    format!("missing pattern for {}", kind))
+                    )?
+            },
+            "RecordIsTombstone" => PredicateKind::RecordIsTombstone,
+            "HasHeaderKey" => PredicateKind::HasHeaderKey { name: pattern.ok_or(
+                KafkaConnectorCompileError::missing_config(
+                format!("missing pattern for {}", kind))
+                )?
+            },
+            _ => return Err(KafkaConnectorCompileError::unsupported(kind.to_string()))
+        };
+        Ok(pred)
+    }
 }
 
 impl PredicateKind {
@@ -35,6 +61,7 @@ impl PredicateKind {
         }
     }
 }
+
 
 /// A declared predicate = name + kind (like your `Transform`)
 #[derive(Debug, Clone)]

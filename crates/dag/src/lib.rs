@@ -15,6 +15,7 @@ use sqlparser::ast::ModelSqlCompileError;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
+use components::KafkaConnector;
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -309,10 +310,9 @@ impl ModelsDag {
                                 }
                             };
 
-                            let compiled = registry
-                                .compile_kafka_decl(&c_node.name, &config)
-                                .map_err(|e| DagError::ast_syntax(e.to_string()))?
-                                .to_string();
+                            let compiled = KafkaConnector::compile_from_catalog(
+                                &registry, &c_node.name, &config
+                            )?;
 
                             // Add connector
                             self.upsert_node(
@@ -324,7 +324,7 @@ impl ModelsDag {
                                     node_type: DagNodeType::KafkaSourceConnector,
                                     is_executable: true,
                                     relations: Some(conn_rels.clone()),
-                                    compiled_obj: Some(compiled),
+                                    compiled_obj: Some(compiled.to_json_string()?),
                                     target: c_node.target.clone(),
                                 },
                             )?;
@@ -390,10 +390,9 @@ impl ModelsDag {
                                 rels.extend(pipelines)
                             }
 
-                            let compiled = registry
-                                .compile_kafka_decl(&c_node.name, &config)
-                                .map_err(|e| DagError::ast_syntax(e.to_string()))?
-                                .to_string();
+                            let compiled = KafkaConnector::compile_from_catalog(
+                                &registry, &c_node.name, &config
+                            )?;
 
                             self.upsert_node(
                                 conn.name.clone(),
@@ -404,7 +403,7 @@ impl ModelsDag {
                                     node_type: DagNodeType::KafkaSinkConnector,
                                     is_executable: true,
                                     relations: Some(rels),
-                                    compiled_obj: Some(compiled),
+                                    compiled_obj: Some(compiled.to_json_string()?),
                                     target: c_node.target.clone(),
                                 },
                             )?;

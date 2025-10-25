@@ -398,3 +398,7 @@ impl Serialize for Transforms {
         map.end()
     }
 }
+
+pub trait Transformable {
+    fn set_transforms(&mut self, transforms: &Option<Transforms>);
+}

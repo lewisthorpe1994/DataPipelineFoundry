@@ -188,7 +188,6 @@ impl KafkaConnectClient {
     pub async fn validate_connector(
         &self,
         connector_class: &str,
-        connector_name: &str,
         config: &Value,
     ) -> Result<(), KafkaConnectClientError> {
         let client = Client::new();
@@ -196,12 +195,8 @@ impl KafkaConnectClient {
             "{}/connector-plugins/{}/config/validate",
             &self.host, connector_class
         );
-        let payload = KafkaConnectorDeployConfig {
-            name: connector_name.to_string(),
-            config: config.clone(),
-        };
 
-        let resp = client.post(url).json(&payload).send().await?;
+        let resp = client.post(url).json(&config).send().await?;
         let status = resp.status();
 
         if status.is_success() {

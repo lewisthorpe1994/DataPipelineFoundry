@@ -29,7 +29,7 @@ pub struct KafkaConnectorArgs {
 
     /// Validate the compiled connector against the Kafka Connect REST API
     #[arg(long)]
-    pub validate: bool,
+    pub validate_against: Option<String>,
 }
 
 /// Compile the current project using settings from `foundry-project.yml`.
@@ -44,35 +44,25 @@ pub fn handle_compile(args: &CompileArgs, config_path: Option<PathBuf>) -> Resul
         Some(CompileSubcommand::KafkaConnector(k)) => {
             let compiled = compile_kafka_connector(&cfg, &k.name)?;
 
-            if k.validate {
+            if let Some(cluster_name) = k.validate_against.as_ref() {
                 let cluster = cfg
                     .kafka_source
-                    .get(&compiled.cluster_name)
+                    .get(cluster_name)
                     .ok_or_else(|| {
                         FFError::compile_msg(format!(
                             "Kafka cluster '{}' not found for connector '{}'",
-                            compiled.cluster_name, compiled.name
+                            cluster_name, compiled.name
                         ))
                     })?;
 
-                let connector_class = compiled
-                    .config
-                    .get("connector.class")
-                    .and_then(|value| value.as_str())
-                    .ok_or_else(|| {
-                        FFError::compile_msg(
-                            "Compiled connector config is missing the `connector.class` property",
-                        )
-                    })?;
 
                 let runtime = Runtime::new().map_err(FFError::compile)?;
                 let client = KafkaConnectClient::new(&cluster.connect.host, &cluster.connect.port);
 
                 runtime
                     .block_on(client.validate_connector(
-                        connector_class,
-                        &compiled.name,
-                        &compiled.config,
+                        &compiled.config.connector_class(),
+                        &compiled.to_json().map_err(FFError::compile)?,
                     ))
                     .map_err(FFError::compile)?;
 

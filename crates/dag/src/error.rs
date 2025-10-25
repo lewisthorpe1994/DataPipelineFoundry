@@ -2,6 +2,7 @@ use common::error::diagnostics::DiagnosticMessage;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use std::io;
 use thiserror::Error;
+use components::errors::KafkaConnectorCompileError;
 
 #[derive(Debug, Error)]
 pub enum DagError {
@@ -25,6 +26,8 @@ pub enum DagError {
     ExecutionError { context: DiagnosticMessage },
     #[error("invalid direction: {context}")]
     InvalidDirection { context: DiagnosticMessage },
+    #[error("unexpected error: {context}")]
+    UnexpectedError { context: DiagnosticMessage },
 }
 
 impl DagError {
@@ -77,6 +80,13 @@ impl DagError {
             context: DiagnosticMessage::new(message.into()),
         }
     }
+    
+    #[track_caller]
+    pub fn unexpected_error(message: impl Into<String>) -> Self {
+        Self::UnexpectedError {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
 }
 
 impl From<io::Error> for DagError {
@@ -101,6 +111,23 @@ impl From<DagError> for JinjaError {
                 JinjaError::new(JinjaErrorKind::UndefinedError, message)
             }
             other => JinjaError::new(JinjaErrorKind::UndefinedError, other.to_string()),
+        }
+    }
+}
+
+impl From<KafkaConnectorCompileError> for DagError {
+    fn from(value: KafkaConnectorCompileError) -> Self {
+        match value {
+            KafkaConnectorCompileError::Duplicate { context } | 
+            KafkaConnectorCompileError::MissingConfig { context } |
+            KafkaConnectorCompileError::ValidationError { context} |
+            KafkaConnectorCompileError::Unsupported { context} |
+            KafkaConnectorCompileError::ConfigError { context } |
+            KafkaConnectorCompileError::SerdeJson {context, ..} |
+            KafkaConnectorCompileError::NotFound { context } |
+            KafkaConnectorCompileError::UnexpectedError { context } => { 
+                DagError::UnexpectedError { context }
+            },
         }
     }
 }

@@ -3,10 +3,7 @@ pub mod models;
 mod tests;
 
 pub use models::*;
-use sqlparser::ast::{
-    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, ModelDef,
-};
+use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate, ModelDef};
 
 use crate::error::CatalogError;
 use common::config::components::global::FoundryConfig;
@@ -15,7 +12,6 @@ use common::types::kafka::{KafkaConnectorType, SinkDbConnectionInfo, SourceDbCon
 use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
-use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, Value};
 use sqlparser::ast::helpers::foundry_helpers::{AstValueFormatter, MacroFnCall, MacroFnCallType};
@@ -35,6 +31,7 @@ struct State {
     connectors: HashMap<String, CreateKafkaConnector>,
     models: HashMap<String, ModelDecl>,
     sources: HashMap<String, DbConfig>,
+    predicates: HashMap<String, PredicateDecl>
 }
 
 #[derive(Debug)]
@@ -204,6 +201,11 @@ pub trait Register: Send + Sync + 'static {
         &self,
         warehouse_sources: HashMap<String, DbConfig>,
     ) -> Result<(), CatalogError>;
+    
+    fn register_kafka_smt_predicate(
+        &self, 
+        ast: CreateSimpleMessageTransformPredicate,
+    ) -> Result<(), CatalogError>;
 }
 
 fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
@@ -283,6 +285,9 @@ impl Register for MemoryCatalog {
                         CatalogError::missing_config("Missing target name for model")
                     })?,
                 )?,
+                Statement::CreateSMTPredicate(stmt) => {
+                    self.register_kafka_smt_predicate(stmt)?;
+                }
                 _ => (),
             }
         } else {
@@ -460,6 +465,23 @@ impl Register for MemoryCatalog {
         g.sources = warehouse_sources;
         Ok(())
     }
+
+    fn register_kafka_smt_predicate(
+        &self, 
+        ast: CreateSimpleMessageTransformPredicate
+    ) -> Result<(), CatalogError> {
+        let mut g = self.inner.write();
+        let id = ast.name.value;
+        let pred = PredicateDecl {
+            name: id.clone(),
+            class_name: ast.pred_type.value,
+            pattern: ast.pattern.map(|p| p.formatted_string()),
+        };
+        
+        g.predicates.insert(id, pred);
+        
+        Ok(())
+    }
 }
 
 pub trait Getter: Send + Sync + 'static {
@@ -474,6 +496,7 @@ pub trait Getter: Send + Sync + 'static {
     ) -> Result<Vec<Uuid>, CatalogError>;
 
     fn get_model(&self, name: &str) -> Result<ModelDecl, CatalogError>;
+    fn get_smt_predicate(&self, name: &str) -> Result<PredicateDecl, CatalogError>;
 }
 
 impl Getter for MemoryCatalog {
@@ -540,6 +563,14 @@ impl Getter for MemoryCatalog {
     fn get_model(&self, name: &str) -> Result<ModelDecl, CatalogError> {
         let g = self.inner.read();
         g.models
+            .get(name)
+            .cloned()
+            .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))
+    }
+
+    fn get_smt_predicate(&self, name: &str) -> Result<PredicateDecl, CatalogError> {
+        let g = self.inner.read();
+        g.predicates
             .get(name)
             .cloned()
             .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))

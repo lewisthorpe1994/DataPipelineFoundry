@@ -656,10 +656,30 @@ version = "0.1.0"
 dependencies = [
  "catalog",
  "common",
+ "connector_versioning",
+ "connector_versioning_derive",
  "serde",
  "serde_json",
  "sqlparser",
  "thiserror",
+]
+
+[[package]]
+name = "connector_versioning"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "connector_versioning_derive"
+version = "0.1.0"
+dependencies = [
+ "connector_versioning",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -739,6 +759,7 @@ version = "0.1.0"
 dependencies = [
  "catalog",
  "common",
+ "components",
  "env_logger",
  "ff_core",
  "log",

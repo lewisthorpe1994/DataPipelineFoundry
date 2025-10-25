@@ -13,6 +13,7 @@ sqlparser = { workspace = true }
 log = "0.4.27"
 env_logger = "0.11.8"
 thiserror = { workspace = true }
+components = { workspace = true, features = ["kafka"]}
 
 [dev-dependencies]
 test_utils = { workspace = true }

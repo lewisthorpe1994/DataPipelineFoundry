@@ -5,10 +5,7 @@ use common::types::{KafkaConnectorProvider, Materialize, ModelRef, SourceRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use sqlparser::ast::helpers::foundry_helpers::KvPairs;
-use sqlparser::ast::{
-    AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate,
-};
+use sqlparser::ast::{AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate, PredicateReference};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
@@ -20,7 +17,9 @@ pub struct TransformDecl {
     pub config: serde_json::Value,
     pub created: DateTime<Utc>,
     pub sql: CreateSimpleMessageTransform,
+    pub predicate: Option<PredicateRefDecl>
 }
+
 impl TransformDecl {
     pub fn new(ast: CreateSimpleMessageTransform) -> Self {
         let sql = ast.clone();
@@ -31,6 +30,10 @@ impl TransformDecl {
             config: KvPairs(ast.config).into(),
             created: Utc::now(),
             sql,
+            predicate: ast.predicate.map(|p| PredicateRefDecl {
+                name: p.name.formatted_string(),
+                negate: p.negate
+            })
         }
     }
 }
@@ -79,6 +82,7 @@ pub struct KafkaConnectorMeta {
     pub target: String,
     pub target_schema: Option<String>, // this is only used on sink connectors
     pub conn_provider: KafkaConnectorProvider,
+    pub version: String
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -109,8 +113,22 @@ impl KafkaConnectorMeta {
             sql,
             pipelines,
             conn_provider: ast.connector_provider,
+            version: ast.connector_version.formatted_string()
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredicateDecl {
+    pub name: String,
+    pub class_name: String,
+    pub pattern: Option<String>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredicateRefDecl {
+    pub name: String, 
+    pub negate: bool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
