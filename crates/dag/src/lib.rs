@@ -6,6 +6,7 @@ use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, Transiti
 use catalog::{Compile, Getter, IntoRelation, MemoryCatalog, NodeDec};
 use common::config::components::global::FoundryConfig;
 use common::types::kafka::KafkaConnectorType;
+use components::KafkaConnector;
 use log::{info, warn};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -15,7 +16,6 @@ use sqlparser::ast::ModelSqlCompileError;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
-use components::KafkaConnector;
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -311,7 +311,9 @@ impl ModelsDag {
                             };
 
                             let compiled = KafkaConnector::compile_from_catalog(
-                                &registry, &c_node.name, &config
+                                &registry,
+                                &c_node.name,
+                                &config,
                             )?;
 
                             // Add connector
@@ -391,7 +393,9 @@ impl ModelsDag {
                             }
 
                             let compiled = KafkaConnector::compile_from_catalog(
-                                &registry, &c_node.name, &config
+                                &registry,
+                                &c_node.name,
+                                &config,
                             )?;
 
                             self.upsert_node(

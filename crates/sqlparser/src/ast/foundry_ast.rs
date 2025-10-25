@@ -12,9 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[cfg(feature = "kafka")]
-use common::types::kafka::{
-    KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType,
-};
+use common::types::kafka::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType};
 
 fn hashmap_from_ast_kv(kv: &Vec<(Ident, ValueWithSpan)>) -> HashMap<String, String> {
     kv.iter()

@@ -2,6 +2,7 @@ use crate::parser::{maybe_parse_kafka_nodes, parse_nodes};
 use catalog::{MemoryCatalog, Register};
 use common::config::components::global::FoundryConfig;
 use common::error::FFError;
+use components::KafkaConnector;
 use dag::types::DagNodeType;
 use dag::ModelsDag;
 use log::info;
@@ -10,7 +11,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use components::KafkaConnector;
 
 #[derive(Debug, Default)]
 pub struct CompileOptions {
@@ -134,11 +134,8 @@ pub fn compile_kafka_connector(
         .register_nodes(nodes, wh_config)
         .map_err(FFError::compile)?;
 
-    info!("connector name: {}", name);
-    let conn =
-        KafkaConnector::compile_from_catalog(&catalog, name, config).map_err(|e| {
-            FFError::compile(e)
-        })?;
+    let conn = KafkaConnector::compile_from_catalog(&catalog, name, config)
+        .map_err(|e| FFError::compile(e))?;
 
     Ok(conn)
 }

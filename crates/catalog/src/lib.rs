@@ -3,7 +3,10 @@ pub mod models;
 mod tests;
 
 pub use models::*;
-use sqlparser::ast::{CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate, ModelDef};
+use sqlparser::ast::{
+    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate, ModelDef,
+};
 
 use crate::error::CatalogError;
 use common::config::components::global::FoundryConfig;
@@ -31,7 +34,7 @@ struct State {
     connectors: HashMap<String, CreateKafkaConnector>,
     models: HashMap<String, ModelDecl>,
     sources: HashMap<String, DbConfig>,
-    predicates: HashMap<String, PredicateDecl>
+    predicates: HashMap<String, PredicateDecl>,
 }
 
 #[derive(Debug)]
@@ -201,9 +204,9 @@ pub trait Register: Send + Sync + 'static {
         &self,
         warehouse_sources: HashMap<String, DbConfig>,
     ) -> Result<(), CatalogError>;
-    
+
     fn register_kafka_smt_predicate(
-        &self, 
+        &self,
         ast: CreateSimpleMessageTransformPredicate,
     ) -> Result<(), CatalogError>;
 }
@@ -467,8 +470,8 @@ impl Register for MemoryCatalog {
     }
 
     fn register_kafka_smt_predicate(
-        &self, 
-        ast: CreateSimpleMessageTransformPredicate
+        &self,
+        ast: CreateSimpleMessageTransformPredicate,
     ) -> Result<(), CatalogError> {
         let mut g = self.inner.write();
         let id = ast.name.value;
@@ -477,9 +480,9 @@ impl Register for MemoryCatalog {
             class_name: ast.pred_type.value,
             pattern: ast.pattern.map(|p| p.formatted_string()),
         };
-        
+
         g.predicates.insert(id, pred);
-        
+
         Ok(())
     }
 }

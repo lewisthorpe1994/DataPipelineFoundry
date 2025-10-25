@@ -6,4 +6,3 @@ pub enum KafkaConnectorType {
     Source,
     Sink,
 }
-

@@ -147,14 +147,14 @@ impl KafkaConnectClient {
         }
     }
 
-    pub async fn deploy_connector(
-        &self,
-        cfg: &KafkaConnectorDeployConfig,
-    ) -> Result<(), KafkaConnectClientError> {
+    pub async fn deploy_connector<S>(&self, cfg: S) -> Result<(), KafkaConnectClientError>
+    where
+        S: Serialize,
+    {
         let client = Client::new();
         let resp = client
             .post(format!("{}/connectors", self.host))
-            .json(cfg)
+            .json(&cfg)
             .send()
             .await?;
 

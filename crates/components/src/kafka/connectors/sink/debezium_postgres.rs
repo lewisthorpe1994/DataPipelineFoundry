@@ -1,14 +1,15 @@
-use std::collections::HashMap;
+use crate::connectors::base::CommonKafkaConnector;
+use crate::connectors::SoftValidate;
+use crate::errors::{ErrorBag, KafkaConnectorCompileError};
+use crate::predicates::{Predicate, Predicates};
+use crate::smt::utils::Transforms;
+use crate::traits::{ParseUtils, RaiseErrorOnNone};
+use crate::HasConnectorClass;
+use connector_versioning::{ConnectorVersioned, Version};
+use connector_versioning_derive::ConnectorVersioned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use connector_versioning::{ConnectorVersioned, Version};
-use crate::errors::{ErrorBag, KafkaConnectorCompileError};
-use crate::smt::{Transforms};
-use connector_versioning_derive::ConnectorVersioned;
-use crate::connectors::base::CommonKafkaConnector;
-use crate::connectors::{SoftValidate};
-use crate::HasConnectorClass;
-use crate::predicates::{Predicate, Predicates};
+use std::collections::HashMap;
 
 pub const CONNECTOR_CLASS_NAME: &str = "io.debezium.connector.jdbc.JdbcSinkConnector";
 
@@ -18,7 +19,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(rename = "connector.class")]
     #[compat(always)]
     pub connector_class: String,
-    
+
     #[serde(
         rename = "topics",
         skip_serializing_if = "Option::is_none",
@@ -269,21 +270,22 @@ pub struct DebeziumPostgresSinkConnector {
     // Simple Message Transforms (flatten to flat keys)
     #[serde(flatten)]
     pub common: CommonKafkaConnector,
-
 }
 
 impl DebeziumPostgresSinkConnector {
-
     pub fn new(
         mut config: Map<String, Value>,
         transforms: Option<Transforms>,
         predicates: Option<Predicates>,
     ) -> Result<Self, KafkaConnectorCompileError> {
-        use crate::helpers::{ParseUtils, RaiseErrorOnNone};
+        type KError = KafkaConnectorCompileError;
 
-        let v_str  = config.parse::<String>("version")?.raise_on_none("version")?;
+        let v_str = config
+            .parse::<String>("version")?
+            .raise_on_none("version")?;
         let con = Self {
-            connector_class: crate::connectors::source::debezium_postgres::CONNECTOR_CLASS_NAME.to_string(),
+            connector_class: crate::connectors::source::debezium_postgres::CONNECTOR_CLASS_NAME
+                .to_string(),
             topics: config.parse::<String>("topics")?,
             topics_regex: config.parse::<String>("topics.regex")?,
             connection_url: config
@@ -302,8 +304,7 @@ impl DebeziumPostgresSinkConnector {
             connection_pool_acquire_increment: config
                 .parse::<i64>("connection.pool.acquire_increment")?,
             connection_pool_timeout: config.parse::<i64>("connection.pool.timeout")?,
-            connection_restart_on_errors: config
-                .parse::<bool>("connection.restart.on.errors")?,
+            connection_restart_on_errors: config.parse::<bool>("connection.restart.on.errors")?,
             use_time_zone: config.parse::<String>("use.time.zone")?,
             delete_enabled: config.parse::<bool>("delete.enabled")?,
             truncate_enabled: config.parse::<bool>("truncate.enabled")?,
@@ -325,10 +326,11 @@ impl DebeziumPostgresSinkConnector {
             flush_retry_delay_ms: config.parse::<i64>("flush.retry.delay.ms")?,
             column_naming_strategy: config.parse::<String>("column.naming.strategy")?,
             collection_naming_strategy: config.parse::<String>("collection.naming.strategy")?,
-            version: Version::parse(&v_str).map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?,
+            version: Version::parse(&v_str)
+                .map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?,
             common: CommonKafkaConnector::new(config, transforms, predicates)?,
         };
-        
+
         con.validate()?;
         Ok(con)
     }
@@ -339,8 +341,10 @@ impl SoftValidate for DebeziumPostgresSinkConnector {
         let mut v = ErrorBag::default();
 
         v.check_mutually_exclusive(
-            "field.include.list", &self.field_include_list,
-            "field.exclude.list", &self.field_exclude_list
+            "field.include.list",
+            &self.field_include_list,
+            "field.exclude.list",
+            &self.field_exclude_list,
         );
 
         v.version_errors(self.validate_version(self.version));
@@ -350,5 +354,7 @@ impl SoftValidate for DebeziumPostgresSinkConnector {
 }
 
 impl HasConnectorClass for DebeziumPostgresSinkConnector {
-    fn connector_class(&self) -> &str { &self.connector_class }
+    fn connector_class(&self) -> &str {
+        &self.connector_class
+    }
 }

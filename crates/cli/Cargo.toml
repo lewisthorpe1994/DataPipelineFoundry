@@ -1,5 +1,5 @@
 [package]
-name = "foundry"
+name = "dpf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ time = {version = "0.3.41", features = ["formatting", "macros"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 serde_json = { workspace = true }
 log = "0.4.27"
+components = { workspace = true, features = ["kafka"]}
 
 [dev-dependencies]
 serde_yaml = { workspace = true }

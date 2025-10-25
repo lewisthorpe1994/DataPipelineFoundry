@@ -1,24 +1,29 @@
-pub mod errors;
 pub mod connectors;
-pub mod smt;
+pub mod errors;
 pub mod predicates;
-pub mod helpers;
+pub mod smt;
+pub mod traits;
+pub mod version_consts;
 
-
-use std::collections::{HashMap, HashSet};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value as Json, Map as JsonMap, Value};
-use catalog::{Getter, MemoryCatalog, PipelineTransformDecl, PredicateRefDecl};
-use catalog::error::CatalogError;
-use common::config::components::global::FoundryConfig;
-use common::traits::ToSerdeMap;
-use common::types::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType, KafkaSinkConnectorSupportedDb, KafkaSourceConnectorSupportedDb, SinkDbConnectionInfo, SourceDbConnectionInfo};
-use sqlparser::ast::{AstValueFormatter, CreateSimpleMessageTransform};
 use crate::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
 use crate::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
 use crate::errors::KafkaConnectorCompileError;
 use crate::predicates::{Predicate, PredicateKind, PredicateRef, Predicates};
-use crate::smt::{build_transform_from_config, builtin_preset_config, Transform, Transforms};
+use crate::smt::utils::{build_transform_from_config, builtin_preset_config, Transforms};
+use catalog::error::CatalogError;
+use catalog::{Getter, MemoryCatalog, PipelineTransformDecl};
+use common::config::components::global::FoundryConfig;
+use common::traits::ToSerdeMap;
+use common::types::{
+    KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType,
+    KafkaSinkConnectorSupportedDb, KafkaSourceConnectorSupportedDb, SinkDbConnectionInfo,
+    SourceDbConnectionInfo,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as Json, Value};
+use sqlparser::ast::{AstValueFormatter, CreateSimpleMessageTransform};
+use std::collections::{HashMap, HashSet};
+use crate::smt::Transform;
 
 pub trait HasConnectorClass {
     fn connector_class(&self) -> &str;
@@ -83,7 +88,8 @@ impl KafkaConnector {
         let mut config = JsonMap::new();
 
         config.insert(
-            "version".to_string(), Json::String(conn.connector_version.formatted_string())
+            "version".to_string(),
+            Json::String(conn.connector_version.formatted_string()),
         );
 
         for (key, value) in &conn.with_properties {
@@ -99,9 +105,10 @@ impl KafkaConnector {
 
                 for step in pipe.transforms {
                     let transform_decl = catalog.get_kafka_smt(step.id)?;
-                    let predicate_ref = transform_decl.predicate
-                        .clone()
-                        .map(|p| PredicateRef {name: p.name, negate: Some(p.negate)});
+                    let predicate_ref = transform_decl.predicate.clone().map(|p| PredicateRef {
+                        name: p.name,
+                        negate: Some(p.negate),
+                    });
 
                     let transform = Self::build_transform_for_step(
                         catalog,
@@ -111,10 +118,11 @@ impl KafkaConnector {
                         predicate_ref.clone(),
                     )?;
 
-                    if let Some(p) = predicate_ref{
+                    if let Some(p) = predicate_ref {
                         let pred = catalog.get_smt_predicate(&p.name)?;
                         let predicate = Predicate {
-                            name: pred.name.clone(), kind: PredicateKind::new(pred.pattern, &pred.name)?
+                            name: pred.name.clone(),
+                            kind: PredicateKind::new(pred.pattern, &pred.name)?,
                         };
                         collected_predicates.push(predicate)
                     }
@@ -136,8 +144,9 @@ impl KafkaConnector {
         };
 
         if let Some(transforms_data) = transforms_struct.as_ref() {
-            let transforms_json = serde_json::to_value(transforms_data)
-                .map_err(|err| KafkaConnectorCompileError::serde_json("serialize transforms", err))?;
+            let transforms_json = serde_json::to_value(transforms_data).map_err(|err| {
+                KafkaConnectorCompileError::serde_json("serialize transforms", err)
+            })?;
             if let Json::Object(fragment) = transforms_json {
                 for (k, v) in fragment {
                     config.insert(k, v);
@@ -161,7 +170,7 @@ impl KafkaConnector {
             (
                 KafkaConnectorProvider::Debezium,
                 KafkaConnectorSupportedDb::Source(KafkaSourceConnectorSupportedDb::Postgres),
-                &KafkaConnectorType::Source
+                &KafkaConnectorType::Source,
             ) => {
                 let schema_config = foundry_config
                     .kafka_connectors
@@ -189,17 +198,19 @@ impl KafkaConnector {
 
                 config.extend(obj);
                 let conn_config = DebeziumPostgresSourceConnector::new(
-                    config, transforms_struct, predicates_struct
+                    config,
+                    transforms_struct,
+                    predicates_struct,
                 )?;
 
-                KafkaConnectorConfig::Source(
-                    KafkaSourceConnectorConfig::DebeziumPostgres(conn_config)
-                )
+                KafkaConnectorConfig::Source(KafkaSourceConnectorConfig::DebeziumPostgres(
+                    conn_config,
+                ))
             }
             (
                 KafkaConnectorProvider::Debezium,
                 KafkaConnectorSupportedDb::Sink(KafkaSinkConnectorSupportedDb::Postgres),
-                &KafkaConnectorType::Sink
+                &KafkaConnectorType::Sink,
             ) => {
                 let db_config = SinkDbConnectionInfo::from(adapter_conf);
                 let obj = db_config.to_json_map().map_err(|err| {
@@ -231,19 +242,31 @@ impl KafkaConnector {
                     )));
                 }
                 let conn_config = DebeziumPostgresSinkConnector::new(
-                    config, transforms_struct, predicates_struct
+                    config,
+                    transforms_struct,
+                    predicates_struct,
                 )?;
-                KafkaConnectorConfig::Sink(
-                    KafkaSinkConnectorConfig::DebeziumPostgres(conn_config)
-                )
+                KafkaConnectorConfig::Sink(KafkaSinkConnectorConfig::DebeziumPostgres(conn_config))
             }
             (KafkaConnectorProvider::Confluent, _, _) => {
-                return Err(KafkaConnectorCompileError::unsupported("Confluent connectors are not supported yet".to_string()))
+                return Err(KafkaConnectorCompileError::unsupported(
+                    "Confluent connectors are not supported yet".to_string(),
+                ))
             }
-            (KafkaConnectorProvider::Debezium, KafkaConnectorSupportedDb::Source(KafkaSourceConnectorSupportedDb::Postgres), &KafkaConnectorType::Sink) => {
-                return Err(KafkaConnectorCompileError::config("Debezium postgres source cannot be used with sinks".to_string()))
+            (
+                KafkaConnectorProvider::Debezium,
+                KafkaConnectorSupportedDb::Source(KafkaSourceConnectorSupportedDb::Postgres),
+                &KafkaConnectorType::Sink,
+            ) => {
+                return Err(KafkaConnectorCompileError::config(
+                    "Debezium postgres source cannot be used with sinks".to_string(),
+                ))
             }
-            _ => {return Err(KafkaConnectorCompileError::unsupported("Unsupported connector type".to_string()))}
+            _ => {
+                return Err(KafkaConnectorCompileError::unsupported(
+                    "Unsupported connector type".to_string(),
+                ))
+            }
         };
 
         Ok(Self {
@@ -276,9 +299,7 @@ impl KafkaConnector {
             .unwrap_or_else(|| format!("{}_{}", pipeline_name, step.name));
 
         build_transform_from_config(transform_name.clone(), config, predicate)
-            .map_err(|err| {
-                KafkaConnectorCompileError::from(err)
-            })
+            .map_err(|err| KafkaConnectorCompileError::from(err))
     }
 
     fn resolve_transform_config(
@@ -299,7 +320,8 @@ impl KafkaConnector {
 
             match catalog.get_kafka_smt(preset_name.as_str()) {
                 Ok(preset_decl) => {
-                    let nested = Self::resolve_transform_config(catalog, &preset_decl.sql, visited)?;
+                    let nested =
+                        Self::resolve_transform_config(catalog, &preset_decl.sql, visited)?;
                     config.extend(nested);
                 }
                 Err(err) => match err {
@@ -331,13 +353,13 @@ impl KafkaConnector {
             KafkaConnectorCompileError::serde_json("issue serialising connector", err)
         })
     }
-    
+
     pub fn to_json(&self) -> Result<Value, KafkaConnectorCompileError> {
         serde_json::to_value(self).map_err(|err| {
             KafkaConnectorCompileError::serde_json("issue serialising connector", err)
         })
     }
-    
+
     pub fn connector_class(&self) -> &str {
         self.config.connector_class()
     }

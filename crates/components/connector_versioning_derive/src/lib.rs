@@ -1,8 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    parse_macro_input, Attribute, Data, DeriveInput, Fields, LitStr,
-};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Fields, LitStr};
 
 #[proc_macro_derive(ConnectorVersioned, attributes(compat))]
 pub fn derive_connector_versioned(input: TokenStream) -> TokenStream {
@@ -28,8 +26,7 @@ pub fn derive_connector_versioned(input: TokenStream) -> TokenStream {
     for field in named.named {
         let field_ident = field.ident.expect("named field");
         // Pick the serde rename if present; otherwise use the field name
-        let serde_key = find_serde_rename(&field.attrs)
-            .unwrap_or_else(|| field_ident.to_string());
+        let serde_key = find_serde_rename(&field.attrs).unwrap_or_else(|| field_ident.to_string());
 
         // Parse #[compat(...)] on this field
         let compat_tokens = match find_compat(&field.attrs) {
@@ -129,16 +126,27 @@ fn find_compat(attrs: &[Attribute]) -> syn::Result<Option<proc_macro2::TokenStre
 
         // Validate combinations
         let mut count = 0;
-        if st.always { count += 1; }
-        if st.since.is_some() { count += 1; }
-        if st.until.is_some() { count += 1; }
-        if st.range.is_some() { count += 1; }
+        if st.always {
+            count += 1;
+        }
+        if st.since.is_some() {
+            count += 1;
+        }
+        if st.until.is_some() {
+            count += 1;
+        }
+        if st.range.is_some() {
+            count += 1;
+        }
         if count == 0 {
             // treat missing as Always
             return Ok(Some(quote!(::connector_versioning::Compat::Always)));
         }
         if count > 1 {
-            return Err(syn::Error::new_spanned(attr, "compat: specify only one of `always`, `since`, `until`, or `range`"));
+            return Err(syn::Error::new_spanned(
+                attr,
+                "compat: specify only one of `always`, `since`, `until`, or `range`",
+            ));
         }
 
         let ts = if st.always {
@@ -183,8 +191,12 @@ fn parse_version(lit: &LitStr) -> syn::Result<(u8, u8)> {
 fn parse_range(lit: &LitStr) -> syn::Result<((u8, u8), (u8, u8))> {
     let s = lit.value().replace("..=", "..");
     let mut it = s.split("..");
-    let a = it.next().ok_or_else(|| err_at(lit, "missing min in range"))?;
-    let b = it.next().ok_or_else(|| err_at(lit, "missing max in range"))?;
+    let a = it
+        .next()
+        .ok_or_else(|| err_at(lit, "missing min in range"))?;
+    let b = it
+        .next()
+        .ok_or_else(|| err_at(lit, "missing max in range"))?;
     if it.next().is_some() {
         return Err(err_at(lit, "invalid range syntax"));
     }

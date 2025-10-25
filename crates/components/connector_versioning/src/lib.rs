@@ -2,13 +2,15 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
 pub struct Version {
     pub major: u8,
     pub minor: u8,
 }
 impl Version {
-    pub const fn new(major: u8, minor: u8) -> Self { Self { major, minor } }
+    pub const fn new(major: u8, minor: u8) -> Self {
+        Self { major, minor }
+    }
 
     /// Parse a version string in `MAJOR.MINOR` form (e.g. `"3.1"`).
     /// Returns an error string when the format is invalid or components
@@ -43,6 +45,23 @@ impl std::fmt::Display for Version {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct ValueSpec {
+    pub version: Version,
+    pub values: &'static [&'static str],
+}
+
+pub fn versions_vec(supported: &[Version]) -> Vec<Version> {
+    supported.iter().copied().collect()
+}
+
+pub fn values_map(specs: &[ValueSpec]) -> HashMap<Version, Vec<&'static str>> {
+    specs
+        .iter()
+        .map(|spec| (spec.version, spec.values.iter().copied().collect()))
+        .collect()
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum Compat {
     Always,
@@ -73,10 +92,11 @@ pub trait ConnectorVersioned: Serialize {
         let mut errs = Vec::new();
 
         let v = serde_json::to_value(self).unwrap_or(Value::Null);
-        let Some(obj) = v.as_object() else { return errs; };
+        let Some(obj) = v.as_object() else {
+            return errs;
+        };
 
-        let compat: HashMap<&'static str, Compat> =
-            Self::field_compat().iter().copied().collect();
+        let compat: HashMap<&'static str, Compat> = Self::field_compat().iter().copied().collect();
 
         for (key, val) in obj {
             // serde has already applied skip_serializing_if; only present keys matter
@@ -96,15 +116,20 @@ pub trait ConnectorVersioned: Serialize {
     fn to_versioned_map(&self, target: Version) -> Result<BTreeMap<String, String>, String> {
         let mut out = BTreeMap::new();
         let v = serde_json::to_value(self).map_err(|e| e.to_string())?;
-        let Some(obj) = v.as_object() else { return Ok(out); };
+        let Some(obj) = v.as_object() else {
+            return Ok(out);
+        };
 
-        let compat: HashMap<&'static str, Compat> =
-            Self::field_compat().iter().copied().collect();
+        let compat: HashMap<&'static str, Compat> = Self::field_compat().iter().copied().collect();
 
         for (k, val) in obj {
-            if !present(&val).is_some() { continue; }
+            if !present(&val).is_some() {
+                continue;
+            }
             let allowed = compat.get(k.as_str()).copied().unwrap_or(Compat::Always);
-            if !allowed.allows(target) { continue; }
+            if !allowed.allows(target) {
+                continue;
+            }
 
             // Flatten only simple primitives—extend as needed
             if let Some(s) = val.as_str() {

@@ -1,7 +1,7 @@
+use crate::smt::errors::TransformBuildError;
 use catalog::error::CatalogError;
 use common::error::DiagnosticMessage;
 use thiserror::Error;
-use crate::smt::TransformBuildError;
 
 #[derive(Debug, Error)]
 pub enum KafkaConnectorCompileError {
@@ -25,7 +25,6 @@ pub enum KafkaConnectorCompileError {
     ConfigError { context: DiagnosticMessage },
     #[error("Validation errors: {context}")]
     ValidationError { context: DiagnosticMessage },
-
 }
 
 impl KafkaConnectorCompileError {
@@ -64,14 +63,14 @@ impl KafkaConnectorCompileError {
             context: DiagnosticMessage::new(message.into()),
         }
     }
-    
+
     #[track_caller]
     pub fn unsupported(message: impl Into<String>) -> Self {
         Self::Unsupported {
             context: DiagnosticMessage::new(message.into()),
         }
     }
-    
+
     #[track_caller]
     pub fn config(message: impl Into<String>) -> Self {
         Self::ConfigError {
@@ -79,15 +78,26 @@ impl KafkaConnectorCompileError {
         }
     }
 
+    // #[track_caller]
+    // pub fn validation_error(message: impl Into<String>) -> Self {
+    //     Self::ConfigError {
+    //         context: DiagnosticMessage::new(message.into()),
+    //     }
+    // }
+}
+
+pub trait ValidationError: Sized {
+    fn validation_error(message: impl Into<String>) -> Self;
+}
+
+impl ValidationError for KafkaConnectorCompileError {
     #[track_caller]
-    pub fn validation_error(message: impl Into<String>) -> Self {
-        Self::ConfigError {
+    fn validation_error(message: impl Into<String>) -> Self {
+        Self::ValidationError {
             context: DiagnosticMessage::new(message.into()),
         }
     }
 }
-
-
 
 impl From<CatalogError> for KafkaConnectorCompileError {
     fn from(error: CatalogError) -> Self {
@@ -113,10 +123,13 @@ impl From<TransformBuildError> for KafkaConnectorCompileError {
     fn from(value: TransformBuildError) -> Self {
         match value {
             TransformBuildError::MissingType { context } => {
-                KafkaConnectorCompileError::missing_config( context.message() )
-            },
-            TransformBuildError::InvalidValue { context } => { 
-                KafkaConnectorCompileError::config( context.message() )
+                KafkaConnectorCompileError::missing_config(context.message())
+            }
+            TransformBuildError::InvalidValue { context } => {
+                KafkaConnectorCompileError::config(context.message())
+            }
+            TransformBuildError::ValidationError { context } => {
+                KafkaConnectorCompileError::validation_error(context.message())
             }
         }
     }
@@ -140,7 +153,10 @@ impl ErrorBag {
         b: &Option<B>,
     ) {
         if a.is_some() && b.is_some() {
-            self.push(format!("{} and {} cannot be set at the same time.", name_a, name_b));
+            self.push(format!(
+                "{} and {} cannot be set at the same time.",
+                name_a, name_b
+            ));
         }
     }
 
@@ -160,16 +176,14 @@ impl ErrorBag {
         let count = flags.iter().filter(|(_, on)| *on).count();
         if count != 1 {
             let names = flags.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ");
-            self.push(format!("Exactly one of [{}] must be set for {}.", names, group_name));
+            self.push(format!(
+                "Exactly one of [{}] must be set for {}.",
+                names, group_name
+            ));
         }
     }
 
-    pub fn check_allowed<'a>(
-        &mut self,
-        name: &str,
-        value: Option<&'a str>,
-        allowed: &[&'a str],
-    ) {
+    pub fn check_allowed<'a>(&mut self, name: &str, value: Option<&'a str>, allowed: &[&'a str]) {
         if let Some(v) = value {
             if !allowed.iter().any(|a| *a == v) {
                 self.push(format!(
@@ -181,7 +195,7 @@ impl ErrorBag {
             }
         }
     }
-    
+
     pub fn version_errors(&mut self, errors: Vec<String>) {
         self.msgs.extend(errors);
     }

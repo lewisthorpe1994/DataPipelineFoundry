@@ -1,169 +1,19 @@
+use crate::predicates::PredicateRef;
+use crate::smt::errors::TransformBuildError;
+use common::error::DiagnosticMessage;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use thiserror::Error;
-use common::error::DiagnosticMessage;
-use crate::helpers::take_bool;
-use crate::predicates::PredicateRef;
-
-#[derive(Debug, Clone)]
-pub enum SmtKind {
-    ExtractNewRecordState {
-        drop_tombstones: Option<bool>,
-        delete_handling_mode: Option<String>,
-        add_headers: Option<String>,
-        route_by_field: Option<String>,
-        predicate: Option<PredicateRef>,
-    },
-    ByLogicalTableRouter {
-        topic_regex: Option<String>,
-        topic_replacement: Option<String>,
-        key_field_regex: Option<String>,
-        key_field_replacement: Option<String>,
-        predicate: Option<PredicateRef>,
-    },
-    Custom {
-        class: String,
-        props: HashMap<String, String>,
-        predicate: Option<PredicateRef>,
-    },
-    // You can add more SMTs here as needed
-}
-
-impl SmtKind {
-    fn class_name(&self) -> Cow<'_, str> {
-        match self {
-            SmtKind::ExtractNewRecordState { .. } => {
-                Cow::Borrowed("io.debezium.transforms.ExtractNewRecordState")
-            }
-            SmtKind::ByLogicalTableRouter { .. } => {
-                Cow::Borrowed("io.debezium.transforms.ByLogicalTableRouter")
-            }
-            SmtKind::Custom { class, .. } => Cow::Owned(class.clone()),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum SmtClass {
-    ExtractNewRecordState,
-    ByLogicalTableRouter,
-    Custom(String),
-}
-
-impl TryFrom<&str> for SmtClass {
-    type Error = ();
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "io.debezium.transforms.ExtractNewRecordState" => Ok(SmtClass::ExtractNewRecordState),
-            "io.debezium.transforms.ByLogicalTableRouter" => Ok(SmtClass::ByLogicalTableRouter),
-            _ => Ok(SmtClass::Custom(value.to_string())),
-        }
-    }
-}
-
-impl SmtClass {
-    fn class_name(&self) -> Cow<'_, str> {
-        match self {
-            SmtClass::ExtractNewRecordState => {
-                Cow::Borrowed("io.debezium.transforms.ExtractNewRecordState")
-            }
-            SmtClass::ByLogicalTableRouter => {
-                Cow::Borrowed("io.debezium.transforms.ByLogicalTableRouter")
-            }
-            SmtClass::Custom(class) => Cow::Owned(class.clone()),
-        }
-    }
-}
+use crate::smt::{SmtClass, SmtKind, SmtPreset, Transform};
 
 fn predicate_of(kind: &SmtKind) -> Option<&PredicateRef> {
     match kind {
-        SmtKind::ExtractNewRecordState { predicate, .. } => predicate.as_ref(),
-        SmtKind::ByLogicalTableRouter { predicate, .. } => predicate.as_ref(),
-        SmtKind::Custom { predicate, .. } => predicate.as_ref(),
-    }
-}
-
-/* ---------- One transform = name + kind ---------- */
-#[derive(Debug, Clone)]
-pub struct Transform {
-    pub name: String, // e.g. "unwrap", "route"
-    pub kind: SmtKind,
-}
-
-#[derive(Debug, Error)]
-pub enum TransformBuildError {
-    #[error("SMT transform '{context}' is missing required property 'type'")]
-    MissingType{context: DiagnosticMessage },
-    #[error("Invalid value: {context}")]
-    InvalidValue {context: DiagnosticMessage },
-}
-
-impl TransformBuildError {
-
-    #[track_caller]
-    pub fn missing_type(name: impl Into<String>) -> Self {
-        let name = name.into();
-        Self::MissingType {
-            context: DiagnosticMessage::new(name)
-        }
-    }
-
-    #[track_caller]
-    pub fn invalid_value(key: impl Into<String>, value: impl Into<String>) -> Self {
-        let key = key.into();
-        let value = value.into();
-        Self::InvalidValue {
-            context: DiagnosticMessage::new(format!("value is invalid for {} key {}", value, key))
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum SmtPreset {
-    DebeziumExtractNewRecordState,
-    DebeziumByLogicalTableRouter,
-}
-
-impl SmtPreset {
-    fn aliases(self) -> &'static [&'static str] {
-        match self {
-            SmtPreset::DebeziumExtractNewRecordState => &[
-                "debezium.unwrap_default",
-                "debezium.extract_new_record_state",
-            ],
-            SmtPreset::DebeziumByLogicalTableRouter => &[
-                "debezium.route_by_field",
-                "debezium.by_logical_table_router",
-            ],
-        }
-    }
-}
-
-impl TryFrom<&str> for SmtPreset {
-    type Error = ();
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if SmtPreset::DebeziumExtractNewRecordState
-            .aliases()
-            .iter()
-            .any(|alias| alias.eq_ignore_ascii_case(value))
-        {
-            return Ok(SmtPreset::DebeziumExtractNewRecordState);
-        }
-
-        if SmtPreset::DebeziumByLogicalTableRouter
-            .aliases()
-            .iter()
-            .any(|alias| alias.eq_ignore_ascii_case(value))
-        {
-            return Ok(SmtPreset::DebeziumByLogicalTableRouter);
-        }
-
-        Err(())
+        SmtKind::ExtractNewRecordState(smt) => smt.predicate.as_ref(),
+        SmtKind::ByLogicalTableRouter(smt) => smt.predicate.as_ref(),
+        SmtKind::Custom(smt) => smt.predicate.as_ref(),
     }
 }
 

@@ -1,15 +1,15 @@
-use crate::connectors::{SoftValidate};
+use crate::connectors::base::CommonKafkaConnector;
+use crate::connectors::SoftValidate;
 use crate::errors::*;
-use crate::helpers::{take_bool, ParseUtils, RaiseErrorOnNone};
-use crate::smt::{Transformable, Transforms};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use serde_json::{Map, Value};
+use crate::predicates::{Predicate, Predicates};
+use crate::smt::utils::Transforms;
+use crate::traits::{take_bool, ParseUtils, RaiseErrorOnNone};
+use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;
-use crate::connectors::base::CommonKafkaConnector;
-use crate::HasConnectorClass;
-use crate::predicates::{Predicate, Predicates};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use std::collections::HashMap;
 
 pub const CONNECTOR_CLASS_NAME: &str = "io.debezium.connector.postgresql.PostgresConnector";
 pub const CONNECTOR_SUPPORTED_VERSIONS: &[f64; 4] = &[3.0, 3.1, 3.2, 3.3];
@@ -445,16 +445,17 @@ pub struct DebeziumPostgresSourceConnector {
 
     #[serde(flatten)]
     pub common: CommonKafkaConnector,
-
 }
 
-impl  DebeziumPostgresSourceConnector {
+impl DebeziumPostgresSourceConnector {
     pub fn new(
         mut config: Map<String, Value>,
         transforms: Option<Transforms>,
-        predicates: Option<Predicates>
+        predicates: Option<Predicates>,
     ) -> Result<Self, KafkaConnectorCompileError> {
-        let v_str  = config.parse::<String>("version")?.raise_on_none("version")?;
+        let v_str = config
+            .parse::<String>("version")?
+            .raise_on_none("version")?;
 
         let con = Self {
             // -------------------- REQUIRED CORE --------------------
@@ -556,7 +557,7 @@ impl  DebeziumPostgresSourceConnector {
                 .parse::<u32>("incremental.snapshot.chunk.size")?,
 
             // -------------------- CONVERTERS & TRANSFORMS --------------------
-            common: CommonKafkaConnector::new(config, transforms, predicates)?
+            common: CommonKafkaConnector::new(config, transforms, predicates)?,
         };
 
         con.validate()?;
@@ -569,37 +570,86 @@ impl SoftValidate for DebeziumPostgresSourceConnector {
         let mut v = ErrorBag::default();
 
         // Mutually exclusive filters
-        v.check_mutually_exclusive("schema.include.list", &self.schema_include_list,
-                                   "schema.exclude.list", &self.schema_exclude_list);
-        v.check_mutually_exclusive("table.include.list", &self.table_include_list,
-                                   "table.exclude.list", &self.table_exclude_list);
-        v.check_mutually_exclusive("column.include.list", &self.column_include_list,
-                                   "column.exclude.list", &self.column_exclude_list);
-        v.check_mutually_exclusive("message.prefix.include.list", &self.message_prefix_include_list,
-                                   "message.prefix.exclude.list", &self.message_prefix_exclude_list);
+        v.check_mutually_exclusive(
+            "schema.include.list",
+            &self.schema_include_list,
+            "schema.exclude.list",
+            &self.schema_exclude_list,
+        );
+        v.check_mutually_exclusive(
+            "table.include.list",
+            &self.table_include_list,
+            "table.exclude.list",
+            &self.table_exclude_list,
+        );
+        v.check_mutually_exclusive(
+            "column.include.list",
+            &self.column_include_list,
+            "column.exclude.list",
+            &self.column_exclude_list,
+        );
+        v.check_mutually_exclusive(
+            "message.prefix.include.list",
+            &self.message_prefix_include_list,
+            "message.prefix.exclude.list",
+            &self.message_prefix_exclude_list,
+        );
 
         // Value sets (cheap guardrails)
-        v.check_allowed("plugin.name", self.plugin_name.as_deref(), &["pgoutput", "decoderbufs"]);
-        v.check_allowed("time.precision.mode", self.time_precision_mode.as_deref(),
-                        &["adaptive", "adaptive_time_microseconds", "connect"]);
-        v.check_allowed("decimal.handling.mode", self.decimal_handling_mode.as_deref(),
-                        &["precise", "double", "string"]);
-        v.check_allowed("hstore.handling.mode", self.hstore_handling_mode.as_deref(),
-                        &["json", "map"]);
-        v.check_allowed("interval.handling.mode", self.interval_handling_mode.as_deref(),
-                        &["numeric", "string"]);
-        v.check_allowed("binary.handling.mode", self.binary_handling_mode.as_deref(),
-                        &["bytes", "base64", "base64-url-safe", "hex"]);
-        v.check_allowed("schema.name.adjustment.mode", self.schema_name_adjustment_mode.as_deref(),
-                        &["none", "avro", "avro_unicode"]);
-        v.check_allowed("field.name.adjustment.mode", self.field_name_adjustment_mode.as_deref(),
-                        &["none", "avro", "avro_unicode"]);
-        v.check_allowed("publication.autocreate.mode", self.publication_autocreate_mode.as_deref(),
-                        &["all_tables", "disabled", "filtered", "no_tables"]);
+        v.check_allowed(
+            "plugin.name",
+            self.plugin_name.as_deref(),
+            &["pgoutput", "decoderbufs"],
+        );
+        v.check_allowed(
+            "time.precision.mode",
+            self.time_precision_mode.as_deref(),
+            &["adaptive", "adaptive_time_microseconds", "connect"],
+        );
+        v.check_allowed(
+            "decimal.handling.mode",
+            self.decimal_handling_mode.as_deref(),
+            &["precise", "double", "string"],
+        );
+        v.check_allowed(
+            "hstore.handling.mode",
+            self.hstore_handling_mode.as_deref(),
+            &["json", "map"],
+        );
+        v.check_allowed(
+            "interval.handling.mode",
+            self.interval_handling_mode.as_deref(),
+            &["numeric", "string"],
+        );
+        v.check_allowed(
+            "binary.handling.mode",
+            self.binary_handling_mode.as_deref(),
+            &["bytes", "base64", "base64-url-safe", "hex"],
+        );
+        v.check_allowed(
+            "schema.name.adjustment.mode",
+            self.schema_name_adjustment_mode.as_deref(),
+            &["none", "avro", "avro_unicode"],
+        );
+        v.check_allowed(
+            "field.name.adjustment.mode",
+            self.field_name_adjustment_mode.as_deref(),
+            &["none", "avro", "avro_unicode"],
+        );
+        v.check_allowed(
+            "publication.autocreate.mode",
+            self.publication_autocreate_mode.as_deref(),
+            &["all_tables", "disabled", "filtered", "no_tables"],
+        );
 
         // Simple dependencies (examples)
         // If you enable failover slot, you really should define a slot name explicitly.
-        v.check_requires("slot.failover", &self.slot_failover, "slot.name", &self.slot_name);
+        v.check_requires(
+            "slot.failover",
+            &self.slot_failover,
+            "slot.name",
+            &self.slot_name,
+        );
 
         // If message.key.columns references non-PK columns, replica identity should be FULL on those tables.
         // Hard to automatically verify here, but you could at least require it's not empty if message keys are set.
@@ -612,5 +662,7 @@ impl SoftValidate for DebeziumPostgresSourceConnector {
 }
 
 impl HasConnectorClass for DebeziumPostgresSourceConnector {
-    fn connector_class(&self) -> &str { &self.connector_class }
+    fn connector_class(&self) -> &str {
+        &self.connector_class
+    }
 }

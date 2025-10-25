@@ -9,14 +9,13 @@ serde = {workspace = true}
 serde_json = { workspace = true }
 common = { workspace = true}
 walkdir = "2.5.0"
-components = { workspace = true, features = ["kafka"]}
-sqlparser = { workspace = true}
+components = {workspace = true, features = ["kafka"]}
 dag = { workspace = true}
 catalog = { workspace = true }
 logging = { workspace = true }
 executor = {workspace = true}
 log = "0.4.27"
-thiserror = "2.0.12"
+shared_clients = { workspace = true}
 
 [dev-dependencies]
 tokio = { workspace = true }

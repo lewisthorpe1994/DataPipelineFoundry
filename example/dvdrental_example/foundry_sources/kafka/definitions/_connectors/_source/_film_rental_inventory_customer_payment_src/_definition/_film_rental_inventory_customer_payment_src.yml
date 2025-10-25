@@ -1,4 +1,4 @@
-name: film_rental_inventory_customer_payment
+name: film_rental_inventory_customer_payment_src
 schema:
   public:
     tables:

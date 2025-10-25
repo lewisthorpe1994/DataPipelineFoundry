@@ -1,15 +1,14 @@
-use serde::{Deserialize, Serialize};
 use crate::errors::KafkaConnectorCompileError;
-use crate::helpers::ParseUtils;
 use crate::predicates::Predicates;
-use crate::smt::Transforms;
+use crate::smt::utils::Transforms;
+use crate::traits::ParseUtils;
+use serde::{Deserialize, Serialize};
 
 /// Common Kafka Connect per-connector settings (non–Debezium-specific).
 /// Flatten this into source/sink connector structs to accept these keys at top level.
 #[derive(Serialize, Debug, Clone, Default)]
 pub struct CommonKafkaConnector {
     /* ------------ Core ------------ */
-
     /// Unique connector name.
     #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -26,7 +25,6 @@ pub struct CommonKafkaConnector {
     pub connector_plugin_version: Option<String>,
 
     /* ------------ Converters (key/value/header) ------------ */
-
     /// Key converter class (e.g. org.apache.kafka.connect.json.JsonConverter).
     #[serde(rename = "key.converter", skip_serializing_if = "Option::is_none")]
     pub key_converter: Option<String>,
@@ -61,7 +59,6 @@ pub struct CommonKafkaConnector {
     pub header_converter_plugin_version: Option<String>,
 
     /* ------------ Reload / dynamic config ------------ */
-
     /// Action when external config providers change (e.g. "none", "restart").
     #[serde(
         rename = "config.action.reload",
@@ -70,9 +67,12 @@ pub struct CommonKafkaConnector {
     pub config_action_reload: Option<String>,
 
     /* ------------ SMTs & Predicates ------------ */
-
     /// Comma-separated SMT aliases.
-    #[serde(rename = "transforms", skip_serializing_if = "Option::is_none", flatten)]
+    #[serde(
+        rename = "transforms",
+        skip_serializing_if = "Option::is_none",
+        flatten
+    )]
     pub transforms: Option<Transforms>,
 
     /// Comma-separated predicate aliases (for use by SMTs).
@@ -80,7 +80,6 @@ pub struct CommonKafkaConnector {
     pub predicates: Option<Predicates>,
 
     /* ------------ Errors & Dead Letter Queue ------------ */
-
     /// Total retry time window in ms (0 = no retry, -1 = infinite).
     #[serde(
         rename = "errors.retry.timeout",
@@ -132,7 +131,6 @@ pub struct CommonKafkaConnector {
     pub errors_deadletterqueue_context_headers_enable: Option<bool>,
 
     /* ------------ Sink-only topic selection (harmless on sources) ------------ */
-
     /// Comma-separated topics list (sink connectors).
     #[serde(rename = "topics", skip_serializing_if = "Option::is_none")]
     pub topics: Option<String>,
@@ -150,7 +148,7 @@ impl CommonKafkaConnector {
     pub fn new<C>(
         mut config: C,
         transforms: Option<Transforms>,
-        predicates: Option<Predicates>
+        predicates: Option<Predicates>,
     ) -> Result<Self, KafkaConnectorCompileError>
     where
         C: ParseUtils,
@@ -167,8 +165,10 @@ impl CommonKafkaConnector {
             header_converter: config.parse::<String>("header.converter")?,
 
             key_converter_plugin_version: config.parse::<String>("key.converter.plugin.version")?,
-            value_converter_plugin_version: config.parse::<String>("value.converter.plugin.version")?,
-            header_converter_plugin_version: config.parse::<String>("header.converter.plugin.version")?,
+            value_converter_plugin_version: config
+                .parse::<String>("value.converter.plugin.version")?,
+            header_converter_plugin_version: config
+                .parse::<String>("header.converter.plugin.version")?,
 
             // Reload
             config_action_reload: config.parse::<String>("config.action.reload")?,

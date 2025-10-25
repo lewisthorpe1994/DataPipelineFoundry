@@ -5,21 +5,24 @@ mod tests {
         AdapterConnectionDetails, Connections, DatabaseAdapterType,
     };
     use common::config::components::foundry_project::FoundryProjectConfig;
+    use common::config::components::global::FoundryConfig;
     use common::config::components::model::ModelsProjects;
     use common::config::components::sources::kafka::{
         KafkaBootstrap, KafkaConnect, KafkaSourceConfig,
     };
     use common::config::components::sources::SourcePaths;
-    use sqlparser::ast::{CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline, Statement};
+    use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
+    use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
+    use components::smt::SmtKind;
+    use components::{KafkaConnector, KafkaConnectorConfig};
+    use sqlparser::ast::{
+        CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
+        Statement,
+    };
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use common::config::components::global::FoundryConfig;
-    use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
-    use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
-    use components::{KafkaConnector, KafkaConnectorConfig};
-    use components::smt::SmtKind;
 
     trait FromStatement: Sized {
         fn try_from_statement(stmt: Statement) -> Result<Self, Statement>;
@@ -172,8 +175,9 @@ FROM SOURCE DATABASE 'adapter_source'
 
         let foundry_config = foundry_config();
 
-        let connector = KafkaConnector::compile_from_catalog(&catalog, "test_connector", &foundry_config)
-            .expect("compile connector");
+        let connector =
+            KafkaConnector::compile_from_catalog(&catalog, "test_connector", &foundry_config)
+                .expect("compile connector");
 
         println!("{:#?}", connector);
 
@@ -188,10 +192,7 @@ FROM SOURCE DATABASE 'adapter_source'
         use serde_json::{Map, Value};
 
         let mut config = Map::new();
-        config.insert(
-            "topics".to_string(),
-            Value::String("orders".to_string()),
-        );
+        config.insert("topics".to_string(), Value::String("orders".to_string()));
         config.insert(
             "connection.url".to_string(),
             Value::String("jdbc:postgresql://localhost:5432/app_db".to_string()),
@@ -209,8 +210,8 @@ FROM SOURCE DATABASE 'adapter_source'
             Value::Bool(true),
         );
 
-        let connector = DebeziumPostgresSinkConnector::new(config, None, None)
-            .expect("build sink connector");
+        let connector =
+            DebeziumPostgresSinkConnector::new(config, None, None).expect("build sink connector");
 
         let errors = connector.validate_version(Version::new(3, 0));
         assert!(

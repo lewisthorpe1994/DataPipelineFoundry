@@ -140,9 +140,8 @@ impl KafkaParse for Parser<'_> {
             }
         }
         let mut pipeline_idents = vec![];
-        let version = if self.parse_keywords(&[
-            Keyword::WITH, Keyword::CONNECTOR, Keyword::VERSION
-        ]) {
+        let version = if self.parse_keywords(&[Keyword::WITH, Keyword::CONNECTOR, Keyword::VERSION])
+        {
             let v_ident = self.parse_value()?;
             if self.parse_keywords(&[Keyword::AND, Keyword::PIPELINES]) {
                 if self.consume_token(&Token::LParen) {
@@ -158,7 +157,9 @@ impl KafkaParse for Parser<'_> {
             }
             v_ident
         } else {
-            return Err(ParserError::ParserError("Expected connector version to be specified".to_string()))
+            return Err(ParserError::ParserError(
+                "Expected connector version to be specified".to_string(),
+            ));
         };
         let (db_ident, schema_ident) = match &connector_type {
             KafkaConnectorType::Source => {

@@ -908,6 +908,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "dpf"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "common",
+ "components",
+ "ff_core",
+ "log",
+ "minijinja",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shared_clients",
+ "tempfile",
+ "test_utils",
+ "time",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1024,9 +1045,8 @@ dependencies = [
  "logging",
  "serde",
  "serde_json",
- "sqlparser",
+ "shared_clients",
  "test_utils",
- "thiserror",
  "tokio",
  "walkdir",
 ]
@@ -1093,26 +1113,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "foundry"
-version = "0.1.0"
-dependencies = [
- "clap",
- "common",
- "ff_core",
- "log",
- "minijinja",
- "serde",
- "serde_json",
- "serde_yaml",
- "shared_clients",
- "tempfile",
- "test_utils",
- "time",
- "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]

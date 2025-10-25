@@ -4,6 +4,6 @@ USING KAFKA CLUSTER 'some_kafka_cluster' (
     "snapshot.mode" = "initial",
     "topic.prefix" = "postgres-"
 )
-WITH CONNECTOR VERSION '3.1' AND PIPELINES(unwrap_router)
+WITH CONNECTOR VERSION '3.1' AND PIPELINES(preset_pipe)
 FROM SOURCE DATABASE 'dvd_rental';
 
