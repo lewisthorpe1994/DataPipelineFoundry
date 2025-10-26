@@ -1,17 +1,24 @@
 use crate::errors::KafkaConnectorCompileError;
+use crate::kafka::errors::ValidationError;
 use crate::predicates::Predicates;
 use crate::smt::utils::Transforms;
-use crate::traits::ParseUtils;
+use crate::traits::{ComponentVersion, ParseUtils};
+use connector_versioning::{ConnectorVersioned, Version};
+use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
 use serde::{Deserialize, Serialize};
 
 /// Common Kafka Connect per-connector settings (non–Debezium-specific).
 /// Flatten this into source/sink connector structs to accept these keys at top level.
-#[derive(Serialize, Debug, Clone, Default)]
+#[derive(Serialize, Debug, Clone, ConnectorVersionedDerive)]
+#[parser(error = crate::errors::KafkaConnectorCompileError)]
 pub struct CommonKafkaConnector {
     /* ------------ Core ------------ */
     /// Unique connector name.
     #[serde(rename = "name", skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+
+    #[serde(skip_serializing)]
+    pub version: Version,
 
     /// Max tasks for this connector.
     #[serde(rename = "tasks.max", skip_serializing_if = "Option::is_none")]
@@ -65,19 +72,6 @@ pub struct CommonKafkaConnector {
         skip_serializing_if = "Option::is_none"
     )]
     pub config_action_reload: Option<String>,
-
-    /* ------------ SMTs & Predicates ------------ */
-    /// Comma-separated SMT aliases.
-    #[serde(
-        rename = "transforms",
-        skip_serializing_if = "Option::is_none",
-        flatten
-    )]
-    pub transforms: Option<Transforms>,
-
-    /// Comma-separated predicate aliases (for use by SMTs).
-    #[serde(rename = "predicates", skip_serializing_if = "Option::is_none")]
-    pub predicates: Option<Predicates>,
 
     /* ------------ Errors & Dead Letter Queue ------------ */
     /// Total retry time window in ms (0 = no retry, -1 = infinite).
@@ -149,11 +143,13 @@ impl CommonKafkaConnector {
         mut config: C,
         transforms: Option<Transforms>,
         predicates: Option<Predicates>,
+        version: Version,
     ) -> Result<Self, KafkaConnectorCompileError>
     where
-        C: ParseUtils,
+        C: ParseUtils<KafkaConnectorCompileError>,
     {
         Ok(Self {
+            version,
             // Core
             name: config.parse::<String>("name")?,
             tasks_max: config.parse::<u32>("tasks.max")?,
@@ -173,10 +169,6 @@ impl CommonKafkaConnector {
             // Reload
             config_action_reload: config.parse::<String>("config.action.reload")?,
 
-            // SMTs / Predicates
-            transforms,
-            predicates,
-
             // Errors / DLQ
             errors_retry_timeout: config.parse::<i64>("errors.retry.timeout")?,
             errors_retry_delay_max_ms: config.parse::<u64>("errors.retry.delay.max.ms")?,
@@ -195,5 +187,11 @@ impl CommonKafkaConnector {
             topics: config.parse::<String>("topics")?,
             topics_regex: config.parse::<String>("topics.regex")?,
         })
+    }
+}
+
+impl ComponentVersion for CommonKafkaConnector {
+    fn version(&self) -> Version {
+        self.version
     }
 }

@@ -1,9 +1,11 @@
 use crate::connectors::base::CommonKafkaConnector;
+use crate::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
 use crate::connectors::SoftValidate;
 use crate::errors::{ErrorBag, KafkaConnectorCompileError};
+use crate::kafka::errors::ValidationError;
 use crate::predicates::{Predicate, Predicates};
 use crate::smt::utils::Transforms;
-use crate::traits::{ParseUtils, RaiseErrorOnNone};
+use crate::traits::{ComponentVersion, ParseUtils, RaiseErrorOnNone};
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;
@@ -14,6 +16,7 @@ use std::collections::HashMap;
 pub const CONNECTOR_CLASS_NAME: &str = "io.debezium.connector.jdbc.JdbcSinkConnector";
 
 #[derive(Serialize, Debug, Clone, ConnectorVersioned)]
+#[parser(error = crate::errors::KafkaConnectorCompileError)]
 pub struct DebeziumPostgresSinkConnector {
     /* ---------------------- REQUIRED (no defaults) ---------------------- */
     #[serde(rename = "connector.class")]
@@ -268,90 +271,111 @@ pub struct DebeziumPostgresSinkConnector {
     collection_naming_strategy: Option<String>, // default: io.debezium.connector.jdbc.naming.DefaultCollectionNamingStrategy
 
     // Simple Message Transforms (flatten to flat keys)
-    #[serde(flatten)]
-    pub common: CommonKafkaConnector,
+    #[serde(skip)]
+    pub common: Option<CommonKafkaConnector>,
+
+    #[serde(skip_serializing)]
+    pub transforms: Option<Transforms>,
+
+    #[serde(skip_serializing)]
+    pub predicates: Option<Predicates>,
 }
 
+impl ComponentVersion for DebeziumPostgresSinkConnector {
+    fn version(&self) -> Version {
+        self.version
+    }
+}
 impl DebeziumPostgresSinkConnector {
     pub fn new(
-        mut config: Map<String, Value>,
+        config: HashMap<String, String>,
         transforms: Option<Transforms>,
         predicates: Option<Predicates>,
+        version: Version,
     ) -> Result<Self, KafkaConnectorCompileError> {
-        type KError = KafkaConnectorCompileError;
-
-        let v_str = config
-            .parse::<String>("version")?
-            .raise_on_none("version")?;
-        let con = Self {
-            connector_class: crate::connectors::source::debezium_postgres::CONNECTOR_CLASS_NAME
-                .to_string(),
-            topics: config.parse::<String>("topics")?,
-            topics_regex: config.parse::<String>("topics.regex")?,
-            connection_url: config
-                .parse::<String>("connection.url")?
-                .raise_on_none("connection.url")?,
-            connection_username: config
-                .parse::<String>("connection.username")?
-                .raise_on_none("connection.username")?,
-            connection_password: config
-                .parse::<String>("connection.password")?
-                .raise_on_none("connection.password")?,
-            tasks_max: config.parse::<i32>("tasks.max")?,
-            connection_provider: config.parse::<String>("connection.provider")?,
-            connection_pool_min_size: config.parse::<i32>("connection.pool.min_size")?,
-            connection_pool_max_size: config.parse::<i32>("connection.pool.max_size")?,
-            connection_pool_acquire_increment: config
-                .parse::<i64>("connection.pool.acquire_increment")?,
-            connection_pool_timeout: config.parse::<i64>("connection.pool.timeout")?,
-            connection_restart_on_errors: config.parse::<bool>("connection.restart.on.errors")?,
-            use_time_zone: config.parse::<String>("use.time.zone")?,
-            delete_enabled: config.parse::<bool>("delete.enabled")?,
-            truncate_enabled: config.parse::<bool>("truncate.enabled")?,
-            insert_mode: config.parse::<String>("insert.mode")?,
-            primary_key_mode: config.parse::<String>("primary.key.mode")?,
-            primary_key_fields: config.parse::<String>("primary.key.fields")?,
-            quote_identifiers: config.parse::<bool>("quote.identifiers")?,
-            schema_evolution: config.parse::<String>("schema.evolution")?,
-            collection_name_format: config.parse::<String>("collection.name.format")?,
-            dialect_postgres_postgis_schema: config
-                .parse::<String>("dialect.postgres.postgis.schema")?,
-            dialect_sqlserver_identity_insert: config
-                .parse::<bool>("dialect.sqlserver.identity.insert")?,
-            batch_size: config.parse::<i64>("batch.size")?,
-            use_reduction_buffer: config.parse::<bool>("use.reduction.buffer")?,
-            field_include_list: config.parse::<String>("field.include.list")?,
-            field_exclude_list: config.parse::<String>("field.exclude.list")?,
-            flush_max_retries: config.parse::<i16>("flush.max.retries")?,
-            flush_retry_delay_ms: config.parse::<i64>("flush.retry.delay.ms")?,
-            column_naming_strategy: config.parse::<String>("column.naming.strategy")?,
-            collection_naming_strategy: config.parse::<String>("collection.naming.strategy")?,
-            version: Version::parse(&v_str)
-                .map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?,
-            common: CommonKafkaConnector::new(config, transforms, predicates)?,
-        };
-
-        con.validate()?;
+        let mut con = Self::generated_new(config.clone(), version)?;
+        let base = CommonKafkaConnector::generated_new(config, version)?;
+        con.common = Some(base);
+        con.transforms = transforms;
+        con.predicates = predicates;
         Ok(con)
     }
+    // pub fn new(
+    //     mut config: Map<String, Value>,
+    //     transforms: Option<Transforms>,
+    //     predicates: Option<Predicates>,
+    // ) -> Result<Self, KafkaConnectorCompileError> {
+    //     let v_str = config
+    //         .parse::<String>("version")?
+    //         .raise_on_none("version")?;
+    //     let con = Self {
+    //         connector_class: crate::connectors::source::debezium_postgres::CONNECTOR_CLASS_NAME
+    //             .to_string(),
+    //         topics: config.parse::<String>("topics")?,
+    //         topics_regex: config.parse::<String>("topics.regex")?,
+    //         connection_url: config
+    //             .parse::<String>("connection.url")?
+    //             .raise_on_none("connection.url")?,
+    //         connection_username: config
+    //             .parse::<String>("connection.username")?
+    //             .raise_on_none("connection.username")?,
+    //         connection_password: config
+    //             .parse::<String>("connection.password")?
+    //             .raise_on_none("connection.password")?,
+    //         tasks_max: config.parse::<i32>("tasks.max")?,
+    //         connection_provider: config.parse::<String>("connection.provider")?,
+    //         connection_pool_min_size: config.parse::<i32>("connection.pool.min_size")?,
+    //         connection_pool_max_size: config.parse::<i32>("connection.pool.max_size")?,
+    //         connection_pool_acquire_increment: config
+    //             .parse::<i64>("connection.pool.acquire_increment")?,
+    //         connection_pool_timeout: config.parse::<i64>("connection.pool.timeout")?,
+    //         connection_restart_on_errors: config.parse::<bool>("connection.restart.on.errors")?,
+    //         use_time_zone: config.parse::<String>("use.time.zone")?,
+    //         delete_enabled: config.parse::<bool>("delete.enabled")?,
+    //         truncate_enabled: config.parse::<bool>("truncate.enabled")?,
+    //         insert_mode: config.parse::<String>("insert.mode")?,
+    //         primary_key_mode: config.parse::<String>("primary.key.mode")?,
+    //         primary_key_fields: config.parse::<String>("primary.key.fields")?,
+    //         quote_identifiers: config.parse::<bool>("quote.identifiers")?,
+    //         schema_evolution: config.parse::<String>("schema.evolution")?,
+    //         collection_name_format: config.parse::<String>("collection.name.format")?,
+    //         dialect_postgres_postgis_schema: config
+    //             .parse::<String>("dialect.postgres.postgis.schema")?,
+    //         dialect_sqlserver_identity_insert: config
+    //             .parse::<bool>("dialect.sqlserver.identity.insert")?,
+    //         batch_size: config.parse::<i64>("batch.size")?,
+    //         use_reduction_buffer: config.parse::<bool>("use.reduction.buffer")?,
+    //         field_include_list: config.parse::<String>("field.include.list")?,
+    //         field_exclude_list: config.parse::<String>("field.exclude.list")?,
+    //         flush_max_retries: config.parse::<i16>("flush.max.retries")?,
+    //         flush_retry_delay_ms: config.parse::<i64>("flush.retry.delay.ms")?,
+    //         column_naming_strategy: config.parse::<String>("column.naming.strategy")?,
+    //         collection_naming_strategy: config.parse::<String>("collection.naming.strategy")?,
+    //         version: Version::parse(&v_str)
+    //             .map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?,
+    //         common: CommonKafkaConnector::new(config, transforms, predicates)?,
+    //     };
+    //
+    //     Ok(con)
+    // }
 }
 
-impl SoftValidate for DebeziumPostgresSinkConnector {
-    fn validate(&self) -> Result<(), KafkaConnectorCompileError> {
-        let mut v = ErrorBag::default();
-
-        v.check_mutually_exclusive(
-            "field.include.list",
-            &self.field_include_list,
-            "field.exclude.list",
-            &self.field_exclude_list,
-        );
-
-        v.version_errors(self.validate_version(self.version));
-
-        Ok(())
-    }
-}
+// impl SoftValidate for DebeziumPostgresSinkConnector {
+//     fn validate(&self) -> Result<(), KafkaConnectorCompileError> {
+//         let mut v = ErrorBag::default();
+//
+//         v.check_mutually_exclusive(
+//             "field.include.list",
+//             &self.field_include_list,
+//             "field.exclude.list",
+//             &self.field_exclude_list,
+//         );
+//
+//         v.version_errors(self.validate_version(self.version));
+//
+//         Ok(())
+//     }
+// }
 
 impl HasConnectorClass for DebeziumPostgresSinkConnector {
     fn connector_class(&self) -> &str {

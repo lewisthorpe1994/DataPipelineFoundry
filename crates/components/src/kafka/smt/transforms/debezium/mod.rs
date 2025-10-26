@@ -1,6 +1,19 @@
 pub mod by_logical_table_router;
 pub mod extract_new_record_state;
+pub mod content_based_router;
+pub mod outbox_event_router;
+pub mod filter;
+pub mod header_to_value;
+pub mod partition_routing;
+pub mod timezone_converter;
+pub mod decode_logical_message_content;
 
 pub use by_logical_table_router::ByLogicalTableRouter;
 pub use extract_new_record_state::ExtractNewRecordState;
-
+pub use content_based_router::ContentBasedRouter;
+pub use outbox_event_router::OutboxEventRouter;
+pub use filter::Filter;
+pub use header_to_value::HeaderToValue;
+pub use partition_routing::PartitionRouting;
+pub use timezone_converter::TimezoneConverter;
+pub use decode_logical_message_content::DecodeLogicalDecodingMessageContent;

@@ -1,19 +1,31 @@
 use crate::predicates::PredicateRef;
 use crate::smt::errors::TransformBuildError;
+use crate::smt::transforms::custom::Custom;
+use crate::smt::transforms::debezium::{ByLogicalTableRouter, ExtractNewRecordState};
+use crate::smt::{SmtClass, SmtKind, SmtPreset, Transform};
+use crate::version_consts::DBZ_VERSION_3_3;
 use common::error::DiagnosticMessage;
+use connector_versioning::Version;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use thiserror::Error;
-use crate::smt::{SmtClass, SmtKind, SmtPreset, Transform};
 
 fn predicate_of(kind: &SmtKind) -> Option<&PredicateRef> {
     match kind {
         SmtKind::ExtractNewRecordState(smt) => smt.predicate.as_ref(),
         SmtKind::ByLogicalTableRouter(smt) => smt.predicate.as_ref(),
         SmtKind::Custom(smt) => smt.predicate.as_ref(),
+        SmtKind::Filter(smt) => smt.predicate.as_ref(),
+        SmtKind::HeaderToValue(smt) => smt.predicate.as_ref(),
+        SmtKind::OutboxEventRouter(smt) => smt.predicate.as_ref(),
+        SmtKind::PartitionRouting(smt) => smt.predicate.as_ref(),
+        SmtKind::TimezoneConverter(smt) => smt.predicate.as_ref(),
+        SmtKind::ContentBasedRouter(smt) => smt.predicate.as_ref(),
+        SmtKind::DecodeLogicalMessageContent(smt) => smt.predicate.as_ref(),
+
     }
 }
 
@@ -46,6 +58,7 @@ pub fn build_transform_from_config(
     name: impl Into<String>,
     mut config: HashMap<String, String>,
     predicate: Option<PredicateRef>,
+    version: Version,
 ) -> Result<Transform, TransformBuildError> {
     let transform_name = name.into();
     let class = config
@@ -54,98 +67,31 @@ pub fn build_transform_from_config(
 
     match class.as_str() {
         "io.debezium.transforms.ExtractNewRecordState" => {
-            let drop_tombstones = take_bool(&mut config, "drop.tombstones")?;
-            let delete_handling_mode = config.remove("delete.handling.mode");
-            let add_headers = config.remove("add.headers");
-            let route_by_field = config.remove("route.by.field");
-
-            if config.is_empty() {
-                Ok(Transform {
-                    name: transform_name,
-                    kind: SmtKind::ExtractNewRecordState {
-                        drop_tombstones,
-                        delete_handling_mode,
-                        add_headers,
-                        route_by_field,
-                        predicate,
-                    },
-                })
-            } else {
-                let mut props = config;
-                if let Some(value) = drop_tombstones {
-                    props.insert("drop.tombstones".to_string(), value.to_string());
-                }
-                if let Some(value) = delete_handling_mode {
-                    props.insert("delete.handling.mode".to_string(), value);
-                }
-                if let Some(value) = add_headers {
-                    props.insert("add.headers".to_string(), value);
-                }
-                if let Some(value) = route_by_field {
-                    props.insert("route.by.field".to_string(), value);
-                }
-                props.insert("type".to_string(), class.clone());
-                Ok(Transform {
-                    name: transform_name,
-                    kind: SmtKind::Custom {
-                        class,
-                        props,
-                        predicate,
-                    },
-                })
-            }
-        }
-        "io.debezium.transforms.ByLogicalTableRouter" => {
-            let topic_regex = config.remove("topic.regex");
-            let topic_replacement = config.remove("topic.replacement");
-            let key_field_regex = config.remove("key.field.regex");
-            let key_field_replacement = config.remove("key.field.replacement");
-
-            if config.is_empty() {
-                Ok(Transform {
-                    name: transform_name,
-                    kind: SmtKind::ByLogicalTableRouter {
-                        topic_regex,
-                        topic_replacement,
-                        key_field_regex,
-                        key_field_replacement,
-                        predicate,
-                    },
-                })
-            } else {
-                let mut props = config;
-                if let Some(value) = topic_regex {
-                    props.insert("topic.regex".to_string(), value);
-                }
-                if let Some(value) = topic_replacement {
-                    props.insert("topic.replacement".to_string(), value);
-                }
-                if let Some(value) = key_field_regex {
-                    props.insert("key.field.regex".to_string(), value);
-                }
-                if let Some(value) = key_field_replacement {
-                    props.insert("key.field.replacement".to_string(), value);
-                }
-                props.insert("type".to_string(), class.clone());
-                Ok(Transform {
-                    name: transform_name,
-                    kind: SmtKind::Custom {
-                        class,
-                        props,
-                        predicate,
-                    },
-                })
-            }
-        }
-        _ => {
-            config.insert("type".to_string(), class.clone());
+            let mut smt = ExtractNewRecordState::new(config, version)?;
+            smt.predicate = predicate;
             Ok(Transform {
                 name: transform_name,
-                kind: SmtKind::Custom {
+                kind: SmtKind::ExtractNewRecordState(smt),
+            })
+        }
+        "io.debezium.transforms.ByLogicalTableRouter" => {
+            let mut smt = ByLogicalTableRouter::new(config, version)?;
+            smt.predicate = predicate;
+            Ok(Transform {
+                name: transform_name,
+                kind: SmtKind::ByLogicalTableRouter(smt),
+            })
+        }
+        _ => {
+            let mut props = config;
+            props.insert("type".to_string(), class.clone());
+            Ok(Transform {
+                name: transform_name,
+                kind: SmtKind::Custom(Custom {
                     class,
-                    props: config,
+                    props,
                     predicate,
-                },
+                }),
             })
         }
     }
@@ -184,58 +130,87 @@ impl Serialize for Transforms {
 
             // fields by SMT kind
             match &t.kind {
-                SmtKind::ExtractNewRecordState {
-                    drop_tombstones,
-                    delete_handling_mode,
-                    add_headers,
-                    route_by_field,
-                    predicate,
-                } => {
-                    if let Some(v) = drop_tombstones {
-                        map.serialize_entry(&(prefix.clone() + "drop.tombstones"), v)?;
+                SmtKind::ExtractNewRecordState(smt) => {
+                    if let Some(v) = smt.drop_tombstones {
+                        map.serialize_entry(&(prefix.clone() + "drop.tombstones"), &v)?;
                     }
-                    if let Some(v) = delete_handling_mode {
+                    if let Some(v) = smt.delete_handling_mode.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "delete.handling.mode"), v)?;
                     }
-                    if let Some(v) = add_headers {
+                    if let Some(v) = smt.delete_handling_tombstone_mode.as_ref() {
+                        map.serialize_entry(
+                            &(prefix.clone() + "delete.handling.tombstone.mode"),
+                            v,
+                        )?;
+                    }
+                    if let Some(v) = smt.add_headers.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "add.headers"), v)?;
                     }
-                    if let Some(v) = route_by_field {
+                    if let Some(v) = smt.route_by_field.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "route.by.field"), v)?;
                     }
+                    if let Some(v) = smt.add_fields_prefix.as_ref() {
+                        map.serialize_entry(&(prefix.clone() + "add.fields.prefix"), v)?;
+                    }
+                    if let Some(v) = smt.add_fields.as_ref() {
+                        map.serialize_entry(&(prefix.clone() + "add.fields"), v)?;
+                    }
+                    if let Some(v) = smt.add_headers_prefix.as_ref() {
+                        map.serialize_entry(&(prefix.clone() + "add.headers.prefix"), v)?;
+                    }
+                    if let Some(v) = smt.drop_fields_header_name.as_ref() {
+                        map.serialize_entry(&(prefix.clone() + "drop.fields.header.name"), v)?;
+                    }
+                    if let Some(v) = smt.drop_fields_from_key {
+                        map.serialize_entry(&(prefix.clone() + "drop.fields.from.key"), &v)?;
+                    }
+                    if let Some(v) = smt.drop_fields_keep_schema_compatible {
+                        map.serialize_entry(
+                            &(prefix.clone() + "drop.fields.keep.schema.compatible"),
+                            &v,
+                        )?;
+                    }
+                    if let Some(v) = smt.replace_null_with_default {
+                        map.serialize_entry(&(prefix.clone() + "replace.null.with.default"), &v)?;
+                    }
                     if let Some(pred) = predicate_of(&t.kind) {
                         pred.write_flat(&mut map, &prefix)?;
                     }
                 }
-                SmtKind::ByLogicalTableRouter {
-                    topic_regex,
-                    topic_replacement,
-                    key_field_regex,
-                    key_field_replacement,
-                    predicate,
-                } => {
-                    if let Some(v) = topic_regex {
+                SmtKind::ByLogicalTableRouter(smt) => {
+                    if let Some(v) = smt.topic_regex.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "topic.regex"), v)?;
                     }
-                    if let Some(v) = topic_replacement {
+                    if let Some(v) = smt.topic_replacement.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "topic.replacement"), v)?;
                     }
-                    if let Some(v) = key_field_regex {
+                    if let Some(v) = smt.key_enforce_uniqueness {
+                        map.serialize_entry(&(prefix.clone() + "key.enforce.uniqueness"), &v)?;
+                    }
+                    if let Some(v) = smt.key_field_name.as_ref() {
+                        map.serialize_entry(&(prefix.clone() + "key.field.name"), v)?;
+                    }
+                    if let Some(v) = smt.key_field_regex.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "key.field.regex"), v)?;
                     }
-                    if let Some(v) = key_field_replacement {
+                    if let Some(v) = smt.key_field_replacement.as_ref() {
                         map.serialize_entry(&(prefix.clone() + "key.field.replacement"), v)?;
+                    }
+                    if let Some(v) = smt.schema_name_adjustment_mode.as_ref() {
+                        map.serialize_entry(&(prefix.clone() + "schema.name.adjustment.mode"), v)?;
+                    }
+                    if let Some(v) = smt.logical_table_cache_size {
+                        map.serialize_entry(&(prefix.clone() + "logical.table.cache.size"), &v)?;
                     }
                     if let Some(pred) = predicate_of(&t.kind) {
                         pred.write_flat(&mut map, &prefix)?;
                     }
                 }
-                SmtKind::Custom {
-                    class,
-                    props,
-                    predicate,
-                } => {
-                    for (k, v) in props {
+                SmtKind::Custom(custom) => {
+                    for (k, v) in &custom.props {
+                        if k == "type" {
+                            continue;
+                        }
                         map.serialize_entry(&(prefix.clone() + k), v)?;
                     }
                     if let Some(pred) = predicate_of(&t.kind) {

@@ -2,8 +2,10 @@ use crate::connectors::base::CommonKafkaConnector;
 use crate::connectors::SoftValidate;
 use crate::errors::*;
 use crate::predicates::{Predicate, Predicates};
+use crate::smt::transforms::debezium::ExtractNewRecordState;
 use crate::smt::utils::Transforms;
-use crate::traits::{take_bool, ParseUtils, RaiseErrorOnNone};
+use crate::smt::Transform;
+use crate::traits::{ComponentVersion, ParseUtils, RaiseErrorOnNone};
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;
@@ -16,12 +18,19 @@ pub const CONNECTOR_SUPPORTED_VERSIONS: &[f64; 4] = &[3.0, 3.1, 3.2, 3.3];
 
 /// Debezium Postgres Source Connector (v3.0+)
 #[derive(Serialize, Debug, Clone, ConnectorVersioned)]
+#[parser(error = crate::errors::KafkaConnectorCompileError)]
 pub struct DebeziumPostgresSourceConnector {
     /* ---------------------- REQUIRED (no defaults) --------------------- */
     /// The Java class for the connector. Always `io.debezium.connector.postgresql.PostgresConnector`.
     #[serde(rename = "connector.class")]
     #[compat(always)]
     pub connector_class: String,
+
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, flatten)]
+    pub transforms: Option<Transforms>,
+
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, flatten)]
+    pub predicates: Option<Predicates>,
 
     #[serde(skip_serializing)]
     pub version: Version,
@@ -443,126 +452,145 @@ pub struct DebeziumPostgresSourceConnector {
     #[compat(always)]
     pub incremental_snapshot_chunk_size: Option<u32>,
 
-    #[serde(flatten)]
-    pub common: CommonKafkaConnector,
+    #[serde(skip)]
+    pub common: Option<CommonKafkaConnector>,
 }
 
+impl ComponentVersion for DebeziumPostgresSourceConnector {
+    fn version(&self) -> Version {
+        self.version
+    }
+}
 impl DebeziumPostgresSourceConnector {
     pub fn new(
-        mut config: Map<String, Value>,
+        config: HashMap<String, String>,
         transforms: Option<Transforms>,
         predicates: Option<Predicates>,
+        version: Version,
     ) -> Result<Self, KafkaConnectorCompileError> {
-        let v_str = config
-            .parse::<String>("version")?
-            .raise_on_none("version")?;
-
-        let con = Self {
-            // -------------------- REQUIRED CORE --------------------
-            connector_class: CONNECTOR_CLASS_NAME.to_string(),
-            version: Version::parse(&v_str)
-                .map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?,
-            database_hostname: config
-                .parse::<String>("database.hostname")?
-                .raise_on_none("database.hostname")?,
-            database_port: config
-                .parse::<u16>("database.port")?
-                .raise_on_none("database.port")?,
-            database_user: config
-                .parse::<String>("database.user")?
-                .raise_on_none("database.user")?,
-            database_password: config
-                .parse::<String>("database.password")?
-                .raise_on_none("database.password")?,
-            database_dbname: config
-                .parse::<String>("database.dbname")?
-                .raise_on_none("database.dbname")?,
-            topic_prefix: config
-                .parse::<String>("topic.prefix")?
-                .raise_on_none("topic.prefix")?,
-
-            // -------------------- NETWORK / SSL --------------------
-            database_tcp_keep_alive: config.parse::<bool>("database.tcpKeepAlive")?,
-            database_sslmode: config.parse::<String>("database.sslmode")?,
-            database_sslcert: config.parse::<String>("database.sslcert")?,
-            database_sslkey: config.parse::<String>("database.sslkey")?,
-            database_sslpassword: config.parse::<String>("database.sslpassword")?,
-            database_sslrootcert: config.parse::<String>("database.sslrootcert")?,
-            database_sslfactory: config.parse::<String>("database.sslfactory")?,
-            database_initial_statements: config.parse::<String>("database.initial.statements")?,
-            database_query_timeout_ms: config.parse::<u64>("database.query.timeout.ms")?,
-
-            // -------------------- SLOT & PUBLICATION --------------------
-            tasks_max: config.parse::<u32>("tasks.max")?,
-            plugin_name: config.parse::<String>("plugin.name")?,
-            slot_name: config.parse::<String>("slot.name")?,
-            slot_drop_on_stop: config.parse::<bool>("slot.drop.on.stop")?,
-            slot_failover: config.parse::<bool>("slot.failover")?,
-            slot_stream_params: config.parse::<String>("slot.stream.params")?,
-            slot_max_retries: config.parse::<u32>("slot.max.retries")?,
-            slot_retry_delay_ms: config.parse::<u64>("slot.retry.delay.ms")?,
-            publication_name: config.parse::<String>("publication.name")?,
-            publication_autocreate_mode: config.parse::<String>("publication.autocreate.mode")?,
-
-            // -------------------- FILTERING --------------------
-            schema_include_list: config.parse::<String>("schema.include.list")?,
-            schema_exclude_list: config.parse::<String>("schema.exclude.list")?,
-            table_include_list: config.parse::<String>("table.include.list")?,
-            table_exclude_list: config.parse::<String>("table.exclude.list")?,
-            column_include_list: config.parse::<String>("column.include.list")?,
-            column_exclude_list: config.parse::<String>("column.exclude.list")?,
-
-            // -------------------- MESSAGE HANDLING --------------------
-            skip_messages_without_change: config.parse::<bool>("skip.messages.without.change")?,
-            tombstones_on_delete: config.parse::<bool>("tombstones.on.delete")?,
-            time_precision_mode: config.parse::<String>("time.precision.mode")?,
-            decimal_handling_mode: config.parse::<String>("decimal.handling.mode")?,
-            hstore_handling_mode: config.parse::<String>("hstore.handling.mode")?,
-            interval_handling_mode: config.parse::<String>("interval.handling.mode")?,
-            binary_handling_mode: config.parse::<String>("binary.handling.mode")?,
-            schema_name_adjustment_mode: config.parse::<String>("schema.name.adjustment.mode")?,
-            field_name_adjustment_mode: config.parse::<String>("field.name.adjustment.mode")?,
-            money_fraction_digits: config.parse::<u32>("money.fraction.digits")?,
-            message_key_columns: config.parse::<String>("message.key.columns")?,
-            message_prefix_include_list: config.parse::<String>("message.prefix.include.list")?,
-            message_prefix_exclude_list: config.parse::<String>("message.prefix.exclude.list")?,
-
-            // -------------------- SNAPSHOT --------------------
-            snapshot_mode: config.parse::<String>("snapshot.mode")?,
-            snapshot_locking_mode: config.parse::<String>("snapshot.locking.mode")?,
-            snapshot_fetch_size: config.parse::<u32>("snapshot.fetch.size")?,
-            snapshot_delay_ms: config.parse::<u64>("snapshot.delay.ms")?,
-            snapshot_max_threads: config.parse::<u32>("snapshot.max.threads")?,
-            snapshot_include_schema_changes: config
-                .parse::<bool>("snapshot.include.schema.changes")?,
-            snapshot_select_statement_overrides: config
-                .parse::<String>("snapshot.select.statement.overrides")?,
-            snapshot_query_timeout_ms: config.parse::<u64>("snapshot.query.timeout.ms")?,
-            snapshot_read_timeout_ms: config.parse::<u64>("snapshot.read.timeout.ms")?,
-
-            // -------------------- STREAMING --------------------
-            poll_interval_ms: config.parse::<u64>("poll.interval.ms")?,
-            max_queue_size: config.parse::<u32>("max.queue.size")?,
-            max_batch_size: config.parse::<u32>("max.batch.size")?,
-
-            // -------------------- HEARTBEAT --------------------
-            heartbeat_interval_ms: config.parse::<u64>("heartbeat.interval.ms")?,
-            heartbeat_action_query: config.parse::<String>("heartbeat.action.query")?,
-
-            // -------------------- ERROR HANDLING --------------------
-            errors_max_retries: config.parse::<u32>("errors.max.retries")?,
-
-            // -------------------- PERFORMANCE --------------------
-            incremental_snapshot_chunk_size: config
-                .parse::<u32>("incremental.snapshot.chunk.size")?,
-
-            // -------------------- CONVERTERS & TRANSFORMS --------------------
-            common: CommonKafkaConnector::new(config, transforms, predicates)?,
-        };
-
-        con.validate()?;
+        let mut con = Self::generated_new(config.clone(), version)?;
+        let base = CommonKafkaConnector::generated_new(config, version)?;
+        con.common = Some(base);
+        con.transforms = transforms;
+        con.predicates = predicates;
         Ok(con)
     }
+
+    // pub fn new(
+    //     mut config: Map<String, Value>,
+    //     transforms: Option<Transforms>,
+    //     predicates: Option<Predicates>,
+    // ) -> Result<Self, KafkaConnectorCompileError> {
+    //     let v_str = config
+    //         .parse::<String>("version")?
+    //         .raise_on_none("version")?;
+    //     let version = Version::parse(&v_str)
+    //         .map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?;
+    //     let con = Self {
+    //         // -------------------- REQUIRED CORE --------------------
+    //         connector_class: CONNECTOR_CLASS_NAME.to_string(),
+    //         version: version.clone(),
+    //         database_hostname: config
+    //             .parse::<String>("database.hostname")?
+    //             .raise_on_none("database.hostname")?,
+    //         database_port: config
+    //             .parse::<u16>("database.port")?
+    //             .raise_on_none("database.port")?,
+    //         database_user: config
+    //             .parse::<String>("database.user")?
+    //             .raise_on_none("database.user")?,
+    //         database_password: config
+    //             .parse::<String>("database.password")?
+    //             .raise_on_none("database.password")?,
+    //         database_dbname: config
+    //             .parse::<String>("database.dbname")?
+    //             .raise_on_none("database.dbname")?,
+    //         topic_prefix: config
+    //             .parse::<String>("topic.prefix")?
+    //             .raise_on_none("topic.prefix")?,
+    //
+    //         // -------------------- NETWORK / SSL --------------------
+    //         database_tcp_keep_alive: config.parse::<bool>("database.tcpKeepAlive")?,
+    //         database_sslmode: config.parse::<String>("database.sslmode")?,
+    //         database_sslcert: config.parse::<String>("database.sslcert")?,
+    //         database_sslkey: config.parse::<String>("database.sslkey")?,
+    //         database_sslpassword: config.parse::<String>("database.sslpassword")?,
+    //         database_sslrootcert: config.parse::<String>("database.sslrootcert")?,
+    //         database_sslfactory: config.parse::<String>("database.sslfactory")?,
+    //         database_initial_statements: config.parse::<String>("database.initial.statements")?,
+    //         database_query_timeout_ms: config.parse::<u64>("database.query.timeout.ms")?,
+    //
+    //         // -------------------- SLOT & PUBLICATION --------------------
+    //         tasks_max: config.parse::<u32>("tasks.max")?,
+    //         plugin_name: config.parse::<String>("plugin.name")?,
+    //         slot_name: config.parse::<String>("slot.name")?,
+    //         slot_drop_on_stop: config.parse::<bool>("slot.drop.on.stop")?,
+    //         slot_failover: config.parse::<bool>("slot.failover")?,
+    //         slot_stream_params: config.parse::<String>("slot.stream.params")?,
+    //         slot_max_retries: config.parse::<u32>("slot.max.retries")?,
+    //         slot_retry_delay_ms: config.parse::<u64>("slot.retry.delay.ms")?,
+    //         publication_name: config.parse::<String>("publication.name")?,
+    //         publication_autocreate_mode: config.parse::<String>("publication.autocreate.mode")?,
+    //
+    //         // -------------------- FILTERING --------------------
+    //         schema_include_list: config.parse::<String>("schema.include.list")?,
+    //         schema_exclude_list: config.parse::<String>("schema.exclude.list")?,
+    //         table_include_list: config.parse::<String>("table.include.list")?,
+    //         table_exclude_list: config.parse::<String>("table.exclude.list")?,
+    //         column_include_list: config.parse::<String>("column.include.list")?,
+    //         column_exclude_list: config.parse::<String>("column.exclude.list")?,
+    //
+    //         // -------------------- MESSAGE HANDLING --------------------
+    //         skip_messages_without_change: config.parse::<bool>("skip.messages.without.change")?,
+    //         tombstones_on_delete: config.parse::<bool>("tombstones.on.delete")?,
+    //         time_precision_mode: config.parse::<String>("time.precision.mode")?,
+    //         decimal_handling_mode: config.parse::<String>("decimal.handling.mode")?,
+    //         hstore_handling_mode: config.parse::<String>("hstore.handling.mode")?,
+    //         interval_handling_mode: config.parse::<String>("interval.handling.mode")?,
+    //         binary_handling_mode: config.parse::<String>("binary.handling.mode")?,
+    //         schema_name_adjustment_mode: config.parse::<String>("schema.name.adjustment.mode")?,
+    //         field_name_adjustment_mode: config.parse::<String>("field.name.adjustment.mode")?,
+    //         money_fraction_digits: config.parse::<u32>("money.fraction.digits")?,
+    //         message_key_columns: config.parse::<String>("message.key.columns")?,
+    //         message_prefix_include_list: config.parse::<String>("message.prefix.include.list")?,
+    //         message_prefix_exclude_list: config.parse::<String>("message.prefix.exclude.list")?,
+    //
+    //         // -------------------- SNAPSHOT --------------------
+    //         snapshot_mode: config.parse::<String>("snapshot.mode")?,
+    //         snapshot_locking_mode: config.parse::<String>("snapshot.locking.mode")?,
+    //         snapshot_fetch_size: config.parse::<u32>("snapshot.fetch.size")?,
+    //         snapshot_delay_ms: config.parse::<u64>("snapshot.delay.ms")?,
+    //         snapshot_max_threads: config.parse::<u32>("snapshot.max.threads")?,
+    //         snapshot_include_schema_changes: config
+    //             .parse::<bool>("snapshot.include.schema.changes")?,
+    //         snapshot_select_statement_overrides: config
+    //             .parse::<String>("snapshot.select.statement.overrides")?,
+    //         snapshot_query_timeout_ms: config.parse::<u64>("snapshot.query.timeout.ms")?,
+    //         snapshot_read_timeout_ms: config.parse::<u64>("snapshot.read.timeout.ms")?,
+    //
+    //         // -------------------- STREAMING --------------------
+    //         poll_interval_ms: config.parse::<u64>("poll.interval.ms")?,
+    //         max_queue_size: config.parse::<u32>("max.queue.size")?,
+    //         max_batch_size: config.parse::<u32>("max.batch.size")?,
+    //
+    //         // -------------------- HEARTBEAT --------------------
+    //         heartbeat_interval_ms: config.parse::<u64>("heartbeat.interval.ms")?,
+    //         heartbeat_action_query: config.parse::<String>("heartbeat.action.query")?,
+    //
+    //         // -------------------- ERROR HANDLING --------------------
+    //         errors_max_retries: config.parse::<u32>("errors.max.retries")?,
+    //
+    //         // -------------------- PERFORMANCE --------------------
+    //         incremental_snapshot_chunk_size: config
+    //             .parse::<u32>("incremental.snapshot.chunk.size")?,
+    //
+    //         // -------------------- CONVERTERS & TRANSFORMS --------------------
+    //         common: CommonKafkaConnector::new(config, transforms, predicates, version)?,
+    //     };
+    //
+    //     con.validate()?;
+    //     Ok(con)
+    // }
 }
 
 impl SoftValidate for DebeziumPostgresSourceConnector {

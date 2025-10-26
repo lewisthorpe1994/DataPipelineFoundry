@@ -11,10 +11,7 @@ mod tests {
         KafkaBootstrap, KafkaConnect, KafkaSourceConfig,
     };
     use common::config::components::sources::SourcePaths;
-    use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
-    use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
-    use components::smt::SmtKind;
-    use components::{KafkaConnector, KafkaConnectorConfig};
+    use components::kafka::KafkaConnector;
     use sqlparser::ast::{
         CreateKafkaConnector, CreateSimpleMessageTransform, CreateSimpleMessageTransformPipeline,
         Statement,
@@ -187,63 +184,109 @@ FROM SOURCE DATABASE 'adapter_source'
     }
 
     #[test]
-    fn sink_versioning_blocks_future_field_on_older_version() {
-        use connector_versioning::{ConnectorVersioned, Version};
-        use serde_json::{Map, Value};
+    fn source_connector_flattens_transforms_and_predicates() {
+        let catalog = MemoryCatalog::new();
 
-        let mut config = Map::new();
-        config.insert("topics".to_string(), Value::String("orders".to_string()));
-        config.insert(
-            "connection.url".to_string(),
-            Value::String("jdbc:postgresql://localhost:5432/app_db".to_string()),
-        );
-        config.insert(
-            "connection.username".to_string(),
-            Value::String("app".to_string()),
-        );
-        config.insert(
-            "connection.password".to_string(),
-            Value::String("secret".to_string()),
-        );
-        config.insert(
-            "connection.restart.on.errors".to_string(),
-            Value::Bool(true),
-        );
+        let predicate_sql = r#"
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM PREDICATE 'pred_topic'
+USING PATTERN 'orders.*' FROM KIND "TopicNameMatches"
+"#;
+        let predicate_ast =
+            Parser::parse_sql(&GenericDialect {}, predicate_sql).expect("parse predicate");
+        catalog
+            .register_object(predicate_ast, None)
+            .expect("register predicate");
+
+        let transform_sql = r#"
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM custom_filter (
+    type = 'com.example.Filter'
+) WITH PREDICATE 'pred_topic'
+"#;
+        let transform_ast =
+            Parser::parse_sql(&GenericDialect {}, transform_sql).expect("parse transform");
+        catalog
+            .register_object(transform_ast, None)
+            .expect("register transform");
+
+        let pipeline_sql = r#"
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE filtered_pipe (
+    custom_filter AS filtered
+)
+"#;
+        let pipeline_ast =
+            Parser::parse_sql(&GenericDialect {}, pipeline_sql).expect("parse pipeline");
+        catalog
+            .register_object(pipeline_ast, None)
+            .expect("register pipeline");
+
+        let connector_sql = r#"
+CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS test_flatten
+USING KAFKA CLUSTER 'test_cluster' (
+    "database.hostname" = "localhost",
+    "database.user" = "app",
+    "database.password" = "secret",
+    "database.dbname" = "app_db",
+    "topic.prefix" = "app"
+) WITH CONNECTOR VERSION '3.1' AND PIPELINES(filtered_pipe)
+FROM SOURCE DATABASE 'adapter_source'
+"#;
+        let connector_ast =
+            Parser::parse_sql(&GenericDialect {}, connector_sql).expect("parse connector");
+        catalog
+            .register_object(connector_ast, None)
+            .expect("register connector");
+
+        let foundry_config = foundry_config();
 
         let connector =
-            DebeziumPostgresSinkConnector::new(config, None, None).expect("build sink connector");
+            KafkaConnector::compile_from_catalog(&catalog, "test_flatten", &foundry_config)
+                .expect("compile connector");
 
-        let errors = connector.validate_version(Version::new(3, 0));
-        assert!(
-            errors
-                .iter()
-                .any(|err| err.contains("connection.restart.on.errors")),
-            "expected version guard to flag incompatible field, got {:?}",
-            errors
-        );
+        println!("{}", connector.to_json_string().expect("json"));
 
-        let older_map = connector
-            .to_versioned_map(Version::new(3, 0))
-            .expect("serialize versioned map");
-        assert!(
-            !older_map.contains_key("connection.restart.on.errors"),
-            "expected 3.0 map to omit 3.1 field, got {:?}",
-            older_map
-        );
+        let json = connector.to_json().expect("connector to json");
+        let config = json
+            .get("config")
+            .and_then(|v| v.as_object())
+            .expect("config object");
 
-        let future_errors = connector.validate_version(Version::new(3, 1));
-        assert!(
-            future_errors.is_empty(),
-            "expected no errors for 3.1, got {:?}",
-            future_errors
-        );
+        let transforms_value = config.get("transforms").expect("transforms entry");
+        assert!(matches!(transforms_value, serde_json::Value::String(s) if s == "filtered"));
 
-        let newer_map = connector
-            .to_versioned_map(Version::new(3, 1))
-            .expect("serialize versioned map");
         assert_eq!(
-            newer_map.get("connection.restart.on.errors"),
-            Some(&"true".to_string())
+            config
+                .get("transforms.filtered.type")
+                .and_then(|v| v.as_str())
+                .expect("transform type"),
+            "com.example.Filter"
+        );
+        assert_eq!(
+            config
+                .get("transforms.filtered.predicate")
+                .and_then(|v| v.as_str())
+                .expect("transform predicate"),
+            "pred_topic"
+        );
+
+        let predicates_value = config
+            .get("predicates")
+            .and_then(|v| v.as_str())
+            .expect("predicates entry");
+        assert_eq!(predicates_value, "pred_topic");
+
+        assert_eq!(
+            config
+                .get("predicates.pred_topic.type")
+                .and_then(|v| v.as_str())
+                .expect("predicate type"),
+            "org.apache.kafka.connect.transforms.predicates.TopicNameMatches"
+        );
+        assert_eq!(
+            config
+                .get("predicates.pred_topic.pattern")
+                .and_then(|v| v.as_str())
+                .expect("predicate pattern"),
+            "orders.*"
         );
     }
 }

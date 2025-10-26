@@ -51,15 +51,18 @@ pub struct ValueSpec {
     pub values: &'static [&'static str],
 }
 
-pub fn versions_vec(supported: &[Version]) -> Vec<Version> {
-    supported.iter().copied().collect()
+pub fn version_supported(version: Version, supported: &[Version]) -> bool {
+    supported.iter().any(|v| *v == version)
 }
 
-pub fn values_map(specs: &[ValueSpec]) -> HashMap<Version, Vec<&'static str>> {
+pub fn values_for_version(
+    specs: &[ValueSpec],
+    version: Version,
+) -> Option<&'static [&'static str]> {
     specs
         .iter()
-        .map(|spec| (spec.version, spec.values.iter().copied().collect()))
-        .collect()
+        .find(|spec| spec.version == version)
+        .map(|spec| spec.values)
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -88,6 +91,9 @@ impl Compat {
 /// - `to_versioned_map(target)` -> only include compatible fields (flattened)
 pub trait ConnectorVersioned: Serialize {
     fn field_compat() -> &'static [(&'static str, Compat)];
+    fn field_allowed_values() -> &'static [(&'static str, &'static [ValueSpec])] {
+        &[]
+    }
     fn validate_version(&self, target: Version) -> Vec<String> {
         let mut errs = Vec::new();
 
@@ -110,6 +116,44 @@ pub trait ConnectorVersioned: Serialize {
                 }
             }
         }
+        errs
+    }
+
+    fn validate_allowed_values(&self, target: Version) -> Vec<String> {
+        let mut errs = Vec::new();
+
+        let v = serde_json::to_value(self).unwrap_or(Value::Null);
+        let Some(obj) = v.as_object() else {
+            return errs;
+        };
+
+        let allowed_map: HashMap<&'static str, &'static [ValueSpec]> =
+            Self::field_allowed_values().iter().copied().collect();
+
+        for (key, val) in obj {
+            if let Some(specs) = allowed_map.get(key.as_str()) {
+                if present(val).is_none() {
+                    continue;
+                }
+
+                if let Some(actual) = value_to_string(val) {
+                    if let Some(allowed) = values_for_version(specs, target) {
+                        if !allowed.iter().any(|candidate| *candidate == actual) {
+                            errs.push(format!(
+                                "Field `{}` value `{}` is not compatible with Debezium {}",
+                                key, actual, target
+                            ));
+                        }
+                    } else {
+                        errs.push(format!(
+                            "Field `{}` is not supported for Debezium {}",
+                            key, target
+                        ));
+                    }
+                }
+            }
+        }
+
         errs
     }
 
@@ -154,6 +198,16 @@ fn present(v: &Value) -> Option<()> {
     match v {
         Value::Null => None,
         _ => Some(()),
+    }
+}
+
+fn value_to_string(v: &Value) -> Option<String> {
+    match v {
+        Value::Null => None,
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        other => Some(other.to_string()),
     }
 }
 

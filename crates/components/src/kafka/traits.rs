@@ -36,7 +36,9 @@ where
     }
 }
 
-use connector_versioning::Version;
+use connector_versioning::{
+    values_for_version, version_supported, ConnectorVersioned, ValueSpec, Version,
+};
 use serde_json::{Map as JsonMap, Value as Json};
 
 impl<E> ParseUtils<E> for JsonMap<String, Json>
@@ -75,36 +77,37 @@ pub trait ComponentVersion {
 pub trait ValidateVersion<E>
 where
     E: ValidationError,
-    Self: ComponentVersion,
+    Self: ComponentVersion + ConnectorVersioned,
 {
     fn validate_field_supported_in_version(
         &self,
-        supported: Vec<Version>,
+        supported: &[Version],
         field: &str,
     ) -> Result<(), E> {
-        if !supported.contains(&self.version()) {
+        if !version_supported(self.version(), supported) {
             return Err(E::validation_error(format!(
                 "{} is not supported for this connector version: {}",
-                field, self.version()
+                field,
+                self.version()
             )));
         }
         Ok(())
     }
     fn validate_field_value_supported_in_version(
         &self,
-        supported: HashMap<Version, Vec<&str>>,
+        supported: &[ValueSpec],
         field: &str,
         value: &str,
     ) -> Result<(), E> {
         let error_msg = format!(
             "{} is not supported for this connector version: {}",
-            field, self.version()
+            field,
+            self.version()
         );
-        let supported_values = supported
-            .get(&self.version())
-            .ok_or(E::validation_error(&error_msg))?;
+        let supported_values =
+            values_for_version(supported, self.version()).ok_or(E::validation_error(&error_msg))?;
 
-        if !supported_values.contains(&value) {
+        if !supported_values.iter().any(|candidate| candidate == &value) {
             return Err(E::validation_error(&error_msg));
         }
         Ok(())

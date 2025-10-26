@@ -1,104 +1,92 @@
 use crate::errors::ValidationError;
 use crate::predicates::PredicateRef;
 use crate::smt::errors::TransformBuildError;
-use crate::traits::{ComponentVersion, ParseUtils, ValidateVersion};
-use connector_versioning::{values_map, versions_vec, ValueSpec, Version};
+use crate::traits::{ComponentVersion, ValidateVersion};
+use connector_versioning::{ConnectorVersioned, Version};
+use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
+use serde::Serialize;
 use std::collections::HashMap;
-use crate::version_consts::{DBZ_ALL_SUPPORTED_VERSIONS, DBZ_VERSION_3_0, DBZ_VERSION_3_1, DBZ_VERSION_3_2, DBZ_VERSION_3_3};
 
-const DROP_TOMBSTONES_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const DELETE_HANDLING_MODE_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-
-const DELETE_HANDLING_MODE_VALUE_SPECS: &[ValueSpec] = &[
-    ValueSpec {
-        version: DBZ_VERSION_3_0,
-        values: &["rewrite", "drop", "none"],
-    },
-    ValueSpec {
-        version: DBZ_VERSION_3_1,
-        values: &["rewrite", "drop", "none"],
-    },
-];
-
-const DELETE_HANDLING_TOMBSTONE_MODE_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-
-const DELETE_HANDLING_TOMBSTONE_MODE_VALUE_SPECS: &[ValueSpec] = &[
-    ValueSpec {
-        version: DBZ_VERSION_3_0,
-        values: &["drop", "tombstone", "rewrite", "rewrite-with-tombstone"],
-    },
-    ValueSpec {
-        version: DBZ_VERSION_3_1,
-        values: &["drop", "tombstone", "rewrite", "rewrite-with-tombstone"],
-    },
-    ValueSpec {
-        version: DBZ_VERSION_3_2,
-        values: &[
-            "drop",
-            "tombstone",
-            "rewrite",
-            "rewrite-with-tombstone",
-            "delete-to-tombstone",
-        ],
-    },
-    ValueSpec {
-        version: DBZ_VERSION_3_3,
-        values: &[
-            "drop",
-            "tombstone",
-            "rewrite",
-            "rewrite-with-tombstone",
-            "delete-to-tombstone",
-        ],
-    },
-];
-
-const ROUTE_BY_FIELD_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const ADD_FIELDS_PREFIX_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const ADD_FIELDS_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const ADD_HEADERS_PREFIX_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const ADD_HEADERS_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const DROP_FIELDS_HEADER_NAME_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const DROP_FIELDS_FROM_KEY_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const DROP_FIELDS_KEEP_SCHEMA_COMPATIBLE_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-const REPLACE_NULL_WITH_DEFAULT_VERSIONS: &[Version] = DBZ_ALL_SUPPORTED_VERSIONS;
-
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, ConnectorVersionedDerive)]
+#[parser(error = crate::smt::errors::TransformBuildError)]
 pub struct ExtractNewRecordState {
+    #[compat(range = "3.0..=3.1")]
+    #[serde(rename = "drop.tombstones", skip_serializing_if = "Option::is_none")]
     pub drop_tombstones: Option<bool>,
+
+    #[serde(
+        rename = "delete.handling.mode",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[compat(range = "3.0..=3.1")]
+    #[allowed_values(range = "3.0..=3.1", values = ["rewrite", "drop", "none"])]
     pub delete_handling_mode: Option<String>,
+
+    #[serde(
+        rename = "delete.handling.tombstone.mode",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[compat(range = "3.0..=3.3")]
+    #[allowed_values(range = "3.0..=3.1", values = ["drop", "tombstone", "rewrite", "rewrite-with-tombstone"])]
+    #[allowed_values(range = "3.2..=3.3", values = ["drop", "tombstone", "rewrite", "rewrite-with-tombstone", "delete-to-tombstone"])]
     pub delete_handling_tombstone_mode: Option<String>,
+
+    #[serde(rename = "add.headers", skip_serializing_if = "Option::is_none")]
+    #[compat(range = "3.0..=3.3")]
     pub add_headers: Option<String>,
+
+    #[serde(rename = "route.by.field", skip_serializing_if = "Option::is_none")]
+    #[compat(range = "3.0..=3.3")]
     pub route_by_field: Option<String>,
+
+    #[serde(rename = "add.fields.prefix", skip_serializing_if = "Option::is_none")]
+    #[compat(range = "3.0..=3.3")]
     pub add_fields_prefix: Option<String>,
+
+    #[serde(rename = "add.fields", skip_serializing_if = "Option::is_none")]
+    #[compat(range = "3.0..=3.3")]
     pub add_fields: Option<String>,
+
+    #[serde(rename = "add.headers.prefix", skip_serializing_if = "Option::is_none")]
+    #[compat(range = "3.0..=3.3")]
     pub add_headers_prefix: Option<String>,
+
+    #[serde(
+        rename = "drop.fields.header.name",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[compat(range = "3.0..=3.3")]
     pub drop_fields_header_name: Option<String>,
+
+    #[serde(
+        rename = "drop.fields.from.key",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[compat(range = "3.0..=3.3")]
     pub drop_fields_from_key: Option<bool>,
+
+    #[serde(
+        rename = "drop.fields.keep.schema.compatible",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[compat(range = "3.0..=3.3")]
     pub drop_fields_keep_schema_compatible: Option<bool>,
+
+    #[serde(
+        rename = "replace.null.with.default",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[compat(range = "3.0..=3.3")]
     pub replace_null_with_default: Option<bool>,
+
+    #[serde(skip)]
+    #[compat(always)]
     pub predicate: Option<PredicateRef>,
+
+    #[serde(skip)]
+    #[compat(always)]
     version: Version,
 }
-
-type FieldSetter =
-    fn(&mut ExtractNewRecordState, &mut HashMap<String, String>) -> Result<(), TransformBuildError>;
-
-const FIELD_SETTERS: &[FieldSetter] = &[
-    ExtractNewRecordState::set_drop_tombstones,
-    ExtractNewRecordState::set_delete_handling_mode,
-    ExtractNewRecordState::set_delete_handling_tombstone_mode,
-    ExtractNewRecordState::set_route_by_field,
-    ExtractNewRecordState::set_add_fields_prefix,
-    ExtractNewRecordState::set_add_fields,
-    ExtractNewRecordState::set_add_headers_prefix,
-    ExtractNewRecordState::set_add_headers,
-    ExtractNewRecordState::set_drop_fields_header_name,
-    ExtractNewRecordState::set_drop_fields_from_key,
-    ExtractNewRecordState::set_drop_fields_keep_schema_compatible,
-    ExtractNewRecordState::set_replace_null_with_default,
-];
 
 impl ComponentVersion for ExtractNewRecordState {
     fn version(&self) -> Version {
@@ -106,261 +94,124 @@ impl ComponentVersion for ExtractNewRecordState {
     }
 }
 
-impl<E> ValidateVersion<E> for ExtractNewRecordState
-where
-    E: ValidationError,
-{}
+impl<E> ValidateVersion<E> for ExtractNewRecordState where E: ValidationError {}
 
 impl ExtractNewRecordState {
-    fn empty(version: Version) -> Self {
-        Self {
-            drop_tombstones: None,
-            delete_handling_mode: None,
-            delete_handling_tombstone_mode: None,
-            add_headers: None,
-            route_by_field: None,
-            add_fields_prefix: None,
-            add_fields: None,
-            add_headers_prefix: None,
-            drop_fields_header_name: None,
-            drop_fields_from_key: None,
-            drop_fields_keep_schema_compatible: None,
-            replace_null_with_default: None,
-            predicate: None,
-            version,
-        }
-    }
     pub fn new(
-        mut config: HashMap<String, String>,
+        config: HashMap<String, String>,
         version: Version,
     ) -> Result<Self, TransformBuildError> {
-        let mut smt = Self::empty(version);
-        for setter in FIELD_SETTERS {
-            setter(&mut smt, &mut config)?;
-        }
-        Ok(smt)
-    }
+        let mut smt = Self::generated_new(config, version)?;
 
-    fn set_drop_tombstones(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        self.validate_field_supported_in_version(
-            versions_vec(DROP_TOMBSTONES_VERSIONS),
-            "drop.tombstones",
-        )?;
-
-        let val = config.parse::<bool>("drop.tombstones")?;
-        self.drop_tombstones = val;
-        Ok(())
-    }
-
-    fn set_delete_handling_mode(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "delete.handling.mode";
-        let val = config.parse::<String>(field_name)?;
-        if let Some(arg) = &val {
-            self.validate_field_supported_in_version(
-                versions_vec(DELETE_HANDLING_MODE_VERSIONS),
-                field_name,
-            )?;
-
-            let allowed = values_map(DELETE_HANDLING_MODE_VALUE_SPECS);
-            self.validate_field_value_supported_in_version(allowed, field_name, arg)?;
-        }
-        self.delete_handling_mode = val;
-
-        Ok(())
-    }
-
-    fn set_delete_handling_tombstone_mode(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let val = config.parse::<String>("delete.handling.tombstone.mode")?;
-
-        if let Some(arg) = &val {
-            self.validate_field_supported_in_version(
-                versions_vec(DELETE_HANDLING_TOMBSTONE_MODE_VERSIONS),
-                "delete.handling.tombstone.mode",
-            )?;
-
-            let allowed = values_map(DELETE_HANDLING_TOMBSTONE_MODE_VALUE_SPECS);
-            self.validate_field_value_supported_in_version(
-                allowed,
-                "delete.handling.tombstone.mode",
-                arg,
-            )?;
-        }
-
-        self.delete_handling_tombstone_mode = val;
-        Ok(())
-    }
-
-    fn set_route_by_field(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "route.by.field";
-        let val = config.parse::<String>(field_name)?;
-        if let Some(arg) = &val {
+        if let Some(arg) = smt.route_by_field.as_ref() {
             if arg.trim().is_empty() {
                 return Err(TransformBuildError::validation_error(
                     "route.by.field must not be empty",
                 ));
             }
-            self.validate_field_supported_in_version(
-                versions_vec(ROUTE_BY_FIELD_VERSIONS),
-                field_name,
-            )?;
         }
-        self.route_by_field = val;
-        Ok(())
-    }
 
-    fn set_add_fields_prefix(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "add.fields.prefix";
-        let val = config.parse::<String>(field_name)?;
-        if val.is_some() {
-            self.validate_field_supported_in_version(
-                versions_vec(ADD_FIELDS_PREFIX_VERSIONS),
-                field_name,
-            )?;
-        }
-        self.add_fields_prefix = val;
-        Ok(())
-    }
-
-    fn set_add_fields(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "add.fields";
-        let val = config.parse::<String>(field_name)?;
-        if let Some(arg) = &val {
-            self.validate_field_supported_in_version(
-                versions_vec(ADD_FIELDS_VERSIONS),
-                field_name,
-            )?;
+        if let Some(arg) = smt.add_fields.as_ref() {
             if arg.contains(' ') {
                 return Err(TransformBuildError::validation_error(
                     "add.fields must be a comma separated list of field names without spaces",
                 ));
             }
         }
-        self.add_fields = val;
-        Ok(())
-    }
 
-    fn set_add_headers_prefix(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "add.headers.prefix";
-        let val = config.parse::<String>(field_name)?;
-        if val.is_some() {
-            self.validate_field_supported_in_version(
-                versions_vec(ADD_HEADERS_PREFIX_VERSIONS),
-                field_name,
-            )?;
-        }
-        self.add_headers_prefix = val;
-        Ok(())
-    }
-
-    fn set_add_headers(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "add.headers";
-        let val = config.parse::<String>(field_name)?;
-        if let Some(arg) = &val {
-            self.validate_field_supported_in_version(
-                versions_vec(ADD_HEADERS_VERSIONS),
-                field_name,
-            )?;
-
+        if let Some(arg) = smt.add_headers.as_ref() {
             if arg.contains(' ') {
                 return Err(TransformBuildError::validation_error(
                     "add.headers must be a comma separated list of header names without spaces",
                 ));
             }
         }
-        self.add_headers = val;
-        Ok(())
-    }
 
-    fn set_drop_fields_header_name(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "drop.fields.header.name";
-        let val = config.parse::<String>(field_name)?;
-        if let Some(arg) = &val {
+        if let Some(arg) = smt.drop_fields_header_name.as_ref() {
             if arg.trim().is_empty() {
                 return Err(TransformBuildError::validation_error(
                     "drop.fields.header.name must not be empty",
                 ));
             }
-            self.validate_field_supported_in_version(
-                versions_vec(DROP_FIELDS_HEADER_NAME_VERSIONS),
-                field_name,
-            )?;
         }
-        self.drop_fields_header_name = val;
-        Ok(())
+
+        Ok(smt)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::smt::errors::TransformBuildError;
+    use crate::smt::transforms::debezium::ExtractNewRecordState;
+    use connector_versioning::Version;
+    use std::collections::HashMap;
+
+    #[test]
+    fn extract_new_record_state_rejects_incompatible_field_for_version() {
+        // Arrange: config supplies a field only valid from 3.2 onward.
+        let mut config = HashMap::new();
+        config.insert(
+            "delete.handling.tombstone.mode".to_string(),
+            "delete-to-tombstone".to_string(),
+        );
+        config.insert("drop.tombstones".to_string(), "true".to_string());
+
+        // Act: attempt to build against version 3.1, where that value isn't allowed.
+        let result = ExtractNewRecordState::generated_new(config, Version::new(3, 1));
+
+        // Assert: builder should return a validation error.
+        assert!(matches!(
+            result,
+            Err(TransformBuildError::ValidationError { .. })
+        ));
     }
 
-    fn set_drop_fields_from_key(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "drop.fields.from.key";
-        let val = config.parse::<bool>(field_name)?;
-        if val.is_some() {
-            self.validate_field_supported_in_version(
-                versions_vec(DROP_FIELDS_FROM_KEY_VERSIONS),
-                field_name,
-            )?;
-        }
-        self.drop_fields_from_key = val;
-        Ok(())
+    #[test]
+    fn extract_new_record_state_allows_drop_tombstones_for_supported_versions() {
+        let mut config = HashMap::new();
+        config.insert("drop.tombstones".to_string(), "true".to_string());
+
+        let result = ExtractNewRecordState::generated_new(config, Version::new(3, 1));
+
+        assert!(result.is_ok());
     }
 
-    fn set_drop_fields_keep_schema_compatible(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "drop.fields.keep.schema.compatible";
-        let val = config.parse::<bool>(field_name)?;
-        if val.is_some() {
-            self.validate_field_supported_in_version(
-                versions_vec(DROP_FIELDS_KEEP_SCHEMA_COMPATIBLE_VERSIONS),
-                field_name,
-            )?;
-        }
-        self.drop_fields_keep_schema_compatible = val;
-        Ok(())
+    #[test]
+    fn extract_new_record_state_rejects_drop_tombstones_after_3_1() {
+        let mut config = HashMap::new();
+        config.insert("drop.tombstones".to_string(), "true".to_string());
+
+        let result = ExtractNewRecordState::generated_new(config, Version::new(3, 2));
+
+        assert!(matches!(
+            result,
+            Err(TransformBuildError::ValidationError { .. })
+        ));
     }
 
-    fn set_replace_null_with_default(
-        &mut self,
-        config: &mut HashMap<String, String>,
-    ) -> Result<(), TransformBuildError> {
-        let field_name = "replace.null.with.default";
-        let val = config.parse::<bool>(field_name)?;
-        if val.is_some() {
-            self.validate_field_supported_in_version(
-                versions_vec(REPLACE_NULL_WITH_DEFAULT_VERSIONS),
-                field_name,
-            )?;
-        }
-        self.replace_null_with_default = val;
-        Ok(())
+    #[test]
+    fn extract_new_record_state_rejects_empty_route_by_field() {
+        let mut config = HashMap::new();
+        config.insert("route.by.field".to_string(), " ".to_string());
+
+        let result = ExtractNewRecordState::new(config, Version::new(3, 3));
+
+        assert!(matches!(
+            result,
+            Err(TransformBuildError::ValidationError { .. })
+        ));
+    }
+
+    #[test]
+    fn extract_new_record_state_allows_delete_to_tombstone_for_3_2() {
+        let mut config = HashMap::new();
+        config.insert(
+            "delete.handling.tombstone.mode".to_string(),
+            "delete-to-tombstone".to_string(),
+        );
+
+        let result = ExtractNewRecordState::generated_new(config, Version::new(3, 2));
+
+        assert!(result.is_ok());
     }
 }

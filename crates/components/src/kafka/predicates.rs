@@ -118,7 +118,7 @@ impl Serialize for Predicates {
 /* ====================== Referencing predicates from SMTs ====================== */
 
 /// Reference a declared predicate from an SMT, with optional negation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PredicateRef {
     pub name: String,         // must match a name in `Predicates`
     pub negate: Option<bool>, // sets `transforms.<smt>.predicate.negate`
