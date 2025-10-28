@@ -126,9 +126,9 @@ mod tests {
         let catalog = MemoryCatalog::new();
 
         let transform_sql = r#"
-CREATE KAFKA SIMPLE MESSAGE TRANSFORM unwrap
-PRESET debezium.unwrap_default
-EXTEND ("delete.handling.mode" = 'drop', "route.by.field" = 'field', "drop.tombstones" = 'true')
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM reroute
+PRESET debezium.by_logical_table_router
+EXTEND ("topic.regex" = 'postgres\\.([^.]+).([^.]+)', "topic.replacement" = 'dvdrental.$2');
 "#;
         let transform_ast: Vec<Statement> =
             Parser::parse_sql(&GenericDialect {}, transform_sql).expect("parse statement");
@@ -139,7 +139,7 @@ EXTEND ("delete.handling.mode" = 'drop', "route.by.field" = 'field', "drop.tombs
 
         let pipeline_sql = r#"
 CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE preset_pipe (
-    unwrap
+    reroute
 )
 "#;
         let pipeline_ast: Vec<Statement> =
@@ -166,7 +166,7 @@ FROM SOURCE DATABASE 'adapter_source'
             .expect("register object");
 
         let stored_transform = catalog
-            .get_kafka_smt("unwrap")
+            .get_kafka_smt("reroute")
             .expect("transform registered");
         let transform_ast = stored_transform.sql.clone();
 
@@ -288,5 +288,33 @@ FROM SOURCE DATABASE 'adapter_source'
                 .expect("predicate pattern"),
             "orders.*"
         );
+    }
+
+    #[test]
+    fn sink_connector_compiles() {
+        let catalog = MemoryCatalog::new();
+
+        let sql = r#"CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SINK IF NOT EXISTS film_rental_inventory_customer_payment_sink
+USING KAFKA CLUSTER 'test_cluster' (
+    "tasks.max" = "1",
+    "insert.mode" = "upsert",
+    "delete.enabled" = "false",
+    "topics.regex" = "dvdrental\.([^.]+)"
+) WITH CONNECTOR VERSION '3.1'
+INTO WAREHOUSE DATABASE 'adapter_source' USING SCHEMA 'bronze';"#;
+
+        let connector_ast =
+            Parser::parse_sql(&GenericDialect {}, sql).expect("parse connector");
+        catalog
+            .register_object(connector_ast, None)
+            .expect("register connector");
+
+        let foundry_config = crate::tests::foundry_config();
+
+        let connector =
+            KafkaConnector::compile_from_catalog(&catalog, "film_rental_inventory_customer_payment_sink", &foundry_config)
+                .expect("compile connector");
+
+        println!("{}", connector.to_json_string().expect("json"));
     }
 }

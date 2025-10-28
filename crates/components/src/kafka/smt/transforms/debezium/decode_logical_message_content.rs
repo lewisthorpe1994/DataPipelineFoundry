@@ -16,7 +16,10 @@ pub struct DecodeLogicalDecodingMessageContent {
     #[compat(always)]
     version: Version,
 
-    #[serde(rename = "fields.null.include", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "fields.null.include",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[compat(always)]
     #[allowed_values(range = "3.0..=3.3", values = ["true", "false"])]
     pub converted_timezone: Option<bool>,

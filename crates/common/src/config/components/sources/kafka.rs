@@ -137,7 +137,7 @@ impl KafkaConnectorConfig {
                 schema
                     .tables
                     .iter()
-                    .map(move |(t_name, t)| format!("{}:{}", t_name, s_name))
+                    .map(move |(t_name, t)| format!("{}.{}", s_name, t_name))
             })
             .collect::<Vec<String>>()
             .join(",")

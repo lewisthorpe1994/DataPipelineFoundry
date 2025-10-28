@@ -3,7 +3,11 @@ pub mod transforms;
 pub mod utils;
 
 use crate::smt::transforms::custom::Custom;
-use crate::smt::transforms::debezium::{ByLogicalTableRouter, DecodeLogicalDecodingMessageContent, ExtractNewRecordState, Filter, HeaderToValue, ContentBasedRouter, OutboxEventRouter, PartitionRouting, TimezoneConverter};
+use crate::smt::transforms::debezium::{
+    ByLogicalTableRouter, ContentBasedRouter, DecodeLogicalDecodingMessageContent,
+    ExtractNewRecordState, Filter, HeaderToValue, OutboxEventRouter, PartitionRouting,
+    TimezoneConverter,
+};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
@@ -38,9 +42,15 @@ impl SmtKind {
             }
             SmtKind::Filter(_) => Cow::Borrowed("io.debezium.transforms.Filter"),
             SmtKind::HeaderToValue(_) => Cow::Borrowed("io.debezium.transforms.HeaderToValue"),
-            SmtKind::OutboxEventRouter(_) => Cow::Borrowed("io.debezium.transforms.OutboxEventRouter"),
-            SmtKind::PartitionRouting(_) => Cow::Borrowed("io.debezium.transforms.PartitionRouting"),
-            SmtKind::TimezoneConverter(_) => Cow::Borrowed("io.debezium.transforms.TimezoneConverter"),
+            SmtKind::OutboxEventRouter(_) => {
+                Cow::Borrowed("io.debezium.transforms.OutboxEventRouter")
+            }
+            SmtKind::PartitionRouting(_) => {
+                Cow::Borrowed("io.debezium.transforms.PartitionRouting")
+            }
+            SmtKind::TimezoneConverter(_) => {
+                Cow::Borrowed("io.debezium.transforms.TimezoneConverter")
+            }
             SmtKind::Custom(c) => Cow::Owned(c.class.clone()),
         }
     }
@@ -68,7 +78,9 @@ impl TryFrom<&str> for SmtClass {
             "io.debezium.transforms.ExtractNewRecordState" => Ok(SmtClass::ExtractNewRecordState),
             "io.debezium.transforms.ByLogicalTableRouter" => Ok(SmtClass::ByLogicalTableRouter),
             "io.debezium.transforms.ContentBasedRouter" => Ok(SmtClass::ContentBasedRouter),
-            "io.debezium.transforms.DecodeLogicalDecodingMessageContent" => Ok(SmtClass::DecodeLogicalMessageContent),
+            "io.debezium.transforms.DecodeLogicalDecodingMessageContent" => {
+                Ok(SmtClass::DecodeLogicalMessageContent)
+            }
             "io.debezium.transforms.Filter" => Ok(SmtClass::Filter),
             "io.debezium.transforms.HeaderToValue" => Ok(SmtClass::HeaderToValue),
             "io.debezium.transforms.OutboxEventRouter" => Ok(SmtClass::OutboxEventRouter),
@@ -96,9 +108,13 @@ impl SmtClass {
             }
             SmtClass::Filter => Cow::Borrowed("io.debezium.transforms.Filter"),
             SmtClass::HeaderToValue => Cow::Borrowed("io.debezium.transforms.HeaderToValue"),
-            SmtClass::OutboxEventRouter => Cow::Borrowed("io.debezium.transforms.OutboxEventRouter"),
+            SmtClass::OutboxEventRouter => {
+                Cow::Borrowed("io.debezium.transforms.OutboxEventRouter")
+            }
             SmtClass::PartitionRouting => Cow::Borrowed("io.debezium.transforms.PartitionRouting"),
-            SmtClass::TimezoneConverter => Cow::Borrowed("io.debezium.transforms.TimezoneConverter"),
+            SmtClass::TimezoneConverter => {
+                Cow::Borrowed("io.debezium.transforms.TimezoneConverter")
+            }
             SmtClass::Custom(class) => Cow::Owned(class.clone()),
         }
     }

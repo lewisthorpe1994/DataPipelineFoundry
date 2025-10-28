@@ -4,7 +4,7 @@ use crate::errors::*;
 use crate::predicates::{Predicate, Predicates};
 use crate::smt::transforms::debezium::ExtractNewRecordState;
 use crate::smt::utils::Transforms;
-use crate::smt::Transform;
+use crate::smt::{SmtKind, Transform};
 use crate::traits::{ComponentVersion, ParseUtils, RaiseErrorOnNone};
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
@@ -475,222 +475,217 @@ impl DebeziumPostgresSourceConnector {
         con.predicates = predicates;
         Ok(con)
     }
+    pub fn topic_names(&self) -> Vec<String> {
+        let mut topics: Vec<String> = match self.table_include_list.as_ref() {
+            Some(tables) => tables
+                .split(',')
+                .map(|table| table.trim())
+                .filter(|table| !table.is_empty())
+                .map(|table| format!("{}.{}", self.topic_prefix, table))
+                .collect(),
+            None => Vec::new(),
+        };
 
-    // pub fn new(
-    //     mut config: Map<String, Value>,
-    //     transforms: Option<Transforms>,
-    //     predicates: Option<Predicates>,
-    // ) -> Result<Self, KafkaConnectorCompileError> {
-    //     let v_str = config
-    //         .parse::<String>("version")?
-    //         .raise_on_none("version")?;
-    //     let version = Version::parse(&v_str)
-    //         .map_err(|e| KafkaConnectorCompileError::unexpected_error(e))?;
-    //     let con = Self {
-    //         // -------------------- REQUIRED CORE --------------------
-    //         connector_class: CONNECTOR_CLASS_NAME.to_string(),
-    //         version: version.clone(),
-    //         database_hostname: config
-    //             .parse::<String>("database.hostname")?
-    //             .raise_on_none("database.hostname")?,
-    //         database_port: config
-    //             .parse::<u16>("database.port")?
-    //             .raise_on_none("database.port")?,
-    //         database_user: config
-    //             .parse::<String>("database.user")?
-    //             .raise_on_none("database.user")?,
-    //         database_password: config
-    //             .parse::<String>("database.password")?
-    //             .raise_on_none("database.password")?,
-    //         database_dbname: config
-    //             .parse::<String>("database.dbname")?
-    //             .raise_on_none("database.dbname")?,
-    //         topic_prefix: config
-    //             .parse::<String>("topic.prefix")?
-    //             .raise_on_none("topic.prefix")?,
-    //
-    //         // -------------------- NETWORK / SSL --------------------
-    //         database_tcp_keep_alive: config.parse::<bool>("database.tcpKeepAlive")?,
-    //         database_sslmode: config.parse::<String>("database.sslmode")?,
-    //         database_sslcert: config.parse::<String>("database.sslcert")?,
-    //         database_sslkey: config.parse::<String>("database.sslkey")?,
-    //         database_sslpassword: config.parse::<String>("database.sslpassword")?,
-    //         database_sslrootcert: config.parse::<String>("database.sslrootcert")?,
-    //         database_sslfactory: config.parse::<String>("database.sslfactory")?,
-    //         database_initial_statements: config.parse::<String>("database.initial.statements")?,
-    //         database_query_timeout_ms: config.parse::<u64>("database.query.timeout.ms")?,
-    //
-    //         // -------------------- SLOT & PUBLICATION --------------------
-    //         tasks_max: config.parse::<u32>("tasks.max")?,
-    //         plugin_name: config.parse::<String>("plugin.name")?,
-    //         slot_name: config.parse::<String>("slot.name")?,
-    //         slot_drop_on_stop: config.parse::<bool>("slot.drop.on.stop")?,
-    //         slot_failover: config.parse::<bool>("slot.failover")?,
-    //         slot_stream_params: config.parse::<String>("slot.stream.params")?,
-    //         slot_max_retries: config.parse::<u32>("slot.max.retries")?,
-    //         slot_retry_delay_ms: config.parse::<u64>("slot.retry.delay.ms")?,
-    //         publication_name: config.parse::<String>("publication.name")?,
-    //         publication_autocreate_mode: config.parse::<String>("publication.autocreate.mode")?,
-    //
-    //         // -------------------- FILTERING --------------------
-    //         schema_include_list: config.parse::<String>("schema.include.list")?,
-    //         schema_exclude_list: config.parse::<String>("schema.exclude.list")?,
-    //         table_include_list: config.parse::<String>("table.include.list")?,
-    //         table_exclude_list: config.parse::<String>("table.exclude.list")?,
-    //         column_include_list: config.parse::<String>("column.include.list")?,
-    //         column_exclude_list: config.parse::<String>("column.exclude.list")?,
-    //
-    //         // -------------------- MESSAGE HANDLING --------------------
-    //         skip_messages_without_change: config.parse::<bool>("skip.messages.without.change")?,
-    //         tombstones_on_delete: config.parse::<bool>("tombstones.on.delete")?,
-    //         time_precision_mode: config.parse::<String>("time.precision.mode")?,
-    //         decimal_handling_mode: config.parse::<String>("decimal.handling.mode")?,
-    //         hstore_handling_mode: config.parse::<String>("hstore.handling.mode")?,
-    //         interval_handling_mode: config.parse::<String>("interval.handling.mode")?,
-    //         binary_handling_mode: config.parse::<String>("binary.handling.mode")?,
-    //         schema_name_adjustment_mode: config.parse::<String>("schema.name.adjustment.mode")?,
-    //         field_name_adjustment_mode: config.parse::<String>("field.name.adjustment.mode")?,
-    //         money_fraction_digits: config.parse::<u32>("money.fraction.digits")?,
-    //         message_key_columns: config.parse::<String>("message.key.columns")?,
-    //         message_prefix_include_list: config.parse::<String>("message.prefix.include.list")?,
-    //         message_prefix_exclude_list: config.parse::<String>("message.prefix.exclude.list")?,
-    //
-    //         // -------------------- SNAPSHOT --------------------
-    //         snapshot_mode: config.parse::<String>("snapshot.mode")?,
-    //         snapshot_locking_mode: config.parse::<String>("snapshot.locking.mode")?,
-    //         snapshot_fetch_size: config.parse::<u32>("snapshot.fetch.size")?,
-    //         snapshot_delay_ms: config.parse::<u64>("snapshot.delay.ms")?,
-    //         snapshot_max_threads: config.parse::<u32>("snapshot.max.threads")?,
-    //         snapshot_include_schema_changes: config
-    //             .parse::<bool>("snapshot.include.schema.changes")?,
-    //         snapshot_select_statement_overrides: config
-    //             .parse::<String>("snapshot.select.statement.overrides")?,
-    //         snapshot_query_timeout_ms: config.parse::<u64>("snapshot.query.timeout.ms")?,
-    //         snapshot_read_timeout_ms: config.parse::<u64>("snapshot.read.timeout.ms")?,
-    //
-    //         // -------------------- STREAMING --------------------
-    //         poll_interval_ms: config.parse::<u64>("poll.interval.ms")?,
-    //         max_queue_size: config.parse::<u32>("max.queue.size")?,
-    //         max_batch_size: config.parse::<u32>("max.batch.size")?,
-    //
-    //         // -------------------- HEARTBEAT --------------------
-    //         heartbeat_interval_ms: config.parse::<u64>("heartbeat.interval.ms")?,
-    //         heartbeat_action_query: config.parse::<String>("heartbeat.action.query")?,
-    //
-    //         // -------------------- ERROR HANDLING --------------------
-    //         errors_max_retries: config.parse::<u32>("errors.max.retries")?,
-    //
-    //         // -------------------- PERFORMANCE --------------------
-    //         incremental_snapshot_chunk_size: config
-    //             .parse::<u32>("incremental.snapshot.chunk.size")?,
-    //
-    //         // -------------------- CONVERTERS & TRANSFORMS --------------------
-    //         common: CommonKafkaConnector::new(config, transforms, predicates, version)?,
-    //     };
-    //
-    //     con.validate()?;
-    //     Ok(con)
-    // }
-}
+        if topics.is_empty() {
+            return topics;
+        }
 
-impl SoftValidate for DebeziumPostgresSourceConnector {
-    fn validate(&self) -> Result<(), KafkaConnectorCompileError> {
-        let mut v = ErrorBag::default();
+        if let Some(transforms) = self.transforms.as_ref() {
+            for transform in &transforms.0 {
+                if let SmtKind::ByLogicalTableRouter(router) = &transform.kind {
+                    let (Some(pattern), Some(replacement)) = (
+                        router.topic_regex.as_ref(),
+                        router.topic_replacement.as_ref(),
+                    ) else {
+                        continue;
+                    };
 
-        // Mutually exclusive filters
-        v.check_mutually_exclusive(
-            "schema.include.list",
-            &self.schema_include_list,
-            "schema.exclude.list",
-            &self.schema_exclude_list,
-        );
-        v.check_mutually_exclusive(
-            "table.include.list",
-            &self.table_include_list,
-            "table.exclude.list",
-            &self.table_exclude_list,
-        );
-        v.check_mutually_exclusive(
-            "column.include.list",
-            &self.column_include_list,
-            "column.exclude.list",
-            &self.column_exclude_list,
-        );
-        v.check_mutually_exclusive(
-            "message.prefix.include.list",
-            &self.message_prefix_include_list,
-            "message.prefix.exclude.list",
-            &self.message_prefix_exclude_list,
-        );
+                    if let Ok(regex) = regex::Regex::new(pattern) {
+                        topics = topics
+                            .into_iter()
+                            .map(|topic| regex.replace(&topic, replacement.as_str()).into_owned())
+                            .collect();
+                    }
+                }
+            }
+        }
 
-        // Value sets (cheap guardrails)
-        v.check_allowed(
-            "plugin.name",
-            self.plugin_name.as_deref(),
-            &["pgoutput", "decoderbufs"],
-        );
-        v.check_allowed(
-            "time.precision.mode",
-            self.time_precision_mode.as_deref(),
-            &["adaptive", "adaptive_time_microseconds", "connect"],
-        );
-        v.check_allowed(
-            "decimal.handling.mode",
-            self.decimal_handling_mode.as_deref(),
-            &["precise", "double", "string"],
-        );
-        v.check_allowed(
-            "hstore.handling.mode",
-            self.hstore_handling_mode.as_deref(),
-            &["json", "map"],
-        );
-        v.check_allowed(
-            "interval.handling.mode",
-            self.interval_handling_mode.as_deref(),
-            &["numeric", "string"],
-        );
-        v.check_allowed(
-            "binary.handling.mode",
-            self.binary_handling_mode.as_deref(),
-            &["bytes", "base64", "base64-url-safe", "hex"],
-        );
-        v.check_allowed(
-            "schema.name.adjustment.mode",
-            self.schema_name_adjustment_mode.as_deref(),
-            &["none", "avro", "avro_unicode"],
-        );
-        v.check_allowed(
-            "field.name.adjustment.mode",
-            self.field_name_adjustment_mode.as_deref(),
-            &["none", "avro", "avro_unicode"],
-        );
-        v.check_allowed(
-            "publication.autocreate.mode",
-            self.publication_autocreate_mode.as_deref(),
-            &["all_tables", "disabled", "filtered", "no_tables"],
-        );
-
-        // Simple dependencies (examples)
-        // If you enable failover slot, you really should define a slot name explicitly.
-        v.check_requires(
-            "slot.failover",
-            &self.slot_failover,
-            "slot.name",
-            &self.slot_name,
-        );
-
-        // If message.key.columns references non-PK columns, replica identity should be FULL on those tables.
-        // Hard to automatically verify here, but you could at least require it's not empty if message keys are set.
-        // (Leave this as a comment or emit a mild warning message.)
-        // if self.message_key_columns.is_some() { ... }
-        v.version_errors(self.validate_version(self.version));
-
-        v.finish()
+        topics.sort();
+        topics.dedup();
+        topics
     }
+
 }
 
 impl HasConnectorClass for DebeziumPostgresSourceConnector {
     fn connector_class(&self) -> &str {
         &self.connector_class
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::smt::transforms::debezium::ByLogicalTableRouter;
+    use crate::smt::utils::Transforms;
+    use crate::smt::{SmtKind, Transform};
+    use std::collections::HashMap;
+
+    fn base_config() -> HashMap<String, String> {
+        let mut config = HashMap::new();
+        config.insert("connector.class".into(), CONNECTOR_CLASS_NAME.into());
+        config.insert("database.hostname".into(), "source_db".into());
+        config.insert("database.port".into(), "5432".into());
+        config.insert("database.user".into(), "postgres".into());
+        config.insert("database.password".into(), "postgres".into());
+        config.insert("database.dbname".into(), "dvdrental".into());
+        config.insert("topic.prefix".into(), "postgres".into());
+        config
+    }
+
+    #[test]
+    fn topic_names_without_router_returns_prefixed_tables() {
+        let mut config = base_config();
+        config.insert(
+            "table.include.list".into(),
+            "public.customer, public.payment".into(),
+        );
+
+        let connector = DebeziumPostgresSourceConnector::generated_new(
+            config,
+            Version::new(3, 1),
+        )
+        .expect("connector generation");
+
+        assert_eq!(
+            connector.topic_names(),
+            vec![
+                "postgres.public.customer".to_string(),
+                "postgres.public.payment".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn topic_names_applies_by_logical_table_router() {
+        let mut config = base_config();
+        config.insert("table.include.list".into(), "public.inventory".into());
+
+        let mut connector = DebeziumPostgresSourceConnector::generated_new(
+            config,
+            Version::new(3, 1),
+        )
+        .expect("connector generation");
+
+        let mut router_config = HashMap::new();
+        router_config.insert(
+            "topic.regex".into(),
+            "postgres\\.([^.]+)\\.([^.]+)".into(),
+        );
+        router_config.insert("topic.replacement".into(), "dvdrental.$2".into());
+
+        let router = ByLogicalTableRouter::new(router_config, Version::new(3, 1))
+            .expect("router generation");
+
+        connector.transforms = Some(Transforms(vec![Transform {
+            name: "reroute".into(),
+            kind: SmtKind::ByLogicalTableRouter(router),
+        }]));
+
+        assert_eq!(
+            connector.topic_names(),
+            vec!["dvdrental.inventory".to_string()]
+        );
+    }
+
+    #[test]
+    fn topic_names_returns_empty_when_no_tables_included() {
+        let connector = DebeziumPostgresSourceConnector::generated_new(
+            base_config(),
+            Version::new(3, 1),
+        )
+        .expect("connector generation");
+
+        assert!(connector.topic_names().is_empty());
+    }
+
+    #[test]
+    fn topic_names_deduplicates_tables() {
+        let mut config = base_config();
+        config.insert(
+            "table.include.list".into(),
+            "public.inventory, public.inventory".into(),
+        );
+
+        let connector = DebeziumPostgresSourceConnector::generated_new(
+            config,
+            Version::new(3, 1),
+        )
+        .expect("connector generation");
+
+        assert_eq!(
+            connector.topic_names(),
+            vec!["postgres.public.inventory".to_string()]
+        );
+    }
+
+    #[test]
+    fn topic_names_ignores_router_without_replacement() {
+        let mut config = base_config();
+        config.insert("table.include.list".into(), "public.payment".into());
+
+        let mut connector = DebeziumPostgresSourceConnector::generated_new(
+            config,
+            Version::new(3, 1),
+        )
+        .expect("connector generation");
+
+        let mut router_config = HashMap::new();
+        router_config.insert(
+            "topic.regex".into(),
+            "postgres\\.([^.]+)\\.([^.]+)".into(),
+        );
+
+        let router = ByLogicalTableRouter::new(router_config, Version::new(3, 1))
+            .expect("router generation");
+
+        connector.transforms = Some(Transforms(vec![Transform {
+            name: "no_replacement".into(),
+            kind: SmtKind::ByLogicalTableRouter(router),
+        }]));
+
+        assert_eq!(
+            connector.topic_names(),
+            vec!["postgres.public.payment".to_string()]
+        );
+    }
+
+    #[test]
+    fn topic_names_ignores_invalid_router_pattern() {
+        let mut config = base_config();
+        config.insert("table.include.list".into(), "public.customer".into());
+
+        let mut connector = DebeziumPostgresSourceConnector::generated_new(
+            config,
+            Version::new(3, 1),
+        )
+        .expect("connector generation");
+
+        let mut router_config = HashMap::new();
+        router_config.insert("topic.regex".into(), "postgres.([".into());
+        router_config.insert("topic.replacement".into(), "invalid".into());
+
+        let router = ByLogicalTableRouter::new(router_config, Version::new(3, 1))
+            .expect("router generation");
+
+        connector.transforms = Some(Transforms(vec![Transform {
+            name: "bad_regex".into(),
+            kind: SmtKind::ByLogicalTableRouter(router),
+        }]));
+
+        assert_eq!(
+            connector.topic_names(),
+            vec!["postgres.public.customer".to_string()]
+        );
     }
 }

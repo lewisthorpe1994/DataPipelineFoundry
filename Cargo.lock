@@ -658,6 +658,7 @@ dependencies = [
  "common",
  "connector_versioning",
  "connector_versioning_derive",
+ "regex",
  "serde",
  "serde_json",
  "sqlparser",

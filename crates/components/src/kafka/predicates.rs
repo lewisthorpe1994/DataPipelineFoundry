@@ -1,9 +1,10 @@
 use crate::errors::KafkaConnectorCompileError;
 use catalog::PredicateDecl;
 use serde::{ser::SerializeMap, Serialize, Serializer};
+use serde_json::Value;
 use sqlparser::ast::{AstValueFormatter, PredicateReference};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 /* ====================== Predicates ====================== */
 
 #[derive(Debug, Clone)]
@@ -135,6 +136,16 @@ impl PredicateRef {
             map.serialize_entry(&(smt_prefix.to_string() + "negate"), &neg)?;
         }
         Ok(())
+    }
+
+    pub(crate) fn write_flat_to_map(&self, map: &mut BTreeMap<String, Value>, smt_prefix: &str) {
+        map.insert(
+            format!("{smt_prefix}predicate"),
+            Value::String(self.name.clone()),
+        );
+        if let Some(neg) = self.negate {
+            map.insert(format!("{smt_prefix}negate"), Value::Bool(neg));
+        }
     }
 }
 

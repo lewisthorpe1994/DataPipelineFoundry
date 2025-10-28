@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use serde::Serialize;
-use crate::traits::{ComponentVersion, ValidateVersion};
-use connector_versioning::{ConnectorVersioned, Version};
-use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
 use crate::errors::ValidationError;
 use crate::predicates::PredicateRef;
 use crate::smt::errors::TransformBuildError;
+use crate::traits::{ComponentVersion, ValidateVersion};
+use connector_versioning::{ConnectorVersioned, Version};
+use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
+use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, ConnectorVersionedDerive)]
 #[parser(error = crate::smt::errors::TransformBuildError)]
@@ -14,10 +14,7 @@ pub struct ContentBasedRouter {
     #[compat(always)]
     version: Version,
 
-    #[serde(
-        rename = "topic.regex",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "topic.regex", skip_serializing_if = "Option::is_none")]
     #[compat(always)]
     pub topic_regex: Option<String>,
 
@@ -28,7 +25,7 @@ pub struct ContentBasedRouter {
     #[serde(rename = "topic.expression", skip_serializing_if = "Option::is_none")]
     #[compat(always)]
     pub topic_expression: Option<String>,
-    
+
     #[serde(rename = "null.handling.mode", skip_serializing_if = "Option::is_none")]
     #[compat(always)]
     #[allowed_values(range = "3.0..=3.3", values = ["keep", "drop", "evaluate"])]

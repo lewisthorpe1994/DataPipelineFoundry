@@ -220,43 +220,50 @@ pub fn derive_connector_versioned(input: TokenStream) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let expanded = quote! {
-        impl #impl_generics ::connector_versioning::ConnectorVersioned for #ident #ty_generics #where_clause {
-            fn field_compat() -> &'static [(&'static str, ::connector_versioning::Compat)] {
-                static TABLE: &[(&str, ::connector_versioning::Compat)] = &[
-                    #(#compat_entries),*
-                ];
-                TABLE
-            }
+          impl #impl_generics ::connector_versioning::ConnectorVersioned for #ident #ty_generics #where_clause {
+              fn field_compat() -> &'static [(&'static str, ::connector_versioning::Compat)] {
+                  static TABLE: &[(&str, ::connector_versioning::Compat)] = &[
+                      #(#compat_entries),*
+                  ];
+                  TABLE
+              }
 
-            #field_allowed_values_impl
-        }
+              #field_allowed_values_impl
+          }
 
-        impl #impl_generics #ident #ty_generics #where_clause {
-            fn generated_empty(
-                __version: ::connector_versioning::Version,
-            ) -> Self {
-                Self {
-                    #(#generated_empty_fields),*
-                }
-            }
+          impl #impl_generics #ident #ty_generics #where_clause {
+              fn generated_empty(
+                  __version: ::connector_versioning::Version,
+              ) -> Self {
+                  Self {
+                      #(#generated_empty_fields),*
+                  }
+              }
 
-            pub fn generated_new(
-                mut __config: ::std::collections::HashMap<String, String>,
-                __version: ::connector_versioning::Version,
-            ) -> Result<Self, #parser_error> {
-                let mut __instance = Self::generated_empty(__version);
-                #(#parse_statements)*
+              pub fn generated_new(
+                  mut __config: ::std::collections::HashMap<String, String>,
+                  __version: ::connector_versioning::Version,
+              ) -> Result<Self, #parser_error> {
+                  let mut __instance = Self::generated_empty(__version);
+                  #(#parse_statements)*
 
-                let mut __errors = __instance.validate_version(__instance.version());
-                __errors.extend(__instance.validate_allowed_values(__instance.version()));
-                if !__errors.is_empty() {
-                    return Err(#parser_error::validation_error(__errors.join("\n")));
-                }
+                  let mut __errors = __instance.validate_version(__instance.version());
+                  __errors.extend(__instance.validate_allowed_values(__instance.version()));
+                  if !__errors.is_empty() {
+                      return Err(#parser_error::validation_error(__errors.join("\n")));
+                  }
 
-                Ok(__instance)
-            }
-        }
-    };
+                  // if !__config.is_empty() {
+                  //     let extras = __config.keys().cloned().collect::<Vec<_>>().join(", ");
+                  //     return Err(#parser_error::validation_error(
+                  //           format!("unknown config keys: {}", extras),
+                  //     ));
+                  // }
+
+                  Ok(__instance)
+              }
+          }
+      };
 
     TokenStream::from(expanded)
 }

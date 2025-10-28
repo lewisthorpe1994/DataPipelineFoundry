@@ -3,10 +3,10 @@ pub mod errors;
 pub mod predicates;
 pub mod smt;
 pub mod traits;
-pub mod version_consts;
 mod utils;
+pub mod version_consts;
 
-use crate::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
+use crate::connectors::sink::debezium_postgres::{DebeziumPostgresSinkConnector, CONNECTOR_CLASS_NAME as DBZ_SINK_CONNECTOR_CLASS_NAME};
 use crate::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
 use crate::errors::KafkaConnectorCompileError;
 use crate::predicates::{Predicate, PredicateKind, PredicateRef, Predicates};
@@ -14,6 +14,7 @@ use crate::smt::utils::{build_transform_from_config, builtin_preset_config, Tran
 use crate::smt::Transform;
 use catalog::error::CatalogError;
 use catalog::{Getter, MemoryCatalog, PipelineTransformDecl};
+use common::config::components::connections::AdapterConnectionDetails;
 use common::config::components::global::FoundryConfig;
 use common::traits::ToSerdeMap;
 use common::types::{
@@ -26,7 +27,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as Json, Value};
 use sqlparser::ast::{AstValueFormatter, CreateKafkaConnector, CreateSimpleMessageTransform};
 use std::collections::{HashMap, HashSet};
-use common::config::components::connections::AdapterConnectionDetails;
 
 pub trait HasConnectorClass {
     fn connector_class(&self) -> &str;
@@ -167,32 +167,29 @@ impl KafkaConnector {
                 &KafkaConnectorProvider::Debezium,
                 &KafkaConnectorSupportedDb::Source(KafkaSourceConnectorSupportedDb::Postgres),
                 &KafkaConnectorType::Source,
-            ) => {
-                Self::build_debezium_postgres_source(
-                    base_config,
-                    &foundry_config,
-                    conn.clone(),
-                    cluster_config.bootstrap.servers.clone(),
-                    &adapter_conf,
-                    transforms_struct,
-                    predicates_struct,
-                    version,
-                )?
-            }
+            ) => Self::build_debezium_postgres_source(
+                base_config,
+                &foundry_config,
+                conn.clone(),
+                cluster_config.bootstrap.servers.clone(),
+                &adapter_conf,
+                transforms_struct,
+                predicates_struct,
+                version,
+            )?,
             (
                 KafkaConnectorProvider::Debezium,
                 KafkaConnectorSupportedDb::Sink(KafkaSinkConnectorSupportedDb::Postgres),
                 &KafkaConnectorType::Sink,
-            ) => {
-                Self::build_debezium_postgres_sink(
-                    base_config,
-                    conn.clone(),
-                    &adapter_conf,
-                    transforms_struct,
-                    predicates_struct,
-                    version,
-                )?
-            }
+            ) => Self::build_debezium_postgres_sink(
+                base_config,
+                foundry_config,
+                conn.clone(),
+                &adapter_conf,
+                transforms_struct,
+                predicates_struct,
+                version,
+            )?,
             (KafkaConnectorProvider::Confluent, _, _) => {
                 return Err(KafkaConnectorCompileError::unsupported(
                     "Confluent connectors are not supported yet".to_string(),
@@ -229,14 +226,12 @@ impl KafkaConnector {
         transforms_struct: Option<Transforms>,
         predicates_struct: Option<Predicates>,
         version: Version,
-    ) -> Result<KafkaConnectorConfig, KafkaConnectorCompileError>{
+    ) -> Result<KafkaConnectorConfig, KafkaConnectorCompileError> {
         config.insert(
             "connector.class".to_string(),
             crate::connectors::source::debezium_postgres::CONNECTOR_CLASS_NAME.to_string(),
         );
-        let schema_config = foundry_config
-            .kafka_connectors
-            .get(ast.name.value.as_str());
+        let schema_config = foundry_config.kafka_connectors.get(ast.name.value.as_str());
 
         if let Some(schema_config) = schema_config {
             config.insert(
@@ -249,10 +244,7 @@ impl KafkaConnector {
             );
         }
 
-        config.insert(
-            "kafka.bootstrap.servers".to_string(),
-            bootstrap_servers,
-        );
+        config.insert("kafka.bootstrap.servers".to_string(), bootstrap_servers);
 
         let db_config = SourceDbConnectionInfo::from(db_adapter_conf.clone());
         let obj = db_config.to_json_map().map_err(|err| {
@@ -267,25 +259,34 @@ impl KafkaConnector {
             version,
         )?;
 
-        let con = KafkaConnectorConfig::Source(KafkaSourceConnectorConfig::DebeziumPostgres(
-            conn_config,
-        ));
+        let con =
+            KafkaConnectorConfig::Source(KafkaSourceConnectorConfig::DebeziumPostgres(conn_config));
 
         Ok(con)
     }
 
     fn build_debezium_postgres_sink(
         mut config: HashMap<String, String>,
+        foundry_config: &FoundryConfig,
         ast: CreateKafkaConnector,
         db_adapter_conf: &AdapterConnectionDetails,
         transforms_struct: Option<Transforms>,
         predicates_struct: Option<Predicates>,
         version: Version,
-    ) -> Result<KafkaConnectorConfig, KafkaConnectorCompileError>{
+    ) -> Result<KafkaConnectorConfig, KafkaConnectorCompileError> {
         config.insert(
             "connector.class".to_string(),
-            crate::connectors::sink::debezium_postgres::CONNECTOR_CLASS_NAME.to_string(),
+            DBZ_SINK_CONNECTOR_CLASS_NAME.to_string(),
         );
+
+        let schema_config = foundry_config.kafka_connectors.get(ast.name.value.as_str());
+
+        if let Some(schema_config) = schema_config {
+            config.insert(
+                "field.include.list".to_string(),
+                schema_config.column_include_list(),
+            );
+        }
 
         let db_config = SinkDbConnectionInfo::from(db_adapter_conf.clone());
         let obj = db_config.to_json_map().map_err(|err| {
@@ -308,19 +309,14 @@ impl KafkaConnector {
             config.insert("collection.name.format".to_string(), collection_name_format);
         }
 
-        if config.get("topics").is_none() && config.get("topics.regex").is_none() {
-            return Err(KafkaConnectorCompileError::missing_config(format!(
-                "Missing a topic definition for {}",
-                ast.name.value
-            )));
-        }
         let conn_config = DebeziumPostgresSinkConnector::new(
             config,
             transforms_struct,
             predicates_struct,
             version,
         )?;
-        let con = KafkaConnectorConfig::Sink(KafkaSinkConnectorConfig::DebeziumPostgres(conn_config));
+        let con =
+            KafkaConnectorConfig::Sink(KafkaSinkConnectorConfig::DebeziumPostgres(conn_config));
         Ok(con)
     }
 

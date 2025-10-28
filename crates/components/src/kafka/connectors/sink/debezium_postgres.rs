@@ -1,16 +1,14 @@
 use crate::connectors::base::CommonKafkaConnector;
-use crate::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
-use crate::connectors::SoftValidate;
+
 use crate::errors::{ErrorBag, KafkaConnectorCompileError};
 use crate::kafka::errors::ValidationError;
 use crate::predicates::{Predicate, Predicates};
 use crate::smt::utils::Transforms;
-use crate::traits::{ComponentVersion, ParseUtils, RaiseErrorOnNone};
+use crate::traits::{ComponentVersion};
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use std::collections::HashMap;
 
 pub const CONNECTOR_CLASS_NAME: &str = "io.debezium.connector.jdbc.JdbcSinkConnector";
@@ -26,7 +24,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "topics",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     topics: Option<String>, // comma-separated list
@@ -37,7 +35,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "topics.regex",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     topics_regex: Option<String>, // java regex
@@ -58,7 +56,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "tasks.max",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     tasks_max: Option<i32>, // default: "1"
@@ -67,7 +65,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "connection.provider",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     connection_provider: Option<String>, // default: org.hibernate.c3p0.internal.C3P0ConnectionProvider
@@ -75,7 +73,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "connection.pool.min_size",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     connection_pool_min_size: Option<i32>, // default: "5"
@@ -83,7 +81,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "connection.pool.max_size",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     connection_pool_max_size: Option<i32>, // default: "32"
@@ -91,7 +89,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "connection.pool.acquire_increment",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     connection_pool_acquire_increment: Option<i64>, // default: "32"
@@ -99,7 +97,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "connection.pool.timeout",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     connection_pool_timeout: Option<i64>, // default: "1800"
@@ -107,7 +105,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "connection.restart.on.errors",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(since = "3.1")]
     connection_restart_on_errors: Option<bool>, // default: "false"
@@ -116,7 +114,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "use.time.zone",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     use_time_zone: Option<String>, // default: "UTC"
@@ -124,7 +122,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "delete.enabled",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     delete_enabled: Option<bool>, // default: "false"
@@ -132,7 +130,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "truncate.enabled",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     truncate_enabled: Option<bool>, // default: "false"
@@ -140,7 +138,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "insert.mode",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     insert_mode: Option<String>, // default: "insert" | update | upsert
@@ -149,7 +147,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "primary.key.mode",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     primary_key_mode: Option<String>, // default: "none" | kafka | record_key | record_value
@@ -157,7 +155,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "primary.key.fields",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     primary_key_fields: Option<String>, // required in some modes
@@ -166,7 +164,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "quote.identifiers",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     quote_identifiers: Option<bool>, // default: "false"
@@ -174,7 +172,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "schema.evolution",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     schema_evolution: Option<String>, // default: "none" | basic
@@ -182,7 +180,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "collection.name.format",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     collection_name_format: Option<String>, // default: "${topic}"
@@ -191,7 +189,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "dialect.postgres.postgis.schema",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     dialect_postgres_postgis_schema: Option<String>, // default: "public"
@@ -199,7 +197,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "dialect.sqlserver.identity.insert",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     dialect_sqlserver_identity_insert: Option<bool>, // default: "false"
 
@@ -207,7 +205,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "batch.size",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     batch_size: Option<i64>, // default: "500"
@@ -215,7 +213,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "use.reduction.buffer",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     use_reduction_buffer: Option<bool>, // default: "false"
@@ -223,7 +221,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "field.include.list",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     field_include_list: Option<String>, // empty string by default
@@ -231,7 +229,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "field.exclude.list",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     field_exclude_list: Option<String>, // empty string by default
@@ -240,7 +238,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "flush.max.retries",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     flush_max_retries: Option<i16>, // default: "5"
@@ -248,7 +246,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "flush.retry.delay.ms",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     flush_retry_delay_ms: Option<i64>, // default: "1000"
@@ -257,7 +255,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "column.naming.strategy",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     column_naming_strategy: Option<String>, // default: io.debezium.connector.jdbc.naming.DefaultColumnNamingStrategy
@@ -265,7 +263,7 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(
         rename = "collection.naming.strategy",
         skip_serializing_if = "Option::is_none",
-        skip_deserializing
+
     )]
     #[compat(always)]
     collection_naming_strategy: Option<String>, // default: io.debezium.connector.jdbc.naming.DefaultCollectionNamingStrategy
@@ -295,6 +293,7 @@ impl DebeziumPostgresSinkConnector {
     ) -> Result<Self, KafkaConnectorCompileError> {
         let mut con = Self::generated_new(config.clone(), version)?;
         let base = CommonKafkaConnector::generated_new(config, version)?;
+
         con.common = Some(base);
         con.transforms = transforms;
         con.predicates = predicates;

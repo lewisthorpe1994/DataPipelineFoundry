@@ -20,7 +20,7 @@ schema:
           - name: release_year
           - name: language_id
           - name: rental_duration
-          - name: rental_date
+          - name: rental_rate
           - name: length
           - name: replacement_cost
           - name: rating

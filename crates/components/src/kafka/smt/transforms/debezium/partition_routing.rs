@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use serde::Serialize;
-use crate::traits::{ComponentVersion, ValidateVersion};
-use connector_versioning::{ConnectorVersioned, Version};
-use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
 use crate::errors::ValidationError;
 use crate::predicates::PredicateRef;
 use crate::smt::errors::TransformBuildError;
+use crate::traits::{ComponentVersion, ValidateVersion};
+use connector_versioning::{ConnectorVersioned, Version};
+use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
+use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, ConnectorVersionedDerive)]
 #[parser(error = crate::smt::errors::TransformBuildError)]
@@ -14,15 +14,24 @@ pub struct PartitionRouting {
     #[compat(always)]
     version: Version,
 
-    #[serde(rename = "partition.payload.fields", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "partition.payload.fields",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[compat(always)]
     pub partition_payload_fields: Option<String>,
 
-    #[serde(rename = "partition.topic.num", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "partition.topic.num",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[compat(always)]
     pub partition_topic_num: Option<i32>,
 
-    #[serde(rename = "partition.hash.function", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "partition.hash.function",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[compat(always)]
     #[allowed_values(range = "3.0..=3.3", values = ["java", "murmur"])]
     pub partition_hash_function: Option<String>,
@@ -62,7 +71,7 @@ impl PartitionRouting {
         if smt.partition_topic_num.is_none() {
             return Err(TransformBuildError::validation_error(
                 "partition.topic.num must be specified",
-            ))
+            ));
         }
 
         Ok(smt)
