@@ -708,6 +708,208 @@ mod tests {
     use sqlparser::parser::Parser;
     use Statement;
 
+    // Helper: parse SQL and return the CreateModel
+    fn parse_create_model(sql: &str) -> CreateModel {
+        let stmts = Parser::parse_sql(&GenericDialect, sql).expect("parse_sql");
+        match stmts.into_iter().next().expect("one stmt") {
+            Statement::CreateModel(m) => m,
+            other => panic!("expected CreateModel, got {:?}", other),
+        }
+    }
+
+    // Helper: just the m.macro_fn_call
+    fn calls(sql: &str) -> Vec<MacroFnCall> {
+        parse_create_model(sql).macro_fn_call
+    }
+
+    // Small builder for expected MacroFnCall
+    fn src(args: &[&str], call_def: &str) -> MacroFnCall {
+        MacroFnCall {
+            m_type: MacroFnCallType::Source,
+            args: args.iter().map(|s| s.to_string()).collect(),
+            call_def: call_def.to_string(),
+        }
+    }
+
+    fn rf(args: &[&str], call_def: &str) -> MacroFnCall {
+        MacroFnCall {
+            m_type: MacroFnCallType::Ref,
+            args: args.iter().map(|s| s.to_string()).collect(),
+            call_def: call_def.to_string(),
+        }
+    }
+
+    #[test]
+    fn collect_in_main_body_from_source() {
+        let sql = r#"
+            CREATE MODEL bronze.orders AS
+            DROP TABLE IF EXISTS bronze.orders CASCADE;
+            CREATE TABLE bronze.orders AS
+            SELECT * FROM source('warehouse', 'raw_orders')
+        "#;
+
+        let got = calls(sql);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0], src(&["warehouse", "raw_orders"], "source('warehouse', 'raw_orders')"));
+    }
+
+    #[test]
+    fn collect_in_cte_body() {
+        // source(...) only appears inside the CTE
+        let sql = r#"
+            CREATE MODEL bronze.orders AS
+            DROP TABLE IF EXISTS bronze.orders CASCADE;
+            CREATE TABLE bronze.orders AS
+            WITH rental_amount AS (
+                SELECT * FROM source('dvd_rental_analytics', 'rental')
+            )
+            SELECT * FROM rental_amount
+        "#;
+
+        let got = calls(sql);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0], src(&["dvd_rental_analytics", "rental"], "source('dvd_rental_analytics', 'rental')"));
+    }
+
+    #[test]
+    fn collect_in_join_clauses() {
+        let sql = r#"
+            CREATE MODEL bronze.orders AS
+            DROP TABLE IF EXISTS bronze.orders CASCADE;
+            CREATE TABLE bronze.orders AS
+            SELECT *
+            FROM source('dvd_rental_analytics', 'rental') r
+            LEFT JOIN source('dvd_rental_analytics', 'inventory') i
+              ON r.inventory_id = i.inventory_id
+            LEFT JOIN source('dvd_rental_analytics', 'film') f
+              ON i.film_id = f.film_id
+        "#;
+
+        let got = calls(sql);
+        // order is stable by traversal (FROM then joins)
+        assert_eq!(got, vec![
+            src(&["dvd_rental_analytics", "rental"],   "source('dvd_rental_analytics', 'rental')"),
+            src(&["dvd_rental_analytics", "inventory"],"source('dvd_rental_analytics', 'inventory')"),
+            src(&["dvd_rental_analytics", "film"],     "source('dvd_rental_analytics', 'film')"),
+        ]);
+    }
+
+    #[test]
+    fn collect_ref_in_subquery_from() {
+        // ref(...) used as a table in a derived subquery
+        let sql = r#"
+            CREATE MODEL bronze.orders AS
+            DROP TABLE IF EXISTS bronze.orders CASCADE;
+            CREATE TABLE bronze.orders AS
+            SELECT *
+            FROM (
+                SELECT * FROM ref('bronze', 'items')
+            ) t
+        "#;
+
+        let got = calls(sql);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0], rf(&["bronze", "items"], "ref('bronze', 'items')"));
+    }
+
+    #[test]
+    fn collect_across_set_operations() {
+        // Both sides of UNION ALL should be walked
+        let sql = r#"
+            CREATE MODEL bronze.union_view AS
+            DROP VIEW IF EXISTS bronze.union_view CASCADE;
+            CREATE VIEW bronze.union_view AS
+            (SELECT * FROM ref('bronze', 'orders'))
+            UNION ALL
+            (SELECT * FROM source('wh', 'returns'))
+        "#;
+
+        let got = calls(sql);
+        assert_eq!(got, vec![
+            rf(&["bronze", "orders"], "ref('bronze', 'orders')"),
+            src(&["wh", "returns"],   "source('wh', 'returns')"),
+        ]);
+    }
+
+    #[test]
+    fn case_insensitive_function_names() {
+        // Mixed case SOURCE / Ref
+        let sql = r#"
+            CREATE MODEL bronze.mixt AS
+            DROP TABLE IF EXISTS bronze.mixt CASCADE;
+            CREATE TABLE bronze.mixt AS
+            SELECT *
+            FROM SOURCE('WH', 'RAW')
+            LEFT JOIN Ref('bronze', 'dim') d
+              ON 1=1
+        "#;
+
+        let got = calls(sql);
+        assert_eq!(got, vec![
+            src(&["WH", "RAW"], "SOURCE('WH', 'RAW')"),
+            rf(&["bronze", "dim"], "Ref('bronze', 'dim')"),
+        ]);
+    }
+
+    #[test]
+    fn ignores_non_table_usage() {
+        // ref()/source() appear only in projection/where — should NOT be collected
+        let sql = r#"
+            CREATE MODEL bronze.ignore AS
+            DROP VIEW IF EXISTS bronze.ignore CASCADE;
+            CREATE VIEW bronze.ignore AS
+            SELECT
+                ref('x','y') AS not_a_table,
+                1
+            FROM some_table
+            WHERE source('a','b') = 'noop'
+        "#;
+
+        let got = calls(sql);
+        assert!(got.is_empty(), "should not collect non-table macro usages");
+    }
+
+    #[test]
+    fn function_like_table_factor_variants() {
+        // Some dialects/AST routes produce different TableFactor variants.
+        // This exercises the path you handled for TableFactor::Table { name, args, .. }.
+        let sql = r#"
+            CREATE MODEL bronze.fn AS
+            DROP TABLE IF EXISTS bronze.fn CASCADE;
+            CREATE TABLE bronze.fn AS
+            SELECT * FROM ref('bronze','things')
+        "#;
+
+        let got = calls(sql);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0], rf(&["bronze", "things"], "ref('bronze','things')"));
+    }
+
+    #[test]
+    fn collects_from_cte_chain_and_body() {
+        // Multiple CTEs, each with table macros, plus one in the body.
+        let sql = r#"
+            CREATE MODEL bronze.m AS
+            DROP TABLE IF EXISTS bronze.m CASCADE;
+            CREATE TABLE bronze.m AS
+            WITH
+            a AS (SELECT * FROM source('wh','a')),
+            b AS (SELECT * FROM ref('bronze','b'))
+            SELECT * FROM source('wh','c') c
+            LEFT JOIN a ON 1=1
+            LEFT JOIN b ON 1=1
+        "#;
+
+        let got = calls(sql);
+        // Expected traversal order: CTE a, CTE b, body FROM, then joins (a, b are table names, not macros)
+        assert_eq!(got, vec![
+            src(&["wh", "a"], "source('wh','a')"),
+            rf(&["bronze", "b"], "ref('bronze','b')"),
+            src(&["wh", "c"], "source('wh','c')"),
+        ]);
+    }
+
+    // Your original compile test remains as-is, asserting replacement behavior.
     #[test]
     fn compile_replaces_ref_and_source_macros() {
         let sql = r#"
@@ -718,14 +920,9 @@ mod tests {
             FROM source('warehouse', 'raw_orders')
         "#;
 
-        let stmt = Parser::parse_sql(&GenericDialect, sql).unwrap();
-        let mut model = match stmt[0].clone() {
-            Statement::CreateModel(m) => m,
-            _ => panic!("expected CreateModel"),
-        };
+        let mut model = parse_create_model(sql);
 
-        println!("{}", model.to_string());
-
+        // In practice parse_model filled macro_fn_call. Here we keep the compile test simple.
         model.macro_fn_call = vec![MacroFnCall {
             m_type: MacroFnCallType::Source,
             args: vec!["warehouse".into(), "raw_orders".into()],
@@ -736,14 +933,11 @@ mod tests {
             Ok(format!("{}.{}", name, table))
         }
 
-        let compiled = model
-            .compile(|schema, table| resolver(schema, table))
-            .expect("compile");
+        let compiled = model.compile(|schema, table| resolver(schema, table)).expect("compile");
 
         assert!(compiled.contains("bronze.orders"));
         assert!(compiled.contains("warehouse.raw_orders"));
         assert!(!compiled.contains("source('warehouse', 'raw_orders')"));
-
-        println!("{}", compiled)
     }
 }
+

@@ -1,0 +1,2 @@
+name: bronze_latest_customer
+materialization: view

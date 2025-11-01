@@ -212,10 +212,7 @@ impl Executor {
 
                 let kafka_client =
                     KafkaConnectClient::new(&kafka_conn.connect.host, &kafka_conn.connect.port);
-
-                println!("{:#?}", kafka_client);
-
-                println!("{}", &executable);
+                
                 let conn_config: KafkaConnectorDeployConfig = serde_json::from_str(&executable)
                     .map_err(|e| {
                         ExecutorError::config(format!(

@@ -49,8 +49,12 @@ impl IntoConfigVec<ModelConfig> for ModelsFileConfig {
     }
 }
 
+fn default_materialization() -> Materialize {
+    Materialize::View
+}
+
 // ---------------- Model Config  ----------------
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ModelConfig {
     pub name: String,
     #[serde(default)]
@@ -64,7 +68,31 @@ pub struct ModelConfig {
     // pub quality_tests: Option<Vec<String>>, // Todo - requires its own type
     #[serde(default)]
     pub meta: Option<Value>,
+    #[serde(default = "default_materialization")]
     pub materialization: Materialize,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: None,
+            columns: None,
+            serve: false,
+            pipelines: None,
+            meta: None,
+            materialization: Materialize::View,
+        }
+    }
+}
+
+impl ModelConfig {
+    pub fn with_name<S: Into<String>>(name: S) -> Self {
+        Self {
+            name: name.into(),
+            ..Default::default()
+        }
+    }
 }
 
 impl ConfigName for ModelConfig {
@@ -77,6 +105,7 @@ impl ConfigName for ModelConfig {
 pub struct ResolvedModelConfig {
     pub config: ModelConfig,
     pub target: String,
+    pub path: PathBuf,
 }
 
 impl ConfigName for ResolvedModelConfig {
@@ -109,13 +138,14 @@ impl TryFrom<&HashMap<String, ResolvedModelLayerConfig>> for ResolvedModelsConfi
 
         for (k, v) in value.iter() {
             for p in paths_with_ext(&v.path, "yml").into_iter() {
-                let config = load_config::<ModelConfig>(&p)?;
+                let mut config = load_config::<ModelConfig>(&p)?;
                 for cfg in config.values() {
                     resolved.0.insert(
-                        v.name.clone(),
+                        cfg.name.clone(),
                         ResolvedModelConfig {
                             config: cfg.clone(),
                             target: v.target.clone(),
+                            path: v.path.clone()
                         },
                     );
                 }

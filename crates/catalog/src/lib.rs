@@ -2,6 +2,7 @@ pub mod error;
 pub mod models;
 mod tests;
 
+use std::cmp::Ordering;
 pub use models::*;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
@@ -226,6 +227,24 @@ fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
         _ => std::cmp::Ordering::Equal,
     }
 }
+
+pub fn compare_catalog_node(a: &CatalogNode, b: &CatalogNode) -> Ordering {
+    fn priority(node: &CatalogNode) -> u8 {
+        match &node.declaration {
+            NodeDec::KafkaConnector(meta) => match meta.con_type {
+                KafkaConnectorType::Source => 0,
+                KafkaConnectorType::Sink => 1,
+            },
+            NodeDec::WarehouseSource(_) => 2,
+            NodeDec::Model(_) => 3,
+            NodeDec::KafkaSmt(_) => 4,
+            NodeDec::KafkaSmtPipeline(_) => 5,
+        }
+    }
+
+    priority(a).cmp(&priority(b))
+}
+
 impl Register for MemoryCatalog {
     fn register_nodes(
         &self,
@@ -291,7 +310,9 @@ impl Register for MemoryCatalog {
                 Statement::CreateSMTPredicate(stmt) => {
                     self.register_kafka_smt_predicate(stmt)?;
                 }
-                _ => (),
+                _ => return Err(CatalogError::unsupported(
+                    format!("Unsupported statement {:#?}", parsed_stmts)
+                ))
             }
         } else {
             return Err(CatalogError::unsupported(
@@ -452,6 +473,8 @@ impl Register for MemoryCatalog {
             target,
         };
 
+        // println!("model dec {:?}", model_dec)
+
         let mut g = self.inner.write();
         if g.models.contains_key(&key) {
             return Err(CatalogError::duplicate(&key));
@@ -587,126 +610,3 @@ pub trait Compile: Send + Sync + 'static + Getter {
         foundry_config: &FoundryConfig,
     ) -> Result<KafkaConnectorDecl, CatalogError>;
 }
-
-// impl Compile for MemoryCatalog {
-//     fn compile_kafka_decl(
-//         &self,
-//         name: &str,
-//         foundry_config: &FoundryConfig,
-//     ) -> Result<KafkaConnectorDecl, CatalogError> {
-//         let conn = self.get_kafka_connector(name)?;
-//         let mut config = match conn.config {
-//             Value::Object(map) => map,
-//             _ => Map::new(),
-//         };
-//
-//         let mut transform_names = Vec::new();
-//         match conn.pipelines {
-//             Some(pipelines) => {
-//                 for pipe_ident in pipelines {
-//                     let pipe = self.get_smt_pipeline(&pipe_ident)?;
-//                     let pipe_name = pipe.name.clone();
-//                     for transform in pipe.transforms {
-//                         let t = self.get_kafka_smt(&*transform.name)?;
-//                         let tname = format!("{}_{}", pipe_name, transform.name);
-//                         if let Some(args) = transform.args {
-//                             args
-//                                 .iter()
-//                                 .for_each(|(k, v)| {
-//                                     config.insert(format!("transforms.{tname}.{k}"), Json::String(v.clone()));
-//                                 })
-//                         } else {
-//                             if let Json::Object(cfg) = t.config {
-//                                 for (k, v) in cfg {
-//                                     config.insert(format!("transforms.{tname}.{k}"), v);
-//                                 }
-//                             }
-//                         }
-//                         transform_names.push(tname.clone());
-//
-//                         if let Some(pred) = &pipe.predicate {
-//                             config.insert(
-//                                 format!("transforms.{tname}.predicate"),
-//                                 Value::String(pred.clone()),
-//                             );
-//                         }
-//                     }
-//                 }
-//             }
-//             _ => {}
-//         }
-//
-//         if !transform_names.is_empty() {
-//             config.insert(
-//                 "transforms".to_string(),
-//                 Value::String(transform_names.join(",")),
-//             );
-//         }
-//         let cluster_config = &foundry_config
-//             .get_kafka_cluster_conn(&conn.cluster_name)
-//             .map_err(|e| CatalogError::not_found(format!("{}", e)))?;
-//
-//         let adapter_conf = foundry_config
-//             .get_adapter_connection_details(&&conn.sql.db_ident.value)
-//             .ok_or_else(|| {
-//                 CatalogError::not_found(format!(
-//                     "Adapter {} not found",
-//                     conn.sql.db_ident.value
-//                 ))
-//             })?;
-//
-//         match conn.con_type {
-//
-//             KafkaConnectorType::Source => {
-//                 let schema_config = &foundry_config.kafka_connectors.get(&conn.name);
-//                 if let Some(schema_config) = schema_config {
-//                     config.insert(
-//                         "table.include.list".to_string(),
-//                         Json::String(schema_config.table_include_list()),
-//                     );
-//                     config.insert(
-//                         "column.include.list".to_string(),
-//                         Json::String(schema_config.column_include_list()),
-//                     );
-//                 }
-//
-//                 config.insert(
-//                     "kafka.bootstrap.servers".to_string(),
-//                     Json::String(cluster_config.bootstrap.servers.clone()),
-//                 );
-//
-//                 let db_config = SourceDbConnectionInfo::from(adapter_conf);
-//                 let obj = db_config.to_json_map()?;
-//
-//                 config.extend(obj)
-//             }
-//             KafkaConnectorType::Sink => {
-//                 let db_config = SinkDbConnectionInfo::from(adapter_conf);
-//                 let obj = db_config.to_json_map()?;
-//                 config.extend(obj);
-//                 let collection_name_format = format!(
-//                     "{}.${{source.table}}", conn.target_schema.ok_or(
-//                     CatalogError::missing_config(format!("missing schema information for sink connector {}", conn.name))
-//                         )?
-//                 );
-//
-//                 config.insert("collection.name.format".to_string(), Json::String(collection_name_format));
-//
-//                 if config.get("topics").is_none() && config.get("topics.regex").is_none() {
-//                     return Err(CatalogError::missing_config(format!("Missing a topic definition for {}", conn.name)));
-//                 }
-//             },
-//         };
-//
-//         let dec = KafkaConnectorDecl {
-//             kind: conn.con_type,
-//             name: conn.name,
-//             config: Json::Object(config),
-//             sql: conn.sql,
-//             reads: vec![],
-//             writes: vec![],
-//             cluster_name: conn.cluster_name,
-//         };
-//         Ok(dec)
-//     }
-// }

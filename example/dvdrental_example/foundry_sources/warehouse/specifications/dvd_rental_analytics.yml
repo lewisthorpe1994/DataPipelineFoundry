@@ -1,8 +1,8 @@
 name: dvd_rental_analytics
 database:
-  name: analytics
+  name: dvd_rental_analytics
   schemas:
-    bronze:
+    raw:
       description: some schema for raw ingested data
       tables:
         rental:

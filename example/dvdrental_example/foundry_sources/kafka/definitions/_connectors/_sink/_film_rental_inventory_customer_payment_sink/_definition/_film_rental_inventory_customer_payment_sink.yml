@@ -1,6 +1,6 @@
 name: film_rental_inventory_customer_payment_sink
 schema:
-  bronze:
+  raw:
     tables:
       rental:
         columns:
@@ -42,7 +42,6 @@ schema:
           - name: create_date
           - name: last_update
           - name: active
-
       payment:
         columns:
           - name: payment_id

@@ -4,7 +4,7 @@ use crate::commands::compile::handle_compile;
 use crate::commands::handle_init;
 use crate::commands::init::InitArgs;
 use crate::commands::kafka::{handle_kafka, KafkaSubcommand};
-use crate::commands::run::RunArgs;
+use crate::commands::run::{handle_run, RunArgs};
 use clap::{Parser, Subcommand};
 use common::error::FFError;
 use std::path::PathBuf;
@@ -84,18 +84,11 @@ fn main() {
             }
         }
         Cmd::Compile => {
-            if let Err(e) = handle_compile(cli.config_path.clone()) {
-                eprintln!("Compilation failed: {}", e);
-                std::process::exit(1);
-            }
+            run_cmd(handle_compile(cli.config_path.clone())) 
         }
         Cmd::Kafka(args) => run_cmd(handle_kafka(&args, cli.config_path.clone())),
         Cmd::Run(args) => {
-            // if let Err(e) = handle_run(args.model, cli.config_path) {
-            //     eprintln!("Run failed: {}", e);
-            //     std::process::exit(1);
-            // }
-            unimplemented!("Not implemented yet!");
+            run_cmd(handle_run(args.model, cli.config_path))
         }
         _ => unimplemented!("Not implemented yet!"),
     }

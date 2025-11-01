@@ -8,6 +8,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{format, Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
+use crate::error::ConfigError;
 
 // ---------------- KafkaSource Config ----------------
 #[derive(Debug, Deserialize, Clone)]
@@ -127,9 +129,11 @@ impl From<KafkaSourceConfigError> for JinjaError {
 pub struct KafkaConnectorConfig {
     pub schema: HashMap<String, Schema>,
     pub name: String,
+    pub dag_executable: Option<bool>
 }
 
 impl KafkaConnectorConfig {
+    
     pub fn table_include_list(&self) -> String {
         self.schema
             .iter()

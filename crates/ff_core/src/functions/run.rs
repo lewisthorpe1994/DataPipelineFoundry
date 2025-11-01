@@ -25,7 +25,7 @@ async fn execute_dag_nodes(nodes: Vec<&DagNode>, config: &FoundryConfig) -> Resu
     Ok(())
 }
 
-async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
+pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFError> {
     let compiled = compile(&config)?;
     let nodes = compiled.dag;
 

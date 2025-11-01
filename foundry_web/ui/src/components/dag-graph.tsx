@@ -72,8 +72,8 @@ const graphStyle: CyStylesheet[] = [
     selector: "node[icon != \"none\"]",
     style: {
       "background-image": "data(icon)",
-      "background-width": "50px",
-      "background-height": "60px",
+      "background-width": "60px",
+      "background-height": "70px",
       "background-position-x": "100%",
       "background-position-y": "100%",
       "background-offset-x": "-16px",

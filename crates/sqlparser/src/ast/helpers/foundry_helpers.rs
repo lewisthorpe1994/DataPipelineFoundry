@@ -31,7 +31,7 @@ pub struct MacroFnCall {
 pub fn collect_ref_source_calls(query: &Query) -> Vec<MacroFnCall> {
     let mut refs = Vec::new();
     let mut sources = Vec::new();
-    collect_in_set_expr(&query.body, &mut refs, &mut sources);
+    let _ = collect_in_query(&query, &mut refs, &mut sources);
 
     fn into_macro(kind: MacroFnCallType, func: Function) -> MacroFnCall {
         let call_def = func.to_string();
@@ -72,19 +72,39 @@ pub fn collect_ref_source_calls(query: &Query) -> Vec<MacroFnCall> {
         .collect()
 }
 
-fn collect_in_set_expr(set: &SetExpr, refs: &mut Vec<Function>, sources: &mut Vec<Function>) {
+fn collect_in_query(
+    query: &Query,
+    refs: &mut Vec<Function>,
+    sources: &mut Vec<Function>,
+) -> Result<(), ParserError> {
+    // 1) Recurse into WITH CTEs
+    if let Some(with) = &query.with {
+        for cte in &with.cte_tables {
+            collect_in_query(&cte.query, refs, sources)?; // propagate
+        }
+    }
+    // 2) Then handle the main body
+    collect_in_set_expr(&query.body, refs, sources)
+}
+
+fn collect_in_set_expr(
+    set: &SetExpr,
+    refs: &mut Vec<Function>,
+    sources: &mut Vec<Function>,
+) -> Result<(), ParserError> {
     match set {
         SetExpr::Select(select) => {
             for table in &select.from {
-                collect_in_table_with_joins(table, refs, sources);
+                collect_in_table_with_joins(table, refs, sources)?; // propagate
             }
+            Ok(())
         }
-        SetExpr::Query(query) => collect_in_set_expr(&query.body, refs, sources),
+        SetExpr::Query(q) => collect_in_query(q, refs, sources),
         SetExpr::SetOperation { left, right, .. } => {
-            collect_in_set_expr(left, refs, sources);
-            collect_in_set_expr(right, refs, sources);
+            collect_in_set_expr(left, refs, sources)?;
+            collect_in_set_expr(right, refs, sources)
         }
-        _ => {}
+        _ => Ok(()), // <- not just {}
     }
 }
 
@@ -95,7 +115,7 @@ fn collect_in_table_with_joins(
 ) -> Result<(), ParserError> {
     collect_in_table_factor(&table.relation, refs, sources)?;
     for join in &table.joins {
-        collect_in_table_factor(&join.relation, refs, sources)?;
+        collect_in_table_factor(&join.relation, refs, sources)?; // propagate
     }
     Ok(())
 }
@@ -109,13 +129,12 @@ fn collect_in_table_factor(
         TableFactor::TableFunction { expr, .. } => {
             if let Expr::Function(func) = expr {
                 match func.name.to_string().to_lowercase().as_str() {
-                    "ref" => Ok(refs.push(func.clone())),
-                    "source" => Ok(sources.push(func.clone())),
-                    _ => Ok(()),
+                    "ref" => { refs.push(func.clone()); }
+                    "source" => { sources.push(func.clone()); }
+                    _ => {}
                 }
-            } else {
-                Ok(())
             }
+            Ok(())
         }
         TableFactor::Function { name, args, .. } => {
             let func = Function {
@@ -133,16 +152,16 @@ fn collect_in_table_factor(
                 within_group: vec![],
             };
             match name.to_string().to_lowercase().as_str() {
-                "ref" => Ok(refs.push(func.clone())),
-                "source" => Ok(sources.push(func.clone())),
-                _ => Ok(()),
+                "ref" => { refs.push(func); }
+                "source" => { sources.push(func); }
+                _ => {}
             }
+            Ok(())
         }
         TableFactor::Table { name, args, .. } => {
-            let fn_args = args.clone().ok_or(ParserError::ParserError(format!(
-                "expected fn {} to have args",
-                name
-            )))?;
+            let fn_args = args.clone().ok_or_else(|| ParserError::ParserError(
+                format!("expected fn {} to have args", name)
+            ))?;
             let func = Function {
                 name: name.clone(),
                 uses_odbc_syntax: false,
@@ -158,24 +177,23 @@ fn collect_in_table_factor(
                 within_group: vec![],
             };
             match name.to_string().to_lowercase().as_str() {
-                "ref" => Ok(refs.push(func.clone())),
-                "source" => Ok(sources.push(func.clone())),
-                _ => Ok(()),
+                "ref" => { refs.push(func); }
+                "source" => { sources.push(func); }
+                _ => {}
             }
+            Ok(())
         }
         TableFactor::Derived { subquery, .. } => {
-            Ok(collect_in_set_expr(&subquery.body, refs, sources))
+            // DO NOT wrap in Ok(...). Propagate the Result:
+            collect_in_set_expr(&subquery.body, refs, sources)
         }
-        TableFactor::NestedJoin {
-            table_with_joins, ..
-        } => Ok(collect_in_table_with_joins(
-            table_with_joins,
-            refs,
-            sources,
-        )?),
+        TableFactor::NestedJoin { table_with_joins, .. } => {
+            collect_in_table_with_joins(table_with_joins, refs, sources)
+        }
         _ => Ok(()),
     }
 }
+
 
 fn arg_expr_to_clean_string(arg: &FunctionArgExpr) -> String {
     match arg {

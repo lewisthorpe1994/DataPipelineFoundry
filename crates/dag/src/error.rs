@@ -3,6 +3,7 @@ use components::errors::KafkaConnectorCompileError;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use std::io;
 use thiserror::Error;
+use catalog::error::CatalogError;
 
 #[derive(Debug, Error)]
 pub enum DagError {
@@ -22,6 +23,8 @@ pub enum DagError {
     },
     #[error("reference not found: {context}")]
     RefNotFound { context: DiagnosticMessage },
+    #[error("not found: {context}")]
+    NotFound { context: DiagnosticMessage },
     #[error("execution error: {context}")]
     ExecutionError { context: DiagnosticMessage },
     #[error("invalid direction: {context}")]
@@ -87,6 +90,13 @@ impl DagError {
             context: DiagnosticMessage::new(message.into()),
         }
     }
+
+    #[track_caller]
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::NotFound {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
 }
 
 impl From<io::Error> for DagError {
@@ -124,9 +134,34 @@ impl From<KafkaConnectorCompileError> for DagError {
             | KafkaConnectorCompileError::Unsupported { context }
             | KafkaConnectorCompileError::ConfigError { context }
             | KafkaConnectorCompileError::SerdeJson { context, .. }
-            | KafkaConnectorCompileError::NotFound { context }
             | KafkaConnectorCompileError::UnexpectedError { context } => {
                 DagError::UnexpectedError { context }
+            }
+            KafkaConnectorCompileError::NotFound { context } => {
+                DagError::NotFound { context }
+            }
+        }
+    }
+}
+
+impl From<CatalogError> for DagError {
+    fn from(value: CatalogError) -> Self {
+        match value { 
+            CatalogError::MissingConfig { context} |
+            CatalogError::SqlParser { context, ..} |
+            CatalogError::Unsupported { context } |
+            CatalogError::SerdeYaml { context, ..} |
+            CatalogError::SerdeJson { context, ..} => {
+                DagError::UnexpectedError { context}
+            }
+            CatalogError::Io { context, source} => {
+                DagError::Io { context, source }
+            }
+            CatalogError::Duplicate { context } => {
+                DagError::DuplicateNode { context }
+            }
+            CatalogError::NotFound { context } => {
+                DagError::NotFound { context }
             }
         }
     }
