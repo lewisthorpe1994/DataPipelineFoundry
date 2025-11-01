@@ -2,13 +2,13 @@ WITH latest AS (
     SELECT
         film_id,
         MAX(last_update) AS last_update
-    FROM source('dvd_rental_analytics', 'film')
+    FROM source('dvdrental_analytics', 'film')
     GROUP BY film_id
 ),
 
 film AS (
     SELECT
-        film_id,
+        f.film_id,
         title as film_title,
         title,
         description,
@@ -19,7 +19,7 @@ film AS (
         length as film_length,
         replacement_cost,
         rating
-    FROM source('dvd_rental_analytics', 'film') f
+    FROM source('dvdrental_analytics', 'film') f
     INNER JOIN latest l ON f.last_update = l.last_update AND f.film_id = l.film_id
 )
 

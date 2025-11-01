@@ -240,7 +240,7 @@ impl KafkaConnector {
             );
             config.insert(
                 "column.include.list".to_string(),
-                schema_config.column_include_list(),
+                schema_config.column_include_list(false),
             );
         }
 
@@ -284,7 +284,7 @@ impl KafkaConnector {
         if let Some(schema_config) = schema_config {
             config.insert(
                 "field.include.list".to_string(),
-                schema_config.column_include_list(),
+                schema_config.column_include_list(true),
             );
         }
 

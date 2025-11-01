@@ -8,12 +8,12 @@ compile_path: "compiled"
 models:
   dir: foundry_models
   analytics_projects:
-    dvd_rentals_analytics:
-      target_connection: dvd_rentals_analytics
+    dvdrentals_analytics:
+      target_connection: dvdrental_analytics
       layers:
-          bronze: dvd_rental_analytics/bronze
-          silver: dvd_rental_analytics/silver
-          gold: dvd_rental_analytics/gold
+          bronze: dvdrental_analytics/bronze
+          silver: dvdrental_analytics/silver
+          gold: dvdrental_analytics/gold
         
 sources:
   warehouse:

@@ -5,4 +5,4 @@ USING KAFKA CLUSTER 'some_kafka_cluster' (
     "delete.enabled" = "false",
     "topics.regex" = "dvdrental\.([^.]+)"
 ) WITH CONNECTOR VERSION '3.1'
-INTO WAREHOUSE DATABASE 'dvd_rental_analytics' USING SCHEMA 'raw';
+INTO WAREHOUSE DATABASE 'dvdrental_analytics' USING SCHEMA 'raw';

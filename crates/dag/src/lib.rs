@@ -233,7 +233,7 @@ impl ModelsDag {
         match connector.config {
             KafkaConnectorConfig::Source(cfg) => {
                 self.build_nodes_from_kafka_src_connector(
-                    cfg, connector_meta, catalog, connector_json, target, current_topics
+                    cfg, config, connector_meta, catalog, connector_json, target, current_topics
                 )?;
             },
             KafkaConnectorConfig::Sink(cfg) => {
@@ -249,6 +249,7 @@ impl ModelsDag {
     fn build_nodes_from_kafka_src_connector(
         &mut self,
         connector: KafkaSourceConnectorConfig,
+        config: &FoundryConfig,
         meta: &KafkaConnectorMeta,
         catalog: &MemoryCatalog,
         connector_json: String,
@@ -258,7 +259,7 @@ impl ModelsDag {
         match connector {
             KafkaSourceConnectorConfig::DebeziumPostgres(cfg) => {
                 Ok(self.build_nodes_from_debezium_src_postgres(
-                    cfg, meta, catalog, connector_json, target, current_topics
+                    cfg, config, meta, catalog, connector_json, target, current_topics
                 )?)
             }
         }
@@ -291,38 +292,31 @@ impl ModelsDag {
     ) -> Result<(), DagError> {
         pipelines
             .iter()
-            .try_for_each(|pipe| -> Result<(), DagError> {
-                pipe
-                    .iter()
-                    .try_for_each(|name| -> Result<(), DagError> {
-                        catalog
-                            .get_smt_pipeline(&name)
-                            .map_err(|_| DagError::ref_not_found(name.clone()))?
-                            .transforms
-                            .iter()
-                            .try_for_each(|t| -> Result<(), DagError> {
-                                let transform = catalog
-                                    .get_kafka_smt(t.id)
-                                    .map_err(|_| DagError::ref_not_found(name.clone()))?;
+            .flatten()
+            .try_for_each(|name| -> Result<(), DagError> {
+                let pipeline = catalog
+                    .get_smt_pipeline(name)
+                    .map_err(|_| DagError::ref_not_found(name.clone()))?;
 
-                                self.upsert_node(
-                                    t.name.to_string(),
-                                    false,
-                                    DagNode {
-                                        name: t.name.to_string(),
-                                        ast: Some(NodeAst::KafkaSmt(transform.sql.clone())),
-                                        node_type: DagNodeType::KafkaSmt,
-                                        is_executable: false,
-                                        relations: relations.clone(),
-                                        compiled_obj: None,
-                                        target: None,
-                                    },
-                                )?;
-                                Ok(())
-                            })?;
-                        Ok(())
-                    })?;
-                Ok(())
+                pipeline.transforms.iter().try_for_each(|t| {
+                    let transform = catalog
+                        .get_kafka_smt(t.id)
+                        .map_err(|_| DagError::ref_not_found(name.clone()))?;
+
+                    self.upsert_node(
+                        t.name.to_string(),
+                        false,
+                        DagNode {
+                            name: t.name.to_string(),
+                            ast: Some(NodeAst::KafkaSmt(transform.sql.clone())),
+                            node_type: DagNodeType::KafkaSmt,
+                            is_executable: false,
+                            relations: relations.clone(),
+                            compiled_obj: None,
+                            target: None,
+                        },
+                    )
+                })
             })?;
 
         Ok(())
@@ -339,7 +333,7 @@ impl ModelsDag {
         current_topics: &BTreeSet<String>,
     ) -> Result<(), DagError> {
         let topics = connector.topic_names(&current_topics)?;
-        let connector_cfg = config.get_kafka_connector_config(&meta.name)
+        let is_executable = config.get_kafka_connector_config(&meta.name)
             .map_err(|e| DagError::not_found(meta.name.clone()))?
             .dag_executable
             .unwrap_or(false);
@@ -352,7 +346,7 @@ impl ModelsDag {
                 name: meta.name.clone(),
                 ast: Some(NodeAst::KafkaConnector(meta.sql.clone())),
                 node_type: DagNodeType::KafkaSinkConnector,
-                is_executable: connector_cfg,
+                is_executable,
                 relations: Some(topics),
                 compiled_obj: Some(connector_json),
                 target,
@@ -393,6 +387,7 @@ impl ModelsDag {
     fn build_nodes_from_debezium_src_postgres(
         &mut self,
         connector: DebeziumPostgresSourceConnector,
+        config: &FoundryConfig,
         meta: &KafkaConnectorMeta,
         catalog: &MemoryCatalog,
         connector_json: String,
@@ -403,6 +398,11 @@ impl ModelsDag {
         if let Some(pipelines) = meta.pipelines.clone() {
             conn_rels.extend(pipelines);
         }
+        let is_executable = config.get_kafka_connector_config(&meta.name)
+            .map_err(|e| DagError::not_found(meta.name.clone()))?
+            .dag_executable
+            .unwrap_or(false);
+
         let src_db_rels = if let Some(ref srcs) = connector.table_include_list {
             srcs
                 .split(",")
@@ -466,7 +466,7 @@ impl ModelsDag {
                 name: meta.name.clone(),
                 ast: Some(NodeAst::KafkaConnector(meta.sql.clone())),
                 node_type: DagNodeType::KafkaSourceConnector,
-                is_executable: true,
+                is_executable,
                 relations: Some(conn_rels.clone()),
                 compiled_obj: Some(connector_json),
                 target,

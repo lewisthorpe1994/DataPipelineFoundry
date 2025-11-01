@@ -2,9 +2,9 @@
 # Users should edit with real credentials
 
 dev:
-  dvd_rental_analytics:
+  dvdrental_analytics:
     adapter: postgres
-    host: source_db
+    host: localhost
     port: 15432
     user: postgres
     password: postgres
@@ -13,7 +13,7 @@ dev:
   dvd_rental:
     adapter: postgres
     host: source_db
-    port: 15432
+    port: 5432
     user: postgres
     password: postgres
     database: dvdrental

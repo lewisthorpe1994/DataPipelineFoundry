@@ -1,6 +1,6 @@
-name: dvd_rental_analytics
+name: dvdrental_analytics
 database:
-  name: dvd_rental_analytics
+  name: dvdrental_analytics
   schemas:
     raw:
       description: some schema for raw ingested data

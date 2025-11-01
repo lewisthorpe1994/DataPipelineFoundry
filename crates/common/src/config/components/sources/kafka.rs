@@ -147,7 +147,7 @@ impl KafkaConnectorConfig {
             .join(",")
     }
 
-    pub fn column_include_list(&self) -> String {
+    pub fn column_include_list(&self, fields_only: bool) -> String {
         self.schema
             .iter()
             .flat_map(|(s_name, schema)| {
@@ -155,7 +155,13 @@ impl KafkaConnectorConfig {
                     table
                         .columns
                         .iter()
-                        .map(move |col| format!("{}.{}.{}", s_name, t_name, col.name))
+                        .map(move |col| {
+                            if !fields_only {
+                                format!("{}.{}.{}", s_name, t_name, col.name)
+                            } else {
+                                format!("{}", col.name)
+                            }
+                        })
                 })
             })
             .collect::<Vec<String>>()
