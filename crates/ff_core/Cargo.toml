@@ -20,3 +20,4 @@ shared_clients = { workspace = true}
 [dev-dependencies]
 tokio = { workspace = true }
 test_utils = { workspace = true }
+env_logger = "0.11.8"

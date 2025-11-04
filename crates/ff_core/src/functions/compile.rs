@@ -149,6 +149,11 @@ mod tests {
 
     #[test]
     fn test() {
+        env_logger::Builder::new()
+            .filter_level(log::LevelFilter::Info)
+            .is_test(true)
+            .try_init()
+            .ok();
         let project_root = get_root_dir();
         with_chdir(&project_root, move || {
             let config = read_config(None).expect("load project config");

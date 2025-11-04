@@ -4,8 +4,8 @@
 dev:
   dvdrental_analytics:
     adapter: postgres
-    host: localhost
-    port: 15432
+    host: source_db
+    port: 5432
     user: postgres
     password: postgres
     database: dvdrental_analytics

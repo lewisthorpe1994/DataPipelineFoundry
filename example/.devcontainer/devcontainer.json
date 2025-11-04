@@ -3,10 +3,10 @@
     "dockerComposeFile": "docker-compose.yml",
     "service": "dpf",
     "workspaceFolder": "\\workspace\\example\\dvdrental_example",
-//    "postCreateCommand": "CARGO_TARGET_DIR=/tmp/devcontainer-target cargo install --path /workspace/crates/cli --locked",
     "customizations" : {
         "jetbrains" : {
-            "backend" : "RustRover"
+            "backend" : "RustRover",
+//            "projectDir": "/workspace/example/dvdrental_example"
         }
     }
 }

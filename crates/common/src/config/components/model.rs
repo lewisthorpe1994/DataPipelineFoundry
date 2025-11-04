@@ -5,7 +5,7 @@ use crate::traits::IsFileExtension;
 use crate::types::schema::Column;
 use crate::types::Materialize;
 use crate::utils::paths_with_ext;
-use log::error;
+use log::{error, warn};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -137,8 +137,34 @@ impl TryFrom<&HashMap<String, ResolvedModelLayerConfig>> for ResolvedModelsConfi
         let mut resolved = ResolvedModelsConfig::empty();
 
         for (k, v) in value.iter() {
-            for p in paths_with_ext(&v.path, "yml").into_iter() {
-                let mut config = load_config::<ModelConfig>(&p)?;
+            let mut yaml_paths = paths_with_ext(&v.path, "yml").peekable();
+            if yaml_paths.peek().is_none() {
+                for sql in paths_with_ext(&v.path, "sql") {
+                    let Some(stem) = sql.file_stem().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    let model_name = stem.trim_start_matches('_');
+                    let layer_name = format!("{}_{}", v.name, model_name);
+
+                    warn!(
+      "
+  No config file found for model '{model_name}'.
+  Add _{model_name}.yml next to _{model_name}.sql if you need custom settings.
+  Using default config for this run."
+  );
+                    resolved.0.insert(
+                        layer_name.clone(),
+                        ResolvedModelConfig {
+                            config: ModelConfig::with_name(layer_name),
+                            target: v.target.clone(),
+                            path: sql.parent().unwrap_or(&v.path).to_path_buf(),
+                        },
+                    );
+                }
+                continue;
+            }
+            for p in yaml_paths {
+                let config = load_config::<ModelConfig>(&p)?;
                 for cfg in config.values() {
                     resolved.0.insert(
                         cfg.name.clone(),

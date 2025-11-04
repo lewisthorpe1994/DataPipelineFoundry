@@ -35,6 +35,8 @@ once_cell = "1"
 tempfile = "3"
 thiserror = "2"
 regex = "1.10"
+tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+tokio-postgres = { version = "0.7", features = ["runtime"] }
 
 common = { path = "crates/common", default-features = false }
 ff_core = { path = "crates/ff_core" }
@@ -42,11 +44,9 @@ sqlparser = { path = "crates/sqlparser" }
 logging = { path = "crates/logging"}
 test_utils = { path = "crates/test_utils" }
 dag = { path = "crates/dag"}
-tokio-postgres = { version = "0.7", features = ["runtime"] }
 shared_clients = { path = "crates/shared_clients" }
 catalog = { path = "crates/catalog" }
 executor = { path = "crates/executor" }
-tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 components = { path = "crates/components", default-features = false}
 connector_versioning = { path = "crates/components/connector_versioning"}
 connector_versioning_derive = {path = "crates/components/connector_versioning_derive"}

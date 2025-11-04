@@ -10,7 +10,6 @@ film AS (
     SELECT
         f.film_id,
         title as film_title,
-        title,
         description,
         release_year,
         language_id,

@@ -15,7 +15,7 @@ latest_rentals AS (
       return_date,
       staff_id
     FROM source('dvdrental_analytics', 'rental') r
-    INNER JOIN latest l ON r.rental_id = l.rental_id AND r.rental_date = l.max_last_update
+    INNER JOIN latest l ON r.rental_id = l.rental_id AND r.last_update = l.max_last_update
 )
 
 SELECT * FROM latest_rentals

@@ -193,6 +193,7 @@ pub trait Register: Send + Sync + 'static {
         &self,
         parsed_stmts: Vec<Statement>,
         target: Option<String>,
+        node: &ParsedNode,
     ) -> Result<(), CatalogError>;
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError>;
     fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError>;
@@ -200,7 +201,12 @@ pub trait Register: Send + Sync + 'static {
         &self,
         ast: CreateSimpleMessageTransformPipeline,
     ) -> Result<(), CatalogError>;
-    fn register_model(&self, ast: CreateModel, target: String) -> Result<(), CatalogError>;
+    fn register_model(
+        &self,
+        ast: CreateModel,
+        target: String,
+        node: &ParsedNode,
+    ) -> Result<(), CatalogError>;
     fn register_warehouse_sources(
         &self,
         warehouse_sources: HashMap<String, DbConfig>,
@@ -281,7 +287,7 @@ impl Register for MemoryCatalog {
                     path.display()
                 ))
             })?;
-            self.register_object(parsed_sql, node_target)?;
+            self.register_object(parsed_sql, node_target, &node)?;
         }
         Ok(())
     }
@@ -289,6 +295,7 @@ impl Register for MemoryCatalog {
         &self,
         parsed_stmts: Vec<Statement>,
         target: Option<String>,
+        node: &ParsedNode,
     ) -> Result<(), CatalogError> {
         if parsed_stmts.len() == 1 {
             match parsed_stmts[0].clone() {
@@ -306,12 +313,13 @@ impl Register for MemoryCatalog {
                     target.ok_or_else(|| {
                         CatalogError::missing_config("Missing target name for model")
                     })?,
+                    node
                 )?,
                 Statement::CreateSMTPredicate(stmt) => {
                     self.register_kafka_smt_predicate(stmt)?;
                 }
                 _ => return Err(CatalogError::unsupported(
-                    format!("Unsupported statement {:#?}", parsed_stmts)
+                    format!("Unsupported statement! got statement {:#?}", parsed_stmts[0].to_string())
                 ))
             }
         } else {
@@ -400,7 +408,12 @@ impl Register for MemoryCatalog {
         Ok(())
     }
 
-    fn register_model(&self, ast: CreateModel, target: String) -> Result<(), CatalogError> {
+    fn register_model(
+        &self,
+        ast: CreateModel,
+        target: String,
+        node: &ParsedNode,
+    ) -> Result<(), CatalogError> {
         // derive schema/name from underlying model definition
         fn split_schema_table(name: &ObjectName) -> (String, String) {
             let parts: Vec<String> = name
@@ -476,10 +489,11 @@ impl Register for MemoryCatalog {
         // println!("model dec {:?}", model_dec)
 
         let mut g = self.inner.write();
-        if g.models.contains_key(&key) {
-            return Err(CatalogError::duplicate(&key));
+        let name = node.name();
+        if g.models.contains_key(&name) {
+            return Err(CatalogError::duplicate(&name));
         }
-        g.models.insert(key, model_dec);
+        g.models.insert(name, model_dec);
         Ok(())
     }
 

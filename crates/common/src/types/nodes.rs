@@ -179,6 +179,17 @@ pub enum ParsedNode {
     },
 }
 
+impl ParsedNode {
+    pub fn name(&self) -> String {
+        match self { 
+            ParsedNode::Model { node, .. } => node.name.clone(),
+            ParsedNode::KafkaConnector { node, .. } => node.name.clone(),
+            ParsedNode::KafkaSmt { node, .. } => node.name.clone(),
+            ParsedNode::KafkaSmtPipeline { node, .. } => node.name.clone(),
+        }
+    }
+}
+
 pub trait Identifier {
     fn identifier(&self) -> String;
 }

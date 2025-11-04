@@ -1041,6 +1041,7 @@ dependencies = [
  "common",
  "components",
  "dag",
+ "env_logger",
  "executor",
  "log",
  "logging",
