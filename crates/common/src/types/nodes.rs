@@ -15,12 +15,14 @@ pub struct SourceRef {
 pub struct ModelRef {
     pub table: String,
     pub schema: String,
+    pub name: String,
 }
 impl ModelRef {
-    pub fn new<S: Into<String>>(schema: S, table: S) -> Self {
+    pub fn new<S: Into<String>>(schema: S, table: S, name: S) -> Self {
         Self {
             schema: schema.into(),
             table: table.into(),
+            name: name.into(),
         }
     }
     pub fn to_string(&self) -> String {

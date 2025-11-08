@@ -85,6 +85,7 @@ pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFE
             let ordered_nodes = nodes.get_included_dag_nodes(None).map_err(|e| {
                 FFError::run_msg(format!("Detected cycle while scheduling DAG nodes: {e:?}"))
             })?;
+            info!("{:#?}", ordered_nodes);
             execute_dag_nodes(ordered_nodes, &config)
                 .await
                 .map_err(FFError::run)?;
@@ -96,8 +97,24 @@ pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFE
 
 #[cfg(test)]
 mod tests {
+    use common::config::loader::read_config;
+    use test_utils::{get_root_dir, with_chdir, with_chdir_async};
     use super::*;
 
     #[tokio::test]
-    async fn test_run() {}
+    async fn test_run() {
+        let _ = env_logger::Builder::new()
+            .filter_level(log::LevelFilter::Info)
+            .is_test(true)
+            .try_init();
+
+        let project_root = get_root_dir();
+
+        // If with_chdir returns a Future, you must await it:
+        with_chdir_async(&project_root, || async {
+            let config = read_config(None).expect("load example project config");
+            run(config, None).await.expect("run example project config");
+        })
+            .await.expect("something"); // <-- this was missing
+    }
 }

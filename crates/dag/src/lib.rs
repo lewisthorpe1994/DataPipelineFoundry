@@ -112,8 +112,11 @@ impl ModelsDag {
                     let refs = model
                         .refs
                         .iter()
-                        .map(|r| r.clone().into_relation())
+                        .map(|r| r.name.clone())
                         .collect::<HashSet<String>>();
+
+                    println!("model {}", model.name);
+                    println!("refs: {:?}", refs);
 
                     let mut resolved_srcs = HashSet::new();
                     for src in model.sources.iter() {
@@ -197,7 +200,33 @@ impl ModelsDag {
                     )?
                 }
             }
+        }
+
+        let node_indices: Vec<_> = self.graph.node_indices().collect();
+        for node_idx in node_indices {
+            let Some(relations) = self.graph[node_idx].relations.clone() else {
+                continue;
+            };
+
+            for rel in relations {
+                let Some(&dep_idx) = self.ref_to_index.get(&rel) else {
+                    let node_name = self
+                        .graph
+                        .node_weight(node_idx)
+                        .expect("node index must exist")
+                        .name
+                        .clone();
+                    return Err(DagError::ref_not_found(format!(
+                        "Unknown dependency '{}' for '{}'",
+                        rel, node_name
+                    )));
+                };
+
+                self.graph.add_edge(dep_idx, node_idx, EmtpyEdge);
             }
+        }
+
+        println!("{:#?}", self.graph);
 
         if petgraph::algo::is_cyclic_directed(&self.graph) {
             if let Some(cyclic_refs) = kosaraju_scc(&self.graph).into_iter().find(|c| c.len() > 1) {
@@ -362,11 +391,12 @@ impl ModelsDag {
                 .split(",")
                 .map(str::trim) // trim whitespace
                 .try_for_each(|s| -> Result<(), DagError> {
+                    let name = format!("{}.{}", meta.target, s.to_owned());
                     self.upsert_node(
-                        s.to_owned(),
+                        name.clone(),
                         false,
                         DagNode {
-                            name: format!("{}.{}", meta.target, s.to_owned()),
+                            name: name.clone(),
                             ast: None,
                             node_type: DagNodeType::WarehouseSourceDb,
                             is_executable: false,
@@ -704,7 +734,11 @@ mod tests {
 
             let mut dag = ModelsDag::new();
             dag.build(&cat, &config).expect("build models");
-            println!("{:#?}", dag)
+            // println!("{:#?}", dag);
+            let ordered = dag.toposort().expect("toposort");
+            for o in ordered {
+                println!("{:#?}", dag.graph[o]);
+            }
         })?;
 
         Ok(())

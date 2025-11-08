@@ -171,6 +171,16 @@ fn format_relation(schema: &str, table: &str) -> String {
     }
 }
 
+fn model_identifier_from_ref(schema: &str, table: &str) -> String {
+    if table.starts_with(schema) {
+        table.to_string()
+    } else if table.starts_with('_') {
+        format!("{}{}", schema, table)
+    } else {
+        format!("{}_{}", schema, table)
+    }
+}
+
 pub fn format_create_model_sql(sql: String, materialize: Materialize, model_name: &str) -> String {
     let model = model_name.replacen("_", ".", 1);
     let materialization = materialize.to_sql();
@@ -462,9 +472,15 @@ impl Register for MemoryCatalog {
 
         let refs = r
             .iter()
-            .map(|call| ModelRef {
-                table: call.args[1].clone(),
-                schema: call.args[0].clone(),
+            .map(|call| {
+                let schema = call.args[0].clone();
+                let table = call.args[1].clone();
+
+                ModelRef {
+                    name: model_identifier_from_ref(&schema, &table),
+                    table,
+                    schema,
+                }
             })
             .collect::<Vec<ModelRef>>();
 
