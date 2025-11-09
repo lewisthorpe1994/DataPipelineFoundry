@@ -183,7 +183,7 @@ pub enum ParsedNode {
 
 impl ParsedNode {
     pub fn name(&self) -> String {
-        match self { 
+        match self {
             ParsedNode::Model { node, .. } => node.name.clone(),
             ParsedNode::KafkaConnector { node, .. } => node.name.clone(),
             ParsedNode::KafkaSmt { node, .. } => node.name.clone(),

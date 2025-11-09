@@ -514,7 +514,6 @@ impl DebeziumPostgresSourceConnector {
         topics.dedup();
         topics
     }
-
 }
 
 impl HasConnectorClass for DebeziumPostgresSourceConnector {
@@ -551,11 +550,8 @@ mod tests {
             "public.customer, public.payment".into(),
         );
 
-        let connector = DebeziumPostgresSourceConnector::generated_new(
-            config,
-            Version::new(3, 1),
-        )
-        .expect("connector generation");
+        let connector = DebeziumPostgresSourceConnector::generated_new(config, Version::new(3, 1))
+            .expect("connector generation");
 
         assert_eq!(
             connector.topic_names(),
@@ -571,17 +567,12 @@ mod tests {
         let mut config = base_config();
         config.insert("table.include.list".into(), "public.inventory".into());
 
-        let mut connector = DebeziumPostgresSourceConnector::generated_new(
-            config,
-            Version::new(3, 1),
-        )
-        .expect("connector generation");
+        let mut connector =
+            DebeziumPostgresSourceConnector::generated_new(config, Version::new(3, 1))
+                .expect("connector generation");
 
         let mut router_config = HashMap::new();
-        router_config.insert(
-            "topic.regex".into(),
-            "postgres\\.([^.]+)\\.([^.]+)".into(),
-        );
+        router_config.insert("topic.regex".into(), "postgres\\.([^.]+)\\.([^.]+)".into());
         router_config.insert("topic.replacement".into(), "dvdrental.$2".into());
 
         let router = ByLogicalTableRouter::new(router_config, Version::new(3, 1))
@@ -600,11 +591,9 @@ mod tests {
 
     #[test]
     fn topic_names_returns_empty_when_no_tables_included() {
-        let connector = DebeziumPostgresSourceConnector::generated_new(
-            base_config(),
-            Version::new(3, 1),
-        )
-        .expect("connector generation");
+        let connector =
+            DebeziumPostgresSourceConnector::generated_new(base_config(), Version::new(3, 1))
+                .expect("connector generation");
 
         assert!(connector.topic_names().is_empty());
     }
@@ -617,11 +606,8 @@ mod tests {
             "public.inventory, public.inventory".into(),
         );
 
-        let connector = DebeziumPostgresSourceConnector::generated_new(
-            config,
-            Version::new(3, 1),
-        )
-        .expect("connector generation");
+        let connector = DebeziumPostgresSourceConnector::generated_new(config, Version::new(3, 1))
+            .expect("connector generation");
 
         assert_eq!(
             connector.topic_names(),
@@ -634,17 +620,12 @@ mod tests {
         let mut config = base_config();
         config.insert("table.include.list".into(), "public.payment".into());
 
-        let mut connector = DebeziumPostgresSourceConnector::generated_new(
-            config,
-            Version::new(3, 1),
-        )
-        .expect("connector generation");
+        let mut connector =
+            DebeziumPostgresSourceConnector::generated_new(config, Version::new(3, 1))
+                .expect("connector generation");
 
         let mut router_config = HashMap::new();
-        router_config.insert(
-            "topic.regex".into(),
-            "postgres\\.([^.]+)\\.([^.]+)".into(),
-        );
+        router_config.insert("topic.regex".into(), "postgres\\.([^.]+)\\.([^.]+)".into());
 
         let router = ByLogicalTableRouter::new(router_config, Version::new(3, 1))
             .expect("router generation");
@@ -665,11 +646,9 @@ mod tests {
         let mut config = base_config();
         config.insert("table.include.list".into(), "public.customer".into());
 
-        let mut connector = DebeziumPostgresSourceConnector::generated_new(
-            config,
-            Version::new(3, 1),
-        )
-        .expect("connector generation");
+        let mut connector =
+            DebeziumPostgresSourceConnector::generated_new(config, Version::new(3, 1))
+                .expect("connector generation");
 
         let mut router_config = HashMap::new();
         router_config.insert("topic.regex".into(), "postgres.([".into());

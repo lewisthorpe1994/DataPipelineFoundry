@@ -1,6 +1,7 @@
 use crate::config::components::sources::SourcePaths;
 use crate::config::loader::load_config;
 use crate::config::traits::{ConfigName, IntoConfigVec};
+use crate::error::ConfigError;
 use crate::types::schema::{Schema, Table};
 use crate::types::sources::SourceType;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
@@ -9,7 +10,6 @@ use std::collections::HashMap;
 use std::fmt::{format, Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use crate::error::ConfigError;
 
 // ---------------- KafkaSource Config ----------------
 #[derive(Debug, Deserialize, Clone)]
@@ -129,11 +129,10 @@ impl From<KafkaSourceConfigError> for JinjaError {
 pub struct KafkaConnectorConfig {
     pub schema: HashMap<String, Schema>,
     pub name: String,
-    pub dag_executable: Option<bool>
+    pub dag_executable: Option<bool>,
 }
 
 impl KafkaConnectorConfig {
-    
     pub fn table_include_list(&self) -> String {
         self.schema
             .iter()
@@ -152,16 +151,13 @@ impl KafkaConnectorConfig {
             .iter()
             .flat_map(|(s_name, schema)| {
                 schema.tables.iter().flat_map(move |(t_name, table)| {
-                    table
-                        .columns
-                        .iter()
-                        .map(move |col| {
-                            if !fields_only {
-                                format!("{}.{}.{}", s_name, t_name, col.name)
-                            } else {
-                                format!("{}", col.name)
-                            }
-                        })
+                    table.columns.iter().map(move |col| {
+                        if !fields_only {
+                            format!("{}.{}.{}", s_name, t_name, col.name)
+                        } else {
+                            format!("{}", col.name)
+                        }
+                    })
                 })
             })
             .collect::<Vec<String>>()

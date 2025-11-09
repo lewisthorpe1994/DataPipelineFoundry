@@ -9,6 +9,7 @@ pub struct FoundryProjectConfig {
     pub name: String,
     pub version: String,
     pub compile_path: String,
+    #[serde(default)]
     pub modelling_architecture: String,
     pub connection_profile: Connections,
     pub models: ModelsProjects,

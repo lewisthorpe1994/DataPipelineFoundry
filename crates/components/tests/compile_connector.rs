@@ -303,17 +303,19 @@ USING KAFKA CLUSTER 'test_cluster' (
 ) WITH CONNECTOR VERSION '3.1'
 INTO WAREHOUSE DATABASE 'adapter_source' USING SCHEMA 'bronze';"#;
 
-        let connector_ast =
-            Parser::parse_sql(&GenericDialect {}, sql).expect("parse connector");
+        let connector_ast = Parser::parse_sql(&GenericDialect {}, sql).expect("parse connector");
         catalog
             .register_object(connector_ast, None)
             .expect("register connector");
 
         let foundry_config = crate::tests::foundry_config();
 
-        let connector =
-            KafkaConnector::compile_from_catalog(&catalog, "film_rental_inventory_customer_payment_sink", &foundry_config)
-                .expect("compile connector");
+        let connector = KafkaConnector::compile_from_catalog(
+            &catalog,
+            "film_rental_inventory_customer_payment_sink",
+            &foundry_config,
+        )
+        .expect("compile connector");
 
         println!("{}", connector.to_json_string().expect("json"));
     }

@@ -6,7 +6,9 @@ pub mod traits;
 mod utils;
 pub mod version_consts;
 
-use crate::connectors::sink::debezium_postgres::{DebeziumPostgresSinkConnector, CONNECTOR_CLASS_NAME as DBZ_SINK_CONNECTOR_CLASS_NAME};
+use crate::connectors::sink::debezium_postgres::{
+    DebeziumPostgresSinkConnector, CONNECTOR_CLASS_NAME as DBZ_SINK_CONNECTOR_CLASS_NAME,
+};
 use crate::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
 use crate::errors::KafkaConnectorCompileError;
 use crate::predicates::{Predicate, PredicateKind, PredicateRef, Predicates};

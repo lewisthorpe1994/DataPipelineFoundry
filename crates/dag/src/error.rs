@@ -1,9 +1,9 @@
+use catalog::error::CatalogError;
 use common::error::diagnostics::DiagnosticMessage;
 use components::errors::KafkaConnectorCompileError;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use std::io;
 use thiserror::Error;
-use catalog::error::CatalogError;
 
 #[derive(Debug, Error)]
 pub enum DagError {
@@ -137,32 +137,22 @@ impl From<KafkaConnectorCompileError> for DagError {
             | KafkaConnectorCompileError::UnexpectedError { context } => {
                 DagError::UnexpectedError { context }
             }
-            KafkaConnectorCompileError::NotFound { context } => {
-                DagError::NotFound { context }
-            }
+            KafkaConnectorCompileError::NotFound { context } => DagError::NotFound { context },
         }
     }
 }
 
 impl From<CatalogError> for DagError {
     fn from(value: CatalogError) -> Self {
-        match value { 
-            CatalogError::MissingConfig { context} |
-            CatalogError::SqlParser { context, ..} |
-            CatalogError::Unsupported { context } |
-            CatalogError::SerdeYaml { context, ..} |
-            CatalogError::SerdeJson { context, ..} => {
-                DagError::UnexpectedError { context}
-            }
-            CatalogError::Io { context, source} => {
-                DagError::Io { context, source }
-            }
-            CatalogError::Duplicate { context } => {
-                DagError::DuplicateNode { context }
-            }
-            CatalogError::NotFound { context } => {
-                DagError::NotFound { context }
-            }
+        match value {
+            CatalogError::MissingConfig { context }
+            | CatalogError::SqlParser { context, .. }
+            | CatalogError::Unsupported { context }
+            | CatalogError::SerdeYaml { context, .. }
+            | CatalogError::SerdeJson { context, .. } => DagError::UnexpectedError { context },
+            CatalogError::Io { context, source } => DagError::Io { context, source },
+            CatalogError::Duplicate { context } => DagError::DuplicateNode { context },
+            CatalogError::NotFound { context } => DagError::NotFound { context },
         }
     }
 }

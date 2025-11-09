@@ -67,18 +67,21 @@ impl FoundryConfig {
         )))
     }
 
-    pub fn get_kafka_connector_config(&self, name: &str) -> Result<&KafkaConnectorConfig, ConfigError> {
+    pub fn get_kafka_connector_config(
+        &self,
+        name: &str,
+    ) -> Result<&KafkaConnectorConfig, ConfigError> {
         let conn = self.kafka_connectors.get(name);
 
         conn.ok_or(ConfigError::not_found(format!(
             "Kafka Connector {} not found in registered config, available connectors are {}",
             name,
             self.kafka_connectors
-            .keys()
-            .into_iter()
-            .map(|k| k.to_string())
-            .collect::<Vec<String>>()
-            .join(", "),
+                .keys()
+                .into_iter()
+                .map(|k| k.to_string())
+                .collect::<Vec<String>>()
+                .join(", "),
         )))
     }
 

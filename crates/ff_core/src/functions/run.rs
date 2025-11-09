@@ -97,9 +97,9 @@ pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFE
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use common::config::loader::read_config;
     use test_utils::{get_root_dir, with_chdir, with_chdir_async};
-    use super::*;
 
     #[tokio::test]
     async fn test_run() {
@@ -115,6 +115,7 @@ mod tests {
             let config = read_config(None).expect("load example project config");
             run(config, None).await.expect("run example project config");
         })
-            .await.expect("something"); // <-- this was missing
+        .await
+        .expect("something"); // <-- this was missing
     }
 }

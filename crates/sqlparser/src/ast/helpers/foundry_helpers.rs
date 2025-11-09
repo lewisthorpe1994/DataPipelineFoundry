@@ -129,8 +129,12 @@ fn collect_in_table_factor(
         TableFactor::TableFunction { expr, .. } => {
             if let Expr::Function(func) = expr {
                 match func.name.to_string().to_lowercase().as_str() {
-                    "ref" => { refs.push(func.clone()); }
-                    "source" => { sources.push(func.clone()); }
+                    "ref" => {
+                        refs.push(func.clone());
+                    }
+                    "source" => {
+                        sources.push(func.clone());
+                    }
                     _ => {}
                 }
             }
@@ -152,16 +156,20 @@ fn collect_in_table_factor(
                 within_group: vec![],
             };
             match name.to_string().to_lowercase().as_str() {
-                "ref" => { refs.push(func); }
-                "source" => { sources.push(func); }
+                "ref" => {
+                    refs.push(func);
+                }
+                "source" => {
+                    sources.push(func);
+                }
                 _ => {}
             }
             Ok(())
         }
         TableFactor::Table { name, args, .. } => {
-            let fn_args = args.clone().ok_or_else(|| ParserError::ParserError(
-                format!("expected fn {} to have args", name)
-            ))?;
+            let fn_args = args.clone().ok_or_else(|| {
+                ParserError::ParserError(format!("expected fn {} to have args", name))
+            })?;
             let func = Function {
                 name: name.clone(),
                 uses_odbc_syntax: false,
@@ -177,8 +185,12 @@ fn collect_in_table_factor(
                 within_group: vec![],
             };
             match name.to_string().to_lowercase().as_str() {
-                "ref" => { refs.push(func); }
-                "source" => { sources.push(func); }
+                "ref" => {
+                    refs.push(func);
+                }
+                "source" => {
+                    sources.push(func);
+                }
                 _ => {}
             }
             Ok(())
@@ -187,13 +199,12 @@ fn collect_in_table_factor(
             // DO NOT wrap in Ok(...). Propagate the Result:
             collect_in_set_expr(&subquery.body, refs, sources)
         }
-        TableFactor::NestedJoin { table_with_joins, .. } => {
-            collect_in_table_with_joins(table_with_joins, refs, sources)
-        }
+        TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => collect_in_table_with_joins(table_with_joins, refs, sources),
         _ => Ok(()),
     }
 }
-
 
 fn arg_expr_to_clean_string(arg: &FunctionArgExpr) -> String {
     match arg {

@@ -3,10 +3,17 @@ pub mod types;
 
 use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, TransitiveDirection};
-use catalog::{compare_catalog_node, Compile, Getter, IntoRelation, KafkaConnectorMeta, MemoryCatalog, NodeDec};
+use catalog::{
+    compare_catalog_node, Compile, Getter, IntoRelation, KafkaConnectorMeta, MemoryCatalog, NodeDec,
+};
 use common::config::components::global::FoundryConfig;
 use common::types::kafka::KafkaConnectorType;
-use components::{KafkaConnector, KafkaConnectorConfig, KafkaSinkConnectorConfig, KafkaSourceConnectorConfig};
+use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
+use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
+use components::smt::SmtKind;
+use components::{
+    KafkaConnector, KafkaConnectorConfig, KafkaSinkConnectorConfig, KafkaSourceConnectorConfig,
+};
 use log::{info, warn};
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -16,9 +23,6 @@ use sqlparser::ast::{CreateKafkaConnector, ModelSqlCompileError};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
-use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
-use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
-use components::smt::SmtKind;
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -84,7 +88,7 @@ impl ModelsDag {
     }
     pub fn build(&mut self, registry: &MemoryCatalog, config: &FoundryConfig) -> DagResult<()> {
         let started = Instant::now();
-        let mut current_topics :BTreeSet<String> = BTreeSet::new();
+        let mut current_topics: BTreeSet<String> = BTreeSet::new();
 
         let mut nodes = registry.collect_catalog_nodes();
         nodes.sort_by(compare_catalog_node);
@@ -189,11 +193,13 @@ impl ModelsDag {
                         },
                     )?;
                 }
-                NodeDec::KafkaConnector(conn) => {
-                    self.build_nodes_from_kafka_connector(
-                        &conn, registry, config, c_node.target.clone(), &mut current_topics
-                    )?
-                }
+                NodeDec::KafkaConnector(conn) => self.build_nodes_from_kafka_connector(
+                    &conn,
+                    registry,
+                    config,
+                    c_node.target.clone(),
+                    &mut current_topics,
+                )?,
             }
         }
 
@@ -220,7 +226,7 @@ impl ModelsDag {
                 self.graph.add_edge(dep_idx, node_idx, EmtpyEdge);
             }
         }
-        
+
         if petgraph::algo::is_cyclic_directed(&self.graph) {
             if let Some(cyclic_refs) = kosaraju_scc(&self.graph).into_iter().find(|c| c.len() > 1) {
                 let cyclic_models = cyclic_refs
@@ -246,23 +252,32 @@ impl ModelsDag {
         target: Option<String>,
         current_topics: &mut BTreeSet<String>,
     ) -> Result<(), DagError> {
-        let connector = KafkaConnector::compile_from_catalog(
-            catalog, &connector_meta.name, &config
-        )?;
+        let connector =
+            KafkaConnector::compile_from_catalog(catalog, &connector_meta.name, &config)?;
 
         let connector_json = connector.to_json_string()?;
 
         match connector.config {
             KafkaConnectorConfig::Source(cfg) => {
                 self.build_nodes_from_kafka_src_connector(
-                    cfg, config, connector_meta, catalog, connector_json, target, current_topics
+                    cfg,
+                    config,
+                    connector_meta,
+                    catalog,
+                    connector_json,
+                    target,
+                    current_topics,
                 )?;
-            },
-            KafkaConnectorConfig::Sink(cfg) => {
-                self.build_nodes_from_kafka_sink_connector(
-                    cfg, config, connector_meta, catalog, connector_json, target, current_topics
-                )?
             }
+            KafkaConnectorConfig::Sink(cfg) => self.build_nodes_from_kafka_sink_connector(
+                cfg,
+                config,
+                connector_meta,
+                catalog,
+                connector_json,
+                target,
+                current_topics,
+            )?,
         }
 
         Ok(())
@@ -279,11 +294,16 @@ impl ModelsDag {
         current_topics: &mut BTreeSet<String>,
     ) -> Result<(), DagError> {
         match connector {
-            KafkaSourceConnectorConfig::DebeziumPostgres(cfg) => {
-                Ok(self.build_nodes_from_debezium_src_postgres(
-                    cfg, config, meta, catalog, connector_json, target, current_topics
-                )?)
-            }
+            KafkaSourceConnectorConfig::DebeziumPostgres(cfg) => Ok(self
+                .build_nodes_from_debezium_src_postgres(
+                    cfg,
+                    config,
+                    meta,
+                    catalog,
+                    connector_json,
+                    target,
+                    current_topics,
+                )?),
         }
     }
 
@@ -298,11 +318,16 @@ impl ModelsDag {
         current_topics: &BTreeSet<String>,
     ) -> Result<(), DagError> {
         match connector {
-            KafkaSinkConnectorConfig::DebeziumPostgres(cfg) => {
-                Ok(self.build_nodes_from_debezium_jdbc(
-                    cfg, config, meta, catalog, connector_json, target, current_topics
-                )?)
-            }
+            KafkaSinkConnectorConfig::DebeziumPostgres(cfg) => Ok(self
+                .build_nodes_from_debezium_jdbc(
+                    cfg,
+                    config,
+                    meta,
+                    catalog,
+                    connector_json,
+                    target,
+                    current_topics,
+                )?),
         }
     }
 
@@ -355,12 +380,17 @@ impl ModelsDag {
         current_topics: &BTreeSet<String>,
     ) -> Result<(), DagError> {
         let topics = connector.topic_names(&current_topics)?;
-        let is_executable = config.get_kafka_connector_config(&meta.name)
+        let is_executable = config
+            .get_kafka_connector_config(&meta.name)
             .map_err(|e| DagError::not_found(meta.name.clone()))?
             .dag_executable
             .unwrap_or(false);
 
-        self.maybe_build_smt_nodes_from_smt_pipeline(meta.pipelines.clone(), catalog, Some(topics.clone()))?;
+        self.maybe_build_smt_nodes_from_smt_pipeline(
+            meta.pipelines.clone(),
+            catalog,
+            Some(topics.clone()),
+        )?;
         self.upsert_node(
             meta.name.clone(),
             true,
@@ -375,9 +405,7 @@ impl ModelsDag {
             },
         )?;
 
-        if let Some(wh_config) =
-            &config.kafka_connectors.get(meta.name.as_str())
-        {
+        if let Some(wh_config) = &config.kafka_connectors.get(meta.name.as_str()) {
             let warehouse_src = wh_config.table_include_list();
 
             warehouse_src
@@ -393,9 +421,7 @@ impl ModelsDag {
                             ast: None,
                             node_type: DagNodeType::WarehouseSourceDb,
                             is_executable: false,
-                            relations: Some(BTreeSet::from([meta
-                                .name
-                                .clone()])),
+                            relations: Some(BTreeSet::from([meta.name.clone()])),
                             compiled_obj: None,
                             target: None,
                         },
@@ -421,22 +447,23 @@ impl ModelsDag {
         if let Some(pipelines) = meta.pipelines.clone() {
             conn_rels.extend(pipelines);
         }
-        let is_executable = config.get_kafka_connector_config(&meta.name)
+        let is_executable = config
+            .get_kafka_connector_config(&meta.name)
             .map_err(|e| DagError::not_found(meta.name.clone()))?
             .dag_executable
             .unwrap_or(false);
 
         let src_db_rels = if let Some(ref srcs) = connector.table_include_list {
-            srcs
-                .split(",")
+            srcs.split(",")
                 .map(|s| s.to_string().trim().to_owned())
                 .collect::<BTreeSet<String>>()
         } else {
-            return Err(DagError::missing_dependency(
-                format!("Connector '{}' expected 'table.include.list' to be a string", meta.name
-                )));
+            return Err(DagError::missing_dependency(format!(
+                "Connector '{}' expected 'table.include.list' to be a string",
+                meta.name
+            )));
         };
-        
+
         src_db_rels
             .iter()
             .try_for_each(|src| -> Result<(), DagError> {
@@ -451,10 +478,11 @@ impl ModelsDag {
                         relations: None,
                         compiled_obj: None,
                         target: None,
-                    })?;
+                    },
+                )?;
                 Ok(())
             })?;
-        
+
         connector
             .topic_names()
             .iter()
@@ -477,10 +505,11 @@ impl ModelsDag {
             })?;
 
         self.maybe_build_smt_nodes_from_smt_pipeline(
-            meta.pipelines.clone(), catalog, Some(src_db_rels.clone())
+            meta.pipelines.clone(),
+            catalog,
+            Some(src_db_rels.clone()),
         )?;
 
-        
         // Add connector
         self.upsert_node(
             meta.name.clone(),

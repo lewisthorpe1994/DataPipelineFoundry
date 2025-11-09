@@ -74,7 +74,7 @@ fn main() {
 
     match cli.command {
         Cmd::Init(args) => {
-            if let Err(e) = handle_init(&args.path, args.project_name, args.flow_arch) {
+            if let Err(e) = handle_init(&args.path, args.project_name) {
                 eprintln!(
                     "Failed to initialize project at {}: {}",
                     args.path.display(),
@@ -83,13 +83,9 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Cmd::Compile => {
-            run_cmd(handle_compile(cli.config_path.clone())) 
-        }
+        Cmd::Compile => run_cmd(handle_compile(cli.config_path.clone())),
         Cmd::Kafka(args) => run_cmd(handle_kafka(&args, cli.config_path.clone())),
-        Cmd::Run(args) => {
-            run_cmd(handle_run(args.model, cli.config_path))
-        }
+        Cmd::Run(args) => run_cmd(handle_run(args.model, cli.config_path)),
         _ => unimplemented!("Not implemented yet!"),
     }
 }

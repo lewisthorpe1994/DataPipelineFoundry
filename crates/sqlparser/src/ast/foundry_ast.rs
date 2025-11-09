@@ -750,7 +750,13 @@ mod tests {
 
         let got = calls(sql);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0], src(&["warehouse", "raw_orders"], "source('warehouse', 'raw_orders')"));
+        assert_eq!(
+            got[0],
+            src(
+                &["warehouse", "raw_orders"],
+                "source('warehouse', 'raw_orders')"
+            )
+        );
     }
 
     #[test]
@@ -768,7 +774,13 @@ mod tests {
 
         let got = calls(sql);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0], src(&["dvd_rental_analytics", "rental"], "source('dvd_rental_analytics', 'rental')"));
+        assert_eq!(
+            got[0],
+            src(
+                &["dvd_rental_analytics", "rental"],
+                "source('dvd_rental_analytics', 'rental')"
+            )
+        );
     }
 
     #[test]
@@ -787,11 +799,23 @@ mod tests {
 
         let got = calls(sql);
         // order is stable by traversal (FROM then joins)
-        assert_eq!(got, vec![
-            src(&["dvd_rental_analytics", "rental"],   "source('dvd_rental_analytics', 'rental')"),
-            src(&["dvd_rental_analytics", "inventory"],"source('dvd_rental_analytics', 'inventory')"),
-            src(&["dvd_rental_analytics", "film"],     "source('dvd_rental_analytics', 'film')"),
-        ]);
+        assert_eq!(
+            got,
+            vec![
+                src(
+                    &["dvd_rental_analytics", "rental"],
+                    "source('dvd_rental_analytics', 'rental')"
+                ),
+                src(
+                    &["dvd_rental_analytics", "inventory"],
+                    "source('dvd_rental_analytics', 'inventory')"
+                ),
+                src(
+                    &["dvd_rental_analytics", "film"],
+                    "source('dvd_rental_analytics', 'film')"
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -825,10 +849,13 @@ mod tests {
         "#;
 
         let got = calls(sql);
-        assert_eq!(got, vec![
-            rf(&["bronze", "orders"], "ref('bronze', 'orders')"),
-            src(&["wh", "returns"],   "source('wh', 'returns')"),
-        ]);
+        assert_eq!(
+            got,
+            vec![
+                rf(&["bronze", "orders"], "ref('bronze', 'orders')"),
+                src(&["wh", "returns"], "source('wh', 'returns')"),
+            ]
+        );
     }
 
     #[test]
@@ -845,10 +872,13 @@ mod tests {
         "#;
 
         let got = calls(sql);
-        assert_eq!(got, vec![
-            src(&["WH", "RAW"], "SOURCE('WH', 'RAW')"),
-            rf(&["bronze", "dim"], "Ref('bronze', 'dim')"),
-        ]);
+        assert_eq!(
+            got,
+            vec![
+                src(&["WH", "RAW"], "SOURCE('WH', 'RAW')"),
+                rf(&["bronze", "dim"], "Ref('bronze', 'dim')"),
+            ]
+        );
     }
 
     #[test]
@@ -902,11 +932,14 @@ mod tests {
 
         let got = calls(sql);
         // Expected traversal order: CTE a, CTE b, body FROM, then joins (a, b are table names, not macros)
-        assert_eq!(got, vec![
-            src(&["wh", "a"], "source('wh','a')"),
-            rf(&["bronze", "b"], "ref('bronze','b')"),
-            src(&["wh", "c"], "source('wh','c')"),
-        ]);
+        assert_eq!(
+            got,
+            vec![
+                src(&["wh", "a"], "source('wh','a')"),
+                rf(&["bronze", "b"], "ref('bronze','b')"),
+                src(&["wh", "c"], "source('wh','c')"),
+            ]
+        );
     }
 
     // Your original compile test remains as-is, asserting replacement behavior.
@@ -933,11 +966,12 @@ mod tests {
             Ok(format!("{}.{}", name, table))
         }
 
-        let compiled = model.compile(|schema, table| resolver(schema, table)).expect("compile");
+        let compiled = model
+            .compile(|schema, table| resolver(schema, table))
+            .expect("compile");
 
         assert!(compiled.contains("bronze.orders"));
         assert!(compiled.contains("warehouse.raw_orders"));
         assert!(!compiled.contains("source('warehouse', 'raw_orders')"));
     }
 }
-

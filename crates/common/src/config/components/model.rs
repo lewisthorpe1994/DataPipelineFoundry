@@ -163,11 +163,11 @@ impl TryFrom<&HashMap<String, ResolvedModelLayerConfig>> for ResolvedModelsConfi
                 }
 
                 warn!(
-      "
+                    "
   No config file found for model '{model_name}'.
   Add _{model_name}.yml next to _{model_name}.sql if you need custom settings.
   Using default config for this run."
-  );
+                );
                 resolved.0.insert(
                     layer_name.clone(),
                     ResolvedModelConfig {

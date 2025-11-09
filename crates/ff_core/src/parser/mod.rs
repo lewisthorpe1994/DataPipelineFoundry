@@ -1,25 +1,25 @@
-use std::fmt::{Debug, Display};
 use common::config::components::global::FoundryConfig;
 use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
 use common::config::components::sources::SourcePaths;
+use common::error::DiagnosticMessage;
 use common::traits::IsFileExtension;
 use common::types::sources::SourceType;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
 use log::warn;
+use std::fmt::{Debug, Display};
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
-use common::error::DiagnosticMessage;
 use thiserror::Error;
+use walkdir::WalkDir;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
     #[error("Value not found parsing node: {content:?}")]
-    NotFound {content: DiagnosticMessage},
+    NotFound { content: DiagnosticMessage },
     #[error("Failed to parse node: {content:?}")]
-    ParseError {content: DiagnosticMessage},
+    ParseError { content: DiagnosticMessage },
     #[error("Failed to parse node: {content:?}")]
-    UnexpectedError {content: DiagnosticMessage},
+    UnexpectedError { content: DiagnosticMessage },
 }
 
 impl ParseError {
@@ -95,7 +95,9 @@ pub fn parse_models(
             let config = models_config
                 .ok_or(ParseError::not_found("models config"))?
                 .get(&model_key)
-                .ok_or(ParseError::parse_error(format!("{model_key} not found in models config")))?
+                .ok_or(ParseError::parse_error(format!(
+                    "{model_key} not found in models config"
+                )))?
                 .to_owned();
 
             let parsed_node = ParsedNode::Model {
@@ -122,7 +124,9 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
     }
 }
 
-pub fn maybe_parse_kafka_nodes(config: &FoundryConfig) -> Result<Option<Vec<ParsedNode>>, ParseError> {
+pub fn maybe_parse_kafka_nodes(
+    config: &FoundryConfig,
+) -> Result<Option<Vec<ParsedNode>>, ParseError> {
     if !config.kafka_source.is_empty() {
         let kafka_def_path = &config
             .source_paths
