@@ -168,7 +168,7 @@ pub struct ParsedInnerNode {
 pub enum ParsedNode {
     Model {
         node: ParsedInnerNode,
-        config: Option<ResolvedModelConfig>,
+        config: ResolvedModelConfig,
     },
     KafkaConnector {
         node: ParsedInnerNode,

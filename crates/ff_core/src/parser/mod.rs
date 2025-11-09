@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Display};
 use common::config::components::global::FoundryConfig;
 use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
 use common::config::components::sources::SourcePaths;
@@ -6,11 +7,45 @@ use common::types::sources::SourceType;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
 use log::warn;
-use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use common::error::DiagnosticMessage;
+use thiserror::Error;
 
-pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("Value not found parsing node: {content:?}")]
+    NotFound {content: DiagnosticMessage},
+    #[error("Failed to parse node: {content:?}")]
+    ParseError {content: DiagnosticMessage},
+    #[error("Failed to parse node: {content:?}")]
+    UnexpectedError {content: DiagnosticMessage},
+}
+
+impl ParseError {
+    #[track_caller]
+    pub fn not_found(content: impl Into<String>) -> Self {
+        Self::NotFound {
+            content: DiagnosticMessage::new(content.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn parse_error(content: impl Into<String>) -> Self {
+        Self::ParseError {
+            content: DiagnosticMessage::new(content.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn unexpected_error(content: impl Into<String>) -> Self {
+        Self::UnexpectedError {
+            content: DiagnosticMessage::new(content.into()),
+        }
+    }
+}
+
+pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, ParseError> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
     if let Some(projects) = &config.project.models.analytics_projects {
         for (name, proj) in projects {
@@ -32,13 +67,17 @@ pub fn parse_models(
     dirs: &ModelLayers,
     parent_model_dir: &Path,
     models_config: Option<&ResolvedModelsConfig>,
-) -> Result<Vec<ParsedNode>, Error> {
+) -> Result<Vec<ParsedNode>, ParseError> {
     // println!("models config {:#?}", models_config);
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for dir in dirs.values() {
         // println!("{:?}",dir);
         for entry in WalkDir::new(parent_model_dir.join(dir)) {
-            let path = entry?.into_path();
+            let path = entry
+                .map_err(|e| ParseError::UnexpectedError {
+                    content: DiagnosticMessage::new(format!("{:?}", e)),
+                })?
+                .into_path();
 
             if !path.is_extension("sql") {
                 continue;
@@ -53,7 +92,11 @@ pub fn parse_models(
                 .and_then(|s| s.to_str())
                 .unwrap_or_default();
             let model_key = make_model_identifier(schema_name, raw_stem);
-            let config = models_config.and_then(|cfg| cfg.get(&model_key)).cloned();
+            let config = models_config
+                .ok_or(ParseError::not_found("models config"))?
+                .get(&model_key)
+                .ok_or(ParseError::parse_error(format!("{model_key} not found in models config")))?
+                .to_owned();
 
             let parsed_node = ParsedNode::Model {
                 node: ParsedInnerNode {
@@ -79,7 +122,7 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
     }
 }
 
-pub fn maybe_parse_kafka_nodes(config: &FoundryConfig) -> Result<Option<Vec<ParsedNode>>, Error> {
+pub fn maybe_parse_kafka_nodes(config: &FoundryConfig) -> Result<Option<Vec<ParsedNode>>, ParseError> {
     if !config.kafka_source.is_empty() {
         let kafka_def_path = &config
             .source_paths
@@ -87,8 +130,7 @@ pub fn maybe_parse_kafka_nodes(config: &FoundryConfig) -> Result<Option<Vec<Pars
             .unwrap()
             .definitions
             .as_ref()
-            .ok_or(Error::new(
-                ErrorKind::NotFound,
+            .ok_or(ParseError::not_found(
                 "Expected definitions for kafka sources",
             ))?;
         Ok(Some(parse_kafka_dir(&kafka_def_path)?))
@@ -98,7 +140,7 @@ pub fn maybe_parse_kafka_nodes(config: &FoundryConfig) -> Result<Option<Vec<Pars
     }
 }
 
-fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, Error> {
+fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, ParseError> {
     if !root.exists() {
         return Ok(Vec::new());
     }

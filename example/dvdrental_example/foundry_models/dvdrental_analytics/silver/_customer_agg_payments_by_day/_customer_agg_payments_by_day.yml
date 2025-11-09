@@ -1,2 +1,2 @@
-name: silver_customer_payments_rentals_by_day
+name: silver_customer_agg_payments_by_day
 materialization: table

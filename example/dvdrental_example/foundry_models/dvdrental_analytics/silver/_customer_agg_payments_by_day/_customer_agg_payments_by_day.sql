@@ -4,7 +4,7 @@ WITH payments_aggregated_by_day AS (
         DATE_TRUNC('day', payment_date) AS date_of_payment,
         SUM(payment_amount) AS total_payment_amount
     FROM ref('silver', 'rental_customer')
-    WHERE is_active
+    WHERE is_active IS TRUE
     GROUP BY customer_id, date_of_payment
 )
 

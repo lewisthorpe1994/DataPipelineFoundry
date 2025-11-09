@@ -2,12 +2,12 @@ pub mod error;
 pub mod models;
 mod tests;
 
-use std::cmp::Ordering;
 pub use models::*;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate, ModelDef,
 };
+use std::cmp::Ordering;
 
 use crate::error::CatalogError;
 use common::config::components::global::FoundryConfig;
@@ -270,34 +270,44 @@ impl Register for MemoryCatalog {
         parsed_nodes.sort_by(compare_node);
         self.register_warehouse_sources(warehouse_sources)?;
         for node in parsed_nodes {
-            let (path, model, node_name) = match &node {
+            let (parsed_sql, target, node_name, node_path) = match &node {
                 ParsedNode::Model { node, config } => {
-                    (&node.path, config.clone(), node.name.clone())
+                    let sql = read_sql_file_from_path(&node.path).map_err(|_| {
+                        CatalogError::not_found(format!("{:?} not found", node.path))
+                    })?;
+                    let formatted_sql = format_create_model_sql(
+                        sql,
+                        config.config.materialization.clone(),
+                        &config.config.name,
+                    );
+
+                    (
+                        formatted_sql,
+                        Some(config.target.clone()),
+                        node.name.clone(),
+                        node.path.clone(),
+                    )
                 }
                 ParsedNode::KafkaConnector { node }
                 | ParsedNode::KafkaSmt { node }
-                | ParsedNode::KafkaSmtPipeline { node } => (&node.path, None, node.name.clone()),
-            };
-            let sql = read_sql_file_from_path(path)
-                .map_err(|_| CatalogError::not_found(format!("{:?} not found", path)))?;
-            let (formatted_sql, node_target) = if let Some(m) = model {
-                (
-                    format_create_model_sql(sql, m.config.materialization, &m.config.name),
-                    Some(m.target),
-                )
-            } else {
-                (sql, None)
+                | ParsedNode::KafkaSmtPipeline { node } => {
+                    let sql = read_sql_file_from_path(&node.path).map_err(|_| {
+                        CatalogError::not_found(format!("{:?} not found", node.path))
+                    })?;
+
+                    (sql, None, node.name.clone(), node.path.clone())
+                }
             };
 
-            let parsed_sql = Parser::parse_sql(&GenericDialect, &formatted_sql).map_err(|e| {
+            let parsed = Parser::parse_sql(&GenericDialect, &parsed_sql).map_err(|e| {
                 CatalogError::sql_parser(format!(
                     "{} (node: {}, file: {})",
                     e,
                     node_name,
-                    path.display()
+                    &node_path.display()
                 ))
             })?;
-            self.register_object(parsed_sql, node_target, &node)?;
+            self.register_object(parsed, target, &node)?;
         }
         Ok(())
     }
@@ -323,14 +333,17 @@ impl Register for MemoryCatalog {
                     target.ok_or_else(|| {
                         CatalogError::missing_config("Missing target name for model")
                     })?,
-                    node
+                    node,
                 )?,
                 Statement::CreateSMTPredicate(stmt) => {
                     self.register_kafka_smt_predicate(stmt)?;
                 }
-                _ => return Err(CatalogError::unsupported(
-                    format!("Unsupported statement! got statement {:#?}", parsed_stmts[0].to_string())
-                ))
+                _ => {
+                    return Err(CatalogError::unsupported(format!(
+                        "Unsupported statement! got statement {:#?}",
+                        parsed_stmts[0].to_string()
+                    )))
+                }
             }
         } else {
             return Err(CatalogError::unsupported(

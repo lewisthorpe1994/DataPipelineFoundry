@@ -88,9 +88,7 @@ impl ModelsDag {
 
         let mut nodes = registry.collect_catalog_nodes();
         nodes.sort_by(compare_catalog_node);
-        // First Pass - build all the nodes
         for c_node in nodes.iter() {
-            // println!("c_node {:#?}", c_node);
             match &c_node.declaration {
                 NodeDec::WarehouseSource(source) => {
                     self.upsert_node(
@@ -114,9 +112,6 @@ impl ModelsDag {
                         .iter()
                         .map(|r| r.name.clone())
                         .collect::<HashSet<String>>();
-
-                    println!("model {}", model.name);
-                    println!("refs: {:?}", refs);
 
                     let mut resolved_srcs = HashSet::new();
                     for src in model.sources.iter() {
@@ -225,9 +220,7 @@ impl ModelsDag {
                 self.graph.add_edge(dep_idx, node_idx, EmtpyEdge);
             }
         }
-
-        println!("{:#?}", self.graph);
-
+        
         if petgraph::algo::is_cyclic_directed(&self.graph) {
             if let Some(cyclic_refs) = kosaraju_scc(&self.graph).into_iter().find(|c| c.len() > 1) {
                 let cyclic_models = cyclic_refs

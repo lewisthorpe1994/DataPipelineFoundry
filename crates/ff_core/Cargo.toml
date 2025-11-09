@@ -16,6 +16,7 @@ logging = { workspace = true }
 executor = {workspace = true}
 log = "0.4.27"
 shared_clients = { workspace = true}
+thiserror = "2.0.12"
 
 [dev-dependencies]
 tokio = { workspace = true }
