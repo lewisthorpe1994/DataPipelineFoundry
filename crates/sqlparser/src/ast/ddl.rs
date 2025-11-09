@@ -20,7 +20,7 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::fmt::{self, Debug, Display, Write};
+use core::fmt::{self, Debug, Write};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 

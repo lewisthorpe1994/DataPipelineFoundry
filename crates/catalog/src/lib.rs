@@ -141,7 +141,7 @@ impl MemoryCatalog {
 
         for (name, dec) in g.sources.iter() {
             for (s_name, schema) in &dec.database.schemas {
-                for (t_name, table) in &schema.tables {
+                for (t_name, _) in &schema.tables {
                     nodes.push(CatalogNode {
                         name: name.clone(),
                         declaration: NodeDec::WarehouseSource(WarehouseSourceDec {
@@ -474,11 +474,6 @@ impl Register for MemoryCatalog {
             }
         };
 
-        let key = if schema.is_empty() {
-            table_name.clone()
-        } else {
-            format!("{}.{}", schema, table_name)
-        };
         let (r, s): (Vec<MacroFnCall>, Vec<MacroFnCall>) = ast
             .macro_fn_call
             .clone()

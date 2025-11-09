@@ -1,7 +1,5 @@
 use crate::errors::KafkaConnectorCompileError;
 use crate::kafka::errors::ValidationError;
-use crate::predicates::Predicates;
-use crate::smt::utils::Transforms;
 use crate::traits::{ComponentVersion, ParseUtils};
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
@@ -141,8 +139,6 @@ impl CommonKafkaConnector {
     /// (e.g. `HashMap<String, String>`; or `serde_json::Map<String, Value>` if you implement `ParseUtils` for it).
     pub fn new<C>(
         mut config: C,
-        transforms: Option<Transforms>,
-        predicates: Option<Predicates>,
         version: Version,
     ) -> Result<Self, KafkaConnectorCompileError>
     where

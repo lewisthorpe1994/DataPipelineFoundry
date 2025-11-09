@@ -10,7 +10,8 @@ use core::fmt::{Debug, Display, Formatter};
 #[cfg(feature = "json_example")]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
+use common::error::DiagnosticMessage;
+use thiserror::Error;
 #[cfg(feature = "kafka")]
 use common::types::kafka::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType};
 
@@ -599,46 +600,53 @@ pub struct CreateModel {
     pub macro_fn_call: Vec<MacroFnCall>,
 }
 
-impl fmt::Display for CreateModel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let model = match &self.model {
-            ModelDef::Table(stmt) => "TABLE",
-            ModelDef::View(stmt) => {
-                if stmt.materialized {
-                    "MATERIALIZED VIEW"
-                } else {
-                    "VIEW"
-                }
+fn fmt_create_model(f: &mut Formatter<'_>, model: &CreateModel) -> fmt::Result {
+    let m = match &model.model {
+        ModelDef::Table(_) => "TABLE",
+        ModelDef::View(stmt) => {
+            if stmt.materialized {
+                "MATERIALIZED VIEW"
+            } else {
+                "VIEW"
             }
-        };
+        }
+    };
 
-        write!(
-            f,
-            "CREATE MODEL {schema}.{name} AS\n\
+    write!(
+        f,
+        "CREATE MODEL {schema}.{name} AS\n\
             DROP {model} IF EXISTS {schema}.{name} CASCADE;\n\
             {statement}",
-            name = self.name,
-            model = model,
-            statement = self.model,
-            schema = self.schema,
-        )
-    }
+        name = model.name,
+        model = m,
+        statement = model.model,
+        schema = model.schema,
+    )
 }
-pub struct ModelSqlCompileError(pub String);
 
-impl Debug for ModelSqlCompileError {
+impl fmt::Display for CreateModel {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+        fmt_create_model(f, self)
     }
 }
 
-impl Display for ModelSqlCompileError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+#[derive(Debug, Error)]
+pub enum ModelSqlCompileError {
+    #[error("SQL compilation error {context}")]
+    CompileError {context: DiagnosticMessage}
+}
+impl ModelSqlCompileError {
+    #[track_caller]
+    pub fn model_sql_compile_error(context: impl Into<String>) -> Self {
+        Self::CompileError {
+            context: DiagnosticMessage::new(context.into())
+        }
     }
 }
 
-impl std::error::Error for ModelSqlCompileError {}
+
+
+
 impl CreateModel {
     pub fn compile<F>(&self, src_resolver: F) -> Result<String, ModelSqlCompileError>
     where
@@ -682,7 +690,7 @@ impl CreateModel {
         };
 
         let model = match &self.model {
-            ModelDef::Table(stmt) => "TABLE",
+            ModelDef::Table(_) => "TABLE",
             ModelDef::View(stmt) => {
                 if stmt.materialized {
                     "MATERIALIZED VIEW"

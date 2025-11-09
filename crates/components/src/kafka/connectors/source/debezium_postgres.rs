@@ -3,7 +3,7 @@ use crate::errors::*;
 use crate::predicates::Predicates;
 use crate::smt::utils::Transforms;
 use crate::smt::SmtKind;
-use crate::traits::{ComponentVersion, ParseUtils};
+use crate::traits::ComponentVersion;
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;

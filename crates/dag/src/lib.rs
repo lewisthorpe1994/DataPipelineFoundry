@@ -79,17 +79,6 @@ impl ModelsDag {
         }
     }
 
-    fn database_from_jdbc_url(url: &str) -> Option<String> {
-        let trimmed = url.strip_prefix("jdbc:").unwrap_or(url);
-        let core = trimmed.split(['?', ';']).next()?;
-        let idx = core.rfind('/')?;
-        let db = &core[idx + 1..];
-        if db.is_empty() {
-            None
-        } else {
-            Some(db.to_string())
-        }
-    }
     pub fn build(&mut self, registry: &MemoryCatalog, config: &FoundryConfig) -> DagResult<()> {
         let started = Instant::now();
         let mut current_topics: BTreeSet<String> = BTreeSet::new();
@@ -142,7 +131,9 @@ impl ModelsDag {
                         .compile(|src, table| {
                             config
                                 .resolve_db_source(src, table)
-                                .map_err(|e| ModelSqlCompileError(e.to_string()))
+                                .map_err(|e| ModelSqlCompileError::model_sql_compile_error(
+                                    format!("{}:{} was not able to be resolved deu to {}", src, table, e),
+                                ))
                         })
                         .map_err(|e| DagError::ast_syntax(e.to_string()))?;
 
@@ -386,7 +377,7 @@ impl ModelsDag {
         let topics = connector.topic_names(current_topics)?;
         let is_executable = config
             .get_kafka_connector_config(&meta.name)
-            .map_err(|e| DagError::not_found(meta.name.clone()))?
+            .map_err(|_| DagError::not_found(meta.name.clone()))?
             .dag_executable
             .unwrap_or(false);
 
@@ -453,7 +444,7 @@ impl ModelsDag {
         }
         let is_executable = config
             .get_kafka_connector_config(&meta.name)
-            .map_err(|e| DagError::not_found(meta.name.clone()))?
+            .map_err(|_| DagError::not_found(meta.name.clone()))?
             .dag_executable
             .unwrap_or(false);
 
