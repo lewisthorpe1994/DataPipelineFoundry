@@ -1,0 +1,12 @@
+name: {{ example_source_db_name }}
+database:
+  name: some_source_database
+  schemas:
+    public:
+      description: example schema for upstream source database
+      tables:
+        example_table:
+          columns:
+            - name: id
+            - name: created_at
+            - name: updated_at

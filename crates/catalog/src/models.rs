@@ -1,19 +1,19 @@
-use std::collections::HashSet;
-use common::types::kafka::KafkaConnectorType;
+use crate::CatalogError;
 use chrono::{DateTime, Utc};
-use common::types::{Materialize, ModelRef, SourceRef};
+use common::types::kafka::KafkaConnectorType;
+use common::types::{KafkaConnectorProvider, Materialize, ModelRef, SourceRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
+use sqlparser::ast::helpers::foundry_helpers::KvPairs;
 use sqlparser::ast::{
-    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline,
+    AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate,
+    PredicateReference,
 };
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
-use sqlparser::ast::helpers::foundry_helpers::KvPairs;
-use crate::CatalogError;
 
-/// A single SMT / transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformDecl {
     pub id: Uuid,
@@ -21,25 +21,40 @@ pub struct TransformDecl {
     pub config: serde_json::Value,
     pub created: DateTime<Utc>,
     pub sql: CreateSimpleMessageTransform,
+    pub predicate: Option<PredicateRefDecl>,
 }
+
 impl TransformDecl {
     pub fn new(ast: CreateSimpleMessageTransform) -> Self {
         let sql = ast.clone();
+
         Self {
             id: Uuid::new_v4(),
             name: ast.name.to_string(),
             config: KvPairs(ast.config).into(),
             created: Utc::now(),
             sql,
+            predicate: ast.predicate.map(|p| PredicateRefDecl {
+                name: p.name.formatted_string(),
+                negate: p.negate,
+            }),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PipelineTransformDecl {
+    pub name: String,
+    pub id: Uuid,
+    pub args: Option<HashMap<String, String>>,
+    pub alias: Option<String>,
 }
 
 // src/declarations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineDecl {
     pub name: String,
-    pub transforms: Vec<Uuid>, // ordered IDs
+    pub transforms: Vec<PipelineTransformDecl>, // ordered IDs
     pub created: DateTime<Utc>,
     pub predicate: Option<String>,
     pub sql: CreateSimpleMessageTransformPipeline,
@@ -47,7 +62,7 @@ pub struct PipelineDecl {
 impl PipelineDecl {
     pub fn new(
         name: String,
-        transforms: Vec<Uuid>,
+        transforms: Vec<PipelineTransformDecl>,
         predicate: Option<String>,
         sql: CreateSimpleMessageTransformPipeline,
     ) -> Self {
@@ -68,6 +83,10 @@ pub struct KafkaConnectorMeta {
     pub sql: CreateKafkaConnector,
     pub pipelines: Option<Vec<String>>,
     pub cluster_name: String,
+    pub target: String,
+    pub target_schema: Option<String>, // this is only used on sink connectors
+    pub conn_provider: KafkaConnectorProvider,
+    pub version: String,
 }
 impl KafkaConnectorMeta {
     pub fn new(ast: CreateKafkaConnector) -> Self {
@@ -93,10 +112,27 @@ impl KafkaConnectorMeta {
             con_type: KafkaConnectorType::from(ast.connector_type),
             config: KvPairs(ast.with_properties).into(),
             cluster_name: ast.cluster_ident.value,
+            target: ast.db_ident.value,
+            target_schema: ast.schema_ident.and_then(|s| Some(s.value)),
             sql,
             pipelines,
+            conn_provider: ast.connector_provider,
+            version: ast.connector_version.formatted_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredicateDecl {
+    pub name: String,
+    pub class_name: String,
+    pub pattern: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredicateRefDecl {
+    pub name: String,
+    pub negate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +143,7 @@ pub struct ModelDecl {
     pub materialize: Option<Materialize>,
     pub refs: Vec<ModelRef>,
     pub sources: Vec<SourceRef>,
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,22 +200,21 @@ pub trait ExecutionTarget {
 
 impl ExecutionTarget for ModelDecl {
     fn target_name(&self) -> Result<String, CatalogError> {
-        let source_names = self.sources
+        let source_names = self
+            .sources
             .iter()
             .map(|s| s.source_name.clone())
             .collect::<HashSet<String>>();
         if source_names.len() > 1 {
-            return Err(CatalogError::Unsupported(
-                "Cannot execute model with multiple sources".to_string(),
+            return Err(CatalogError::unsupported(
+                "Cannot execute model with multiple sources",
             ));
         } else if source_names.is_empty() {
-            return Err(CatalogError::NotFound(
-                "Cannot compile a model with no sources".to_string(),
-            ))
+            return Err(CatalogError::not_found(
+                "Cannot compile a model with no sources",
+            ));
         }
 
         Ok(source_names.into_iter().next().unwrap())
-
     }
-
 }

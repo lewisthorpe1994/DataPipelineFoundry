@@ -1,9 +1,14 @@
+#[cfg(feature = "kafka-types")]
+pub mod kafka;
+#[cfg(feature = "kafka-types")]
+pub use kafka::*;
+
 pub mod nodes;
 pub mod schema;
 pub mod sources;
-pub mod kafka;
 
 pub use nodes::*;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]

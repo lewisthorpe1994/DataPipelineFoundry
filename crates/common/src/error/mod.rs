@@ -1,45 +1,90 @@
-use std::fmt::Debug;
-use std::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
+pub mod diagnostics;
+pub use crate::config::error::ConfigError;
+pub use diagnostics::DiagnosticMessage;
 
-#[derive(Debug)]
+use std::{error::Error as StdError, fmt::Debug};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum FFError {
-    Init(Box<dyn Error + Send + Sync>), // carries *why* init failed
-    Compile(Box<dyn Error + Send + Sync>),
-    Run(Box<dyn Error + Send + Sync>),
+    #[error("initialisation failed: {context}")]
+    Init {
+        context: DiagnosticMessage,
+        #[source]
+        source: Option<Box<dyn StdError + Send + Sync>>, // inner cause
+    },
+    #[error("compile failed: {context}")]
+    Compile {
+        context: DiagnosticMessage,
+        #[source]
+        source: Option<Box<dyn StdError + Send + Sync>>,
+    },
+    #[error("run failed: {context}")]
+    Run {
+        context: DiagnosticMessage,
+        #[source]
+        source: Option<Box<dyn StdError + Send + Sync>>,
+    },
 }
 
-impl Display for FFError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            FFError::Init(e) => write!(f, "initialisation failed: {e}"),
-            FFError::Compile(e) => write!(f, "compile failed: {e}"),
-            FFError::Run(e) => write!(f, "Run failed: {e}"),
+impl FFError {
+    #[track_caller]
+    pub fn init<E>(err: E) -> Self
+    where
+        E: StdError + Send + Sync + 'static,
+    {
+        let message = err.to_string();
+        FFError::Init {
+            context: DiagnosticMessage::new(message),
+            source: Some(Box::new(err)),
+        }
+    }
+
+    #[track_caller]
+    pub fn init_msg(message: impl Into<String>) -> Self {
+        FFError::Init {
+            context: DiagnosticMessage::new(message.into()),
+            source: None,
+        }
+    }
+
+    #[track_caller]
+    pub fn compile<E>(err: E) -> Self
+    where
+        E: StdError + Send + Sync + 'static,
+    {
+        let message = err.to_string();
+        FFError::Compile {
+            context: DiagnosticMessage::new(message),
+            source: Some(Box::new(err)),
+        }
+    }
+
+    #[track_caller]
+    pub fn compile_msg(message: impl Into<String>) -> Self {
+        FFError::Compile {
+            context: DiagnosticMessage::new(message.into()),
+            source: None,
+        }
+    }
+
+    #[track_caller]
+    pub fn run<E>(err: E) -> Self
+    where
+        E: StdError + Send + Sync + 'static,
+    {
+        let message = err.to_string();
+        FFError::Run {
+            context: DiagnosticMessage::new(message),
+            source: Some(Box::new(err)),
+        }
+    }
+
+    #[track_caller]
+    pub fn run_msg(message: impl Into<String>) -> Self {
+        FFError::Run {
+            context: DiagnosticMessage::new(message.into()),
+            source: None,
         }
     }
 }
-
-impl Error for FFError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            FFError::Init(e) => Some(&**e),
-            FFError::Compile(e) => Some(&**e),
-            FFError::Run(e) => Some(&**e),
-        }
-    }
-}
-
-pub struct ConfigError(String);
-impl Display for ConfigError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Config Error: {}", self.0)
-    }
-}
-impl Debug for ConfigError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Config Error: {}", self.0)
-    }
-}
-impl Error for ConfigError {}

@@ -1,0 +1,12 @@
+{
+    "name": "Rust",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "dpf",
+    "workspaceFolder": "\\workspace\\example\\dvdrental_example",
+    "customizations" : {
+        "jetbrains" : {
+            "backend" : "RustRover",
+//            "projectDir": "/workspace/example/dvdrental_example"
+        }
+    }
+}

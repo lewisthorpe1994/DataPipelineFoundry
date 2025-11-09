@@ -538,7 +538,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "common",
- "ff_core",
  "parking_lot",
  "serde",
  "serde_json",
@@ -646,9 +645,42 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sqlparser",
  "test_utils",
+ "thiserror",
  "walkdir",
+]
+
+[[package]]
+name = "components"
+version = "0.1.0"
+dependencies = [
+ "catalog",
+ "common",
+ "connector_versioning",
+ "connector_versioning_derive",
+ "regex",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "thiserror",
+]
+
+[[package]]
+name = "connector_versioning"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "connector_versioning_derive"
+version = "0.1.0"
+dependencies = [
+ "connector_versioning",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -728,6 +760,7 @@ version = "0.1.0"
 dependencies = [
  "catalog",
  "common",
+ "components",
  "env_logger",
  "ff_core",
  "log",
@@ -736,6 +769,7 @@ dependencies = [
  "sqlparser",
  "tempfile",
  "test_utils",
+ "thiserror",
 ]
 
 [[package]]
@@ -875,6 +909,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "dpf"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "common",
+ "components",
+ "ff_core",
+ "log",
+ "minijinja",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shared_clients",
+ "tempfile",
+ "test_utils",
+ "time",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -953,18 +1008,15 @@ dependencies = [
  "chrono",
  "common",
  "dag",
- "parking_lot",
- "reqwest",
  "serde",
  "serde_json",
- "serde_yaml",
  "shared_clients",
  "sqlparser",
  "test_utils",
  "testcontainers",
+ "thiserror",
  "tokio",
  "tokio-postgres",
- "tracing-subscriber",
  "uuid",
  "wiremock",
 ]
@@ -987,18 +1039,18 @@ version = "0.1.0"
 dependencies = [
  "catalog",
  "common",
+ "components",
  "dag",
+ "env_logger",
+ "executor",
+ "log",
  "logging",
- "minijinja",
- "once_cell",
- "petgraph",
- "regex",
  "serde",
  "serde_json",
- "serde_yaml",
- "sqlparser",
- "tempfile",
+ "shared_clients",
  "test_utils",
+ "thiserror",
+ "tokio",
  "walkdir",
 ]
 
@@ -1064,23 +1116,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "foundry"
-version = "0.1.0"
-dependencies = [
- "clap",
- "common",
- "ff_core",
- "minijinja",
- "serde",
- "serde_yaml",
- "tempfile",
- "test_utils",
- "time",
- "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2766,6 +2801,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tokio-postgres",
 ]
@@ -2830,6 +2866,7 @@ name = "sqlparser"
 version = "0.56.0"
 dependencies = [
  "bigdecimal",
+ "common",
  "log",
  "matches",
  "pretty_assertions",

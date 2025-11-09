@@ -11,11 +11,11 @@ use std::ops::{Deref, DerefMut};
 
 // ---------------- Source Config ----------------
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct WarehouseSourceConfig {
+pub struct DbConfig {
     pub name: String,
     pub database: Database,
 }
-impl ConfigName for WarehouseSourceConfig {
+impl ConfigName for DbConfig {
     fn name(&self) -> &str {
         &self.name
     }
@@ -23,23 +23,23 @@ impl ConfigName for WarehouseSourceConfig {
 
 //  ---------------- WarehouseSource Configs ----------------
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct WarehouseSourceConfigs(HashMap<String, WarehouseSourceConfig>);
+pub struct DbConfigs(HashMap<String, DbConfig>);
 
-impl Deref for WarehouseSourceConfigs {
-    type Target = HashMap<String, WarehouseSourceConfig>;
+impl Deref for DbConfigs {
+    type Target = HashMap<String, DbConfig>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for WarehouseSourceConfigs {
+impl DerefMut for DbConfigs {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
-impl IntoIterator for WarehouseSourceConfigs {
-    type Item = (String, WarehouseSourceConfig);
-    type IntoIter = std::collections::hash_map::IntoIter<String, WarehouseSourceConfig>;
+impl IntoIterator for DbConfigs {
+    type Item = (String, DbConfig);
+    type IntoIter = std::collections::hash_map::IntoIter<String, DbConfig>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -48,43 +48,23 @@ impl IntoIterator for WarehouseSourceConfigs {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct WarehouseSourceFileConfigs {
-    warehouse_sources: Vec<WarehouseSourceConfig>,
+    warehouse_sources: Vec<DbConfig>,
 }
 
-impl IntoConfigVec<WarehouseSourceConfig> for WarehouseSourceFileConfigs {
-    fn vec(self) -> Vec<WarehouseSourceConfig> {
+impl IntoConfigVec<DbConfig> for WarehouseSourceFileConfigs {
+    fn vec(self) -> Vec<DbConfig> {
         self.warehouse_sources
     }
 }
 
-impl From<HashMap<String, WarehouseSourceConfig>> for WarehouseSourceConfigs {
-    fn from(value: HashMap<String, WarehouseSourceConfig>) -> Self {
+impl From<HashMap<String, DbConfig>> for DbConfigs {
+    fn from(value: HashMap<String, DbConfig>) -> Self {
         Self::new(value)
     }
 }
 
-impl From<SourcePaths> for WarehouseSourceConfigs {
-    fn from(value: SourcePaths) -> Self {
-        let mut configs: WarehouseSourceConfigs = WarehouseSourceConfigs::empty();
-        value
-            .into_iter()
-            .filter(|(_, details)| details.kind == SourceType::Warehouse)
-            .for_each(|(_, details)| {
-                let c: WarehouseSourceConfigs = load_config::<
-                    WarehouseSourceConfig,
-                    WarehouseSourceFileConfigs,
-                    WarehouseSourceConfigs,
-                >((&details.path).as_ref())
-                .expect("load warehouse source config");
-                configs.extend(c);
-            });
-
-        configs
-    }
-}
-
-impl WarehouseSourceConfigs {
-    pub fn new(configs: HashMap<String, WarehouseSourceConfig>) -> Self {
+impl DbConfigs {
+    pub fn new(configs: HashMap<String, DbConfig>) -> Self {
         Self(configs)
     }
 
@@ -92,42 +72,39 @@ impl WarehouseSourceConfigs {
         Self(HashMap::new())
     }
 
-    pub fn get(&self, name: &str) -> Option<&WarehouseSourceConfig> {
+    pub fn get(&self, name: &str) -> Option<&DbConfig> {
         self.0.get(name)
     }
 
-    pub fn resolve(&self, name: &str, table: &str) -> Result<String, WarehouseSourceConfigError> {
+    pub fn resolve(&self, name: &str, table: &str) -> Result<String, DbConfigError> {
         let config = self
             .get(name)
-            .ok_or_else(|| WarehouseSourceConfigError::SourceNotFound(name.to_string()))?;
+            .ok_or_else(|| DbConfigError::SourceNotFound(name.to_string()))?;
 
         let resolved = config
             .database
             .schemas
             .iter()
-            .flat_map(|schema| {
-                schema
-                    .tables
-                    .iter()
-                    .map(move |t| (config.database.name.clone(), schema, t.name.clone()))
+            .flat_map(|(name, obj)| {
+                obj.tables.iter().map(move |(t_name, table)| {
+                    (config.database.name.clone(), name, t_name.clone())
+                })
             })
             .find(|(_, _, t)| t == table);
 
         match resolved {
-            Some((database, schema, table)) => {
-                Ok(format!("{}.{}.{}", database, schema.name, table))
-            }
-            None => Err(WarehouseSourceConfigError::TableNotFound(table.to_string())),
+            Some((database, schema, table)) => Ok(format!("{}.{}.{}", database, schema, table)),
+            None => Err(DbConfigError::TableNotFound(table.to_string())),
         }
     }
 }
 
 #[derive(Debug)]
-pub enum WarehouseSourceConfigError {
+pub enum DbConfigError {
     SourceNotFound(String),
     TableNotFound(String),
 }
-impl Display for WarehouseSourceConfigError {
+impl Display for DbConfigError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::SourceNotFound(name) => write!(f, "WarehouseSource not found: {}", name),
@@ -135,14 +112,14 @@ impl Display for WarehouseSourceConfigError {
         }
     }
 }
-impl From<WarehouseSourceConfigError> for JinjaError {
-    fn from(err: WarehouseSourceConfigError) -> JinjaError {
+impl From<DbConfigError> for JinjaError {
+    fn from(err: DbConfigError) -> JinjaError {
         match err {
-            WarehouseSourceConfigError::SourceNotFound(name) => JinjaError::new(
+            DbConfigError::SourceNotFound(name) => JinjaError::new(
                 JinjaErrorKind::UndefinedError,
                 format!("Source not found: {}", name),
             ),
-            WarehouseSourceConfigError::TableNotFound(name) => JinjaError::new(
+            DbConfigError::TableNotFound(name) => JinjaError::new(
                 JinjaErrorKind::UndefinedError,
                 format!("Source not found: {}", name),
             ),

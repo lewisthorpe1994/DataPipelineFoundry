@@ -3,26 +3,28 @@ pub mod models;
 mod tests;
 
 pub use models::*;
+use sqlparser::ast::{
+    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
+    CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate, ModelDef,
+};
+use std::cmp::Ordering;
 
-use common::config::components::sources::warehouse_source::WarehouseSourceConfigs;
+use crate::error::CatalogError;
+use common::config::components::global::FoundryConfig;
+use common::config::components::sources::warehouse_source::DbConfig;
+use common::types::kafka::{KafkaConnectorType, SinkDbConnectionInfo, SourceDbConnectionInfo};
 use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, Value};
 use sqlparser::ast::helpers::foundry_helpers::{AstValueFormatter, MacroFnCall, MacroFnCallType};
-use sqlparser::ast::{
-    CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, ModelDef, ObjectName, ObjectNamePart, Statement,
-};
+use sqlparser::ast::{ObjectName, ObjectNamePart, Statement};
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
-use common::config::components::global::FoundryConfig;
-use crate::error::CatalogError;
-use common::types::kafka::KafkaConnectorType;
 
 /// internal flat state (easy to serde)
 #[derive(Default, Serialize, Deserialize)]
@@ -30,9 +32,10 @@ struct State {
     transforms_by_id: HashMap<Uuid, TransformDecl>,
     transform_name_to_id: HashMap<String, Uuid>,
     pipelines: HashMap<String, PipelineDecl>,
-    connectors: HashMap<String, KafkaConnectorMeta>,
+    connectors: HashMap<String, CreateKafkaConnector>,
     models: HashMap<String, ModelDecl>,
-    sources: WarehouseSourceConfigs,
+    sources: HashMap<String, DbConfig>,
+    predicates: HashMap<String, PredicateDecl>,
 }
 
 #[derive(Debug)]
@@ -48,6 +51,7 @@ pub enum NodeDec {
 pub struct CatalogNode {
     pub name: String,
     pub declaration: NodeDec,
+    pub target: Option<String>,
 }
 
 #[derive(Debug)]
@@ -102,61 +106,50 @@ impl MemoryCatalog {
             nodes.push(CatalogNode {
                 name: name.to_owned(),
                 declaration: NodeDec::Model(dec.clone()),
+                target: Some(dec.target.clone()),
             });
         }
         for (name, dec) in g.connectors.iter() {
+            let meta = KafkaConnectorMeta::new(dec.clone());
             nodes.push(CatalogNode {
                 name: name.to_owned(),
-                declaration: NodeDec::KafkaConnector(dec.clone()),
+                declaration: NodeDec::KafkaConnector(meta.clone()),
+                target: Some(meta.target.clone()),
             });
         }
         for (name, dec) in g.pipelines.iter() {
             nodes.push(CatalogNode {
                 name: name.to_owned(),
                 declaration: NodeDec::KafkaSmtPipeline(dec.clone()),
+                target: None,
             });
         }
         for (name, id) in g.transform_name_to_id.iter() {
-            let dec = g.transforms_by_id.get(id).unwrap();
-            nodes.push(CatalogNode {
-                name: name.to_owned(),
-                declaration: NodeDec::KafkaSmt(dec.clone()),
-            });
+            if let Some(dec) = g.transforms_by_id.get(id) {
+                nodes.push(CatalogNode {
+                    name: name.to_owned(),
+                    declaration: NodeDec::KafkaSmt(dec.clone()),
+                    target: None,
+                });
+            }
         }
 
         for (name, dec) in g.sources.iter() {
-            for schema in &dec.database.schemas {
-                for table in &schema.tables {
+            for (s_name, schema) in &dec.database.schemas {
+                for (t_name, table) in &schema.tables {
                     nodes.push(CatalogNode {
                         name: name.clone(),
                         declaration: NodeDec::WarehouseSource(WarehouseSourceDec {
-                            schema: schema.name.clone(),
-                            table: table.name.clone(),
+                            schema: s_name.clone(),
+                            table: t_name.clone(),
                             database: dec.database.name.clone(),
                         }),
+                        target: None,
                     })
                 }
             }
         }
         nodes
-    }
-}
-
-pub trait Resolve {
-    fn resolve_warehouse_source(&self, src: &SourceRef) -> Result<String, CatalogError>;
-    fn resolve_model(&self, model: ModelRef) -> Result<String, CatalogError>;
-}
-impl Resolve for MemoryCatalog {
-    fn resolve_warehouse_source(&self, src: &SourceRef) -> Result<String, CatalogError> {
-        let g = self.inner.read();
-        g.sources
-            .resolve(&src.source_name, &src.source_table)
-            .map_err(|e| {
-                CatalogError::NotFound(format!("Source {} not found: {}", src.source_name, e))
-            })
-    }
-    fn resolve_model(&self, model: ModelRef) -> Result<String, CatalogError> {
-        todo!()
     }
 }
 
@@ -178,6 +171,16 @@ fn format_relation(schema: &str, table: &str) -> String {
     }
 }
 
+fn model_identifier_from_ref(schema: &str, table: &str) -> String {
+    if table.starts_with(schema) {
+        table.to_string()
+    } else if table.starts_with('_') {
+        format!("{}{}", schema, table)
+    } else {
+        format!("{}_{}", schema, table)
+    }
+}
+
 pub fn format_create_model_sql(sql: String, materialize: Materialize, model_name: &str) -> String {
     let model = model_name.replacen("_", ".", 1);
     let materialization = materialize.to_sql();
@@ -194,19 +197,34 @@ pub trait Register: Send + Sync + 'static {
     fn register_nodes(
         &self,
         parsed_nodes: Vec<ParsedNode>,
-        warehouse_sources: WarehouseSourceConfigs,
+        warehouse_sources: HashMap<String, DbConfig>,
     ) -> Result<(), CatalogError>;
-    fn register_object(&self, parsed_stmts: Vec<Statement>) -> Result<(), CatalogError>;
+    fn register_object(
+        &self,
+        parsed_stmts: Vec<Statement>,
+        target: Option<String>,
+        node: &ParsedNode,
+    ) -> Result<(), CatalogError>;
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError>;
     fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError>;
     fn register_smt_pipeline(
         &self,
         ast: CreateSimpleMessageTransformPipeline,
     ) -> Result<(), CatalogError>;
-    fn register_model(&self, ast: CreateModel) -> Result<(), CatalogError>;
+    fn register_model(
+        &self,
+        ast: CreateModel,
+        target: String,
+        node: &ParsedNode,
+    ) -> Result<(), CatalogError>;
     fn register_warehouse_sources(
         &self,
-        warehouse_sources: WarehouseSourceConfigs,
+        warehouse_sources: HashMap<String, DbConfig>,
+    ) -> Result<(), CatalogError>;
+
+    fn register_kafka_smt_predicate(
+        &self,
+        ast: CreateSimpleMessageTransformPredicate,
     ) -> Result<(), CatalogError>;
 }
 
@@ -225,48 +243,80 @@ fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
         _ => std::cmp::Ordering::Equal,
     }
 }
+
+pub fn compare_catalog_node(a: &CatalogNode, b: &CatalogNode) -> Ordering {
+    fn priority(node: &CatalogNode) -> u8 {
+        match &node.declaration {
+            NodeDec::KafkaConnector(meta) => match meta.con_type {
+                KafkaConnectorType::Source => 0,
+                KafkaConnectorType::Sink => 1,
+            },
+            NodeDec::WarehouseSource(_) => 2,
+            NodeDec::Model(_) => 3,
+            NodeDec::KafkaSmt(_) => 4,
+            NodeDec::KafkaSmtPipeline(_) => 5,
+        }
+    }
+
+    priority(a).cmp(&priority(b))
+}
+
 impl Register for MemoryCatalog {
     fn register_nodes(
         &self,
         mut parsed_nodes: Vec<ParsedNode>,
-        warehouse_sources: WarehouseSourceConfigs,
+        warehouse_sources: HashMap<String, DbConfig>,
     ) -> Result<(), CatalogError> {
         parsed_nodes.sort_by(compare_node);
         self.register_warehouse_sources(warehouse_sources)?;
         for node in parsed_nodes {
-            let (path, config, node_name) = match &node {
+            let (parsed_sql, target, node_name, node_path) = match &node {
                 ParsedNode::Model { node, config } => {
-                    (&node.path, config.clone(), node.name.clone())
+                    let sql = read_sql_file_from_path(&node.path).map_err(|_| {
+                        CatalogError::not_found(format!("{:?} not found", node.path))
+                    })?;
+                    let formatted_sql = format_create_model_sql(
+                        sql,
+                        config.config.materialization.clone(),
+                        &config.config.name,
+                    );
+
+                    (
+                        formatted_sql,
+                        Some(config.target.clone()),
+                        node.name.clone(),
+                        node.path.clone(),
+                    )
                 }
                 ParsedNode::KafkaConnector { node }
                 | ParsedNode::KafkaSmt { node }
-                | ParsedNode::KafkaSmtPipeline { node } => (&node.path, None, node.name.clone()),
-            };
-            let sql = read_sql_file_from_path(path)
-                .map_err(|_| CatalogError::NotFound(format!("{:?} not found", path)))?;
-            // println!("model config {:?}", config);
-            let formatted_sql = if let Some(config) = config {
-                format_create_model_sql(sql, config.materialization, &config.name)
-            } else {
-                sql
-            };
-            // println!("{}", formatted_sql);
+                | ParsedNode::KafkaSmtPipeline { node } => {
+                    let sql = read_sql_file_from_path(&node.path).map_err(|_| {
+                        CatalogError::not_found(format!("{:?} not found", node.path))
+                    })?;
 
-            let parsed_sql = Parser::parse_sql(&GenericDialect, &formatted_sql).map_err(|e| {
-                CatalogError::SqlParser(format!(
+                    (sql, None, node.name.clone(), node.path.clone())
+                }
+            };
+
+            let parsed = Parser::parse_sql(&GenericDialect, &parsed_sql).map_err(|e| {
+                CatalogError::sql_parser(format!(
                     "{} (node: {}, file: {})",
                     e,
                     node_name,
-                    path.display()
+                    &node_path.display()
                 ))
             })?;
-
-            self.register_object(parsed_sql)?;
+            self.register_object(parsed, target, &node)?;
         }
-
         Ok(())
     }
-    fn register_object(&self, parsed_stmts: Vec<Statement>) -> Result<(), CatalogError> {
+    fn register_object(
+        &self,
+        parsed_stmts: Vec<Statement>,
+        target: Option<String>,
+        node: &ParsedNode,
+    ) -> Result<(), CatalogError> {
         if parsed_stmts.len() == 1 {
             match parsed_stmts[0].clone() {
                 Statement::CreateKafkaConnector(stmt) => {
@@ -278,13 +328,26 @@ impl Register for MemoryCatalog {
                 Statement::CreateSMTPipeline(stmt) => {
                     self.register_smt_pipeline(stmt)?;
                 }
-                Statement::CreateModel(stmt) => self.register_model(stmt)?,
-                _ => (),
+                Statement::CreateModel(stmt) => self.register_model(
+                    stmt,
+                    target.ok_or_else(|| {
+                        CatalogError::missing_config("Missing target name for model")
+                    })?,
+                    node,
+                )?,
+                Statement::CreateSMTPredicate(stmt) => {
+                    self.register_kafka_smt_predicate(stmt)?;
+                }
+                _ => {
+                    return Err(CatalogError::unsupported(format!(
+                        "Unsupported statement! got statement {:#?}",
+                        parsed_stmts[0].to_string()
+                    )))
+                }
             }
-        } else if parsed_stmts.len() == 2 {
         } else {
-            return Err(CatalogError::Unsupported(
-                "Cannot register more then two statements".to_string(),
+            return Err(CatalogError::unsupported(
+                "Cannot register more than two statements",
             ));
         }
 
@@ -292,26 +355,25 @@ impl Register for MemoryCatalog {
     }
 
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError> {
-        let meta = KafkaConnectorMeta::new(ast);
+        // let meta = KafkaConnectorMeta::new(ast);
 
         let mut g = self.inner.write();
-        if g.connectors.contains_key(&meta.name) {
-            return Err(CatalogError::Duplicate);
+        if g.connectors.contains_key(&ast.name().to_string()) {
+            return Err(CatalogError::duplicate(&ast.name().to_string()));
         }
-        g.connectors.insert(meta.name.clone(), meta);
+        g.connectors.insert(ast.name().to_string(), ast);
         Ok(())
     }
 
     fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError> {
-        let meta = TransformDecl::new(ast);
+        let decl = TransformDecl::new(ast);
+        let id = decl.id;
         let mut g = self.inner.write();
-        if g.transforms_by_id.contains_key(&meta.id)
-            || g.transform_name_to_id.contains_key(&meta.name)
-        {
-            return Err(CatalogError::Duplicate);
+        if g.transforms_by_id.contains_key(&id) || g.transform_name_to_id.contains_key(&decl.name) {
+            return Err(CatalogError::duplicate(&decl.name));
         }
-        g.transform_name_to_id.insert(meta.name.clone(), meta.id);
-        g.transforms_by_id.insert(meta.id, meta);
+        g.transform_name_to_id.insert(decl.name.clone(), id);
+        g.transforms_by_id.insert(id, decl);
         Ok(())
     }
 
@@ -320,22 +382,61 @@ impl Register for MemoryCatalog {
         ast: CreateSimpleMessageTransformPipeline,
     ) -> Result<(), CatalogError> {
         let sql = ast.clone();
-        let t_ids = self.get_transform_ids_by_name(ast.clone())?;
-        let pred = match ast.pipe_predicate {
-            Some(p) => Some(p.formatted_string()),
-            None => None,
+        let (transforms, pred) = {
+            let mut transforms = Vec::new();
+            let g = self.inner.read();
+            for step in ast.steps {
+                let name = &step.name;
+                let id = g
+                    .transform_name_to_id
+                    .get(&name.to_string())
+                    .cloned()
+                    .ok_or(CatalogError::not_found(format!(
+                        "{} not found",
+                        name.to_string()
+                    )))?;
+
+                let args = if !step.args.is_empty() {
+                    Some(
+                        step.args
+                            .iter()
+                            .map(|(n, a)| (n.value.clone(), a.formatted_string()))
+                            .collect::<HashMap<String, String>>(),
+                    )
+                } else {
+                    None
+                };
+
+                transforms.push(PipelineTransformDecl {
+                    name: name.to_string(),
+                    id,
+                    args,
+                    alias: step.alias.map(|a| a.to_string()),
+                })
+            }
+            let pred = match ast.pipe_predicate {
+                Some(p) => Some(p.formatted_string()),
+                None => None,
+            };
+            (transforms, pred)
         };
-        let pipe = PipelineDecl::new(ast.name.value, t_ids, pred, sql);
+
+        let pipe = PipelineDecl::new(ast.name.value, transforms, pred, sql);
 
         let mut g = self.inner.write();
         if g.pipelines.contains_key(&pipe.name) {
-            return Err(CatalogError::Duplicate); // name already taken
+            return Err(CatalogError::duplicate(&pipe.name)); // name already taken
         }
         g.pipelines.insert(pipe.name.clone(), pipe);
         Ok(())
     }
 
-    fn register_model(&self, ast: CreateModel) -> Result<(), CatalogError> {
+    fn register_model(
+        &self,
+        ast: CreateModel,
+        target: String,
+        node: &ParsedNode,
+    ) -> Result<(), CatalogError> {
         // derive schema/name from underlying model definition
         fn split_schema_table(name: &ObjectName) -> (String, String) {
             let parts: Vec<String> = name
@@ -384,9 +485,15 @@ impl Register for MemoryCatalog {
 
         let refs = r
             .iter()
-            .map(|call| ModelRef {
-                table: call.args[1].clone(),
-                schema: call.args[0].clone(),
+            .map(|call| {
+                let schema = call.args[0].clone();
+                let table = call.args[1].clone();
+
+                ModelRef {
+                    name: model_identifier_from_ref(&schema, &table),
+                    table,
+                    schema,
+                }
             })
             .collect::<Vec<ModelRef>>();
 
@@ -405,28 +512,49 @@ impl Register for MemoryCatalog {
             materialize,
             refs,
             sources,
+            target,
         };
 
+        // println!("model dec {:?}", model_dec)
+
         let mut g = self.inner.write();
-        if g.models.contains_key(&key) {
-            return Err(CatalogError::Duplicate);
+        let name = node.name();
+        if g.models.contains_key(&name) {
+            return Err(CatalogError::duplicate(&name));
         }
-        g.models.insert(key, model_dec);
+        g.models.insert(name, model_dec);
         Ok(())
     }
 
     fn register_warehouse_sources(
         &self,
-        warehouse_sources: WarehouseSourceConfigs,
+        warehouse_sources: HashMap<String, DbConfig>,
     ) -> Result<(), CatalogError> {
         let mut g = self.inner.write();
         g.sources = warehouse_sources;
         Ok(())
     }
+
+    fn register_kafka_smt_predicate(
+        &self,
+        ast: CreateSimpleMessageTransformPredicate,
+    ) -> Result<(), CatalogError> {
+        let mut g = self.inner.write();
+        let id = ast.name.value;
+        let pred = PredicateDecl {
+            name: id.clone(),
+            class_name: ast.pred_type.value,
+            pattern: ast.pattern.map(|p| p.formatted_string()),
+        };
+
+        g.predicates.insert(id, pred);
+
+        Ok(())
+    }
 }
 
 pub trait Getter: Send + Sync + 'static {
-    fn get_kafka_connector(&self, name: &str) -> Result<KafkaConnectorMeta, CatalogError>;
+    fn get_kafka_connector(&self, name: &str) -> Result<CreateKafkaConnector, CatalogError>;
     fn get_kafka_smt<K>(&self, name: K) -> Result<TransformDecl, CatalogError>
     where
         K: for<'a> Into<Key>;
@@ -437,16 +565,17 @@ pub trait Getter: Send + Sync + 'static {
     ) -> Result<Vec<Uuid>, CatalogError>;
 
     fn get_model(&self, name: &str) -> Result<ModelDecl, CatalogError>;
+    fn get_smt_predicate(&self, name: &str) -> Result<PredicateDecl, CatalogError>;
 }
 
 impl Getter for MemoryCatalog {
-    fn get_kafka_connector(&self, name: &str) -> Result<KafkaConnectorMeta, CatalogError> {
+    fn get_kafka_connector(&self, name: &str) -> Result<CreateKafkaConnector, CatalogError> {
         self.inner
             .read()
             .connectors
             .get(name)
             .cloned()
-            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
+            .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))
     }
 
     fn get_kafka_smt<K>(&self, key: K) -> Result<TransformDecl, CatalogError>
@@ -464,9 +593,7 @@ impl Getter for MemoryCatalog {
                 .and_then(|id| s.transforms_by_id.get(id))
                 .cloned(),
         }
-        .ok_or(CatalogError::NotFound(
-            format!("{:?} not found", k).to_string(),
-        ))
+        .ok_or_else(|| CatalogError::not_found(format!("{:?} not found", k)))
     }
 
     fn get_smt_pipeline(&self, name: &str) -> Result<PipelineDecl, CatalogError> {
@@ -475,7 +602,7 @@ impl Getter for MemoryCatalog {
             .pipelines
             .get(name)
             .cloned()
-            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
+            .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))
     }
 
     fn get_transform_ids_by_name(
@@ -495,7 +622,7 @@ impl Getter for MemoryCatalog {
             if let Some(id) = t {
                 ids.push(id);
             } else {
-                return Err(CatalogError::NotFound(format!("{} not found", name)));
+                return Err(CatalogError::not_found(format!("{} not found", name)));
             }
         }
 
@@ -507,407 +634,22 @@ impl Getter for MemoryCatalog {
         g.models
             .get(name)
             .cloned()
-            .ok_or(CatalogError::NotFound(format!("{} not found", name)))
+            .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))
     }
-}
 
-pub trait Macro {
-    fn get_source(&self, src_name: &str, table_name: &str) -> Result<String, CatalogError>;
-    fn get_ref(&self, name: &str) -> Result<String, CatalogError>;
-}
-impl Macro for MemoryCatalog {
-    fn get_source(&self, src_name: &str, table_name: &str) -> Result<String, CatalogError> {
+    fn get_smt_predicate(&self, name: &str) -> Result<PredicateDecl, CatalogError> {
         let g = self.inner.read();
-        let src = g
-            .sources
-            .resolve(src_name, table_name)
-            .map_err(|e| CatalogError::NotFound(format!("{} not found", e)))?;
-
-        Ok(src)
-    }
-    fn get_ref(&self, name: &str) -> Result<String, CatalogError> {
-        let g = self.inner.read();
-        let model = g.models.get(name);
-        let ident = if let Some(m) = model {
-            m.schema.clone() + "." + &m.name
-        } else {
-            return Err(CatalogError::NotFound(format!("{} not found", name)));
-        };
-
-        Ok(ident)
+        g.predicates
+            .get(name)
+            .cloned()
+            .ok_or_else(|| CatalogError::not_found(format!("{} not found", name)))
     }
 }
 
 pub trait Compile: Send + Sync + 'static + Getter {
-    fn compile_kafka_decl(&self, name: &str, foundry_config: &FoundryConfig) -> Result<KafkaConnectorDecl, CatalogError>;
-}
-
-impl Compile for MemoryCatalog {
-    fn compile_kafka_decl(&self, name: &str, foundry_config: &FoundryConfig) -> Result<KafkaConnectorDecl, CatalogError> {
-        let conn = self.get_kafka_connector(name)?;
-        let mut config = match conn.config {
-            Value::Object(map) => map,
-            _ => Map::new(),
-        };
-
-        let mut transform_names = Vec::new();
-        match conn.pipelines {
-            Some(pipelines) => {
-                for pipe_ident in pipelines {
-                    let pipe = self.get_smt_pipeline(&pipe_ident)?;
-                    let pipe_name = pipe.name.clone();
-                    for t_id in pipe.transforms {
-                        let t = self.get_kafka_smt(t_id)?;
-                        let tname = format!("{}_{}", pipe_name, t.name);
-                        transform_names.push(tname.clone());
-
-                        if let Json::Object(cfg) = t.config {
-                            for (k, v) in cfg {
-                                config.insert(format!("transforms.{tname}.{k}"), v);
-                            }
-                        }
-                        if let Some(pred) = &pipe.predicate {
-                            config.insert(
-                                format!("transforms.{tname}.predicate"),
-                                Value::String(pred.clone()),
-                            );
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        if !transform_names.is_empty() {
-            config.insert(
-                "transforms".to_string(),
-                Value::String(transform_names.join(",")),
-            );
-        }
-
-        match conn.con_type {
-            KafkaConnectorType::Source => {
-                let cluster_config = if let Some(cluster_config) = &foundry_config.kafka_source {
-                    let cc = cluster_config.get(&conn.cluster_name)
-                        .ok_or(CatalogError::NotFound(format!("Cluster {} not found", conn.cluster_name)))?;
-                    cc
-                } else {
-                    return Err(CatalogError::NotFound(format!("Cluster {} not found", conn.cluster_name)))
-                };
-
-                config.insert("kafka.bootstrap.servers".to_string(), Json::String(cluster_config.bootstrap.servers.clone()));
-            }
-            _ => ()
-        };
-
-
-        let dec = KafkaConnectorDecl {
-            kind: conn.con_type,
-            name: conn.name,
-            config: Json::Object(config),
-            sql: conn.sql,
-            reads: vec![],
-            writes: vec![],
-            cluster_name: conn.cluster_name,
-        };
-        Ok(dec)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use common::config::loader::read_config;
-    use ff_core::parser::parse_nodes;
-    use sqlparser::ast::Value::SingleQuotedString;
-    use sqlparser::ast::{Ident, ValueWithSpan};
-    use sqlparser::dialect::GenericDialect;
-    use sqlparser::parser::Parser;
-    use sqlparser::tokenizer::{Location, Span};
-    use test_utils::{get_root_dir, with_chdir};
-
-    #[test]
-    fn test_register_nodes_ingests_example_project() -> std::io::Result<()> {
-        let cat = MemoryCatalog::new();
-        let project_root = get_root_dir();
-
-        with_chdir(&project_root, move || {
-            let config = read_config(None).expect("load example project config");
-            let wh_config = config.warehouse_source.clone();
-            let nodes = parse_nodes(&config).expect("parse example models");
-            println!("{:#?}", nodes);
-            // println!("{:#?}", nodes);
-            cat.register_nodes(nodes, wh_config)
-                .expect("register nodes");
-            // println!("{:#?}", cat.inner.read().models);
-            // println!("{:?}", cat.collect_catalog_nodes());
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_register_transform() {
-        let registry = MemoryCatalog::new();
-        let smt = CreateSimpleMessageTransform {
-            name: Ident {
-                value: "cast_hash_cols_to_int".to_string(),
-                quote_style: None,
-                span: Span::new(Location::new(1, 33), Location::new(1, 54)),
-            },
-            if_not_exists: false,
-            config: vec![
-                (
-                    Ident {
-                        value: "type".to_string(),
-                        quote_style: None,
-                        span: Span::new(Location::new(2, 3), Location::new(2, 7)),
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString(
-                            "org.apache.kafka.connect.transforms.Cast$Value".to_string(),
-                        ),
-                        span: Span::new(Location::new(2, 15), Location::new(2, 63)),
-                    },
-                ),
-                (
-                    Ident {
-                        value: "spec".to_string(),
-                        quote_style: None,
-                        span: Span::new(Location::new(3, 3), Location::new(3, 7)),
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("${spec}".to_string()),
-                        span: Span::new(Location::new(3, 15), Location::new(3, 24)),
-                    },
-                ),
-                (
-                    Ident {
-                        value: "predicate".to_string(),
-                        quote_style: None,
-                        span: Span::new(Location::new(4, 3), Location::new(4, 12)),
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("${predicate}".to_string()),
-                        span: Span::new(Location::new(4, 15), Location::new(4, 29)),
-                    },
-                ),
-            ],
-        };
-        let res = registry.register_kafka_smt(smt).unwrap();
-        assert_eq!(res, ());
-        let cat_smt = registry.get_kafka_smt("cast_hash_cols_to_int").unwrap();
-        assert_eq!(cat_smt.name, "cast_hash_cols_to_int");
-        assert_eq!(
-            cat_smt.config["type"].as_str().unwrap(),
-            "org.apache.kafka.connect.transforms.Cast$Value"
-        );
-        assert_eq!(cat_smt.config["spec"].as_str().unwrap(), "${spec}");
-        assert_eq!(
-            cat_smt.config["predicate"].as_str().unwrap(),
-            "${predicate}"
-        );
-        println!("{:?}", cat_smt)
-    }
-
-    #[test]
-    fn register_pipeline_resolves_ids_and_predicate() {
-        use sqlparser::ast::{KafkaConnectorType, TransformCall};
-
-        let registry = MemoryCatalog::new();
-        let span = Span::new(Location::new(0, 0), Location::new(0, 0));
-
-        // register two simple transforms
-        let smt1 = CreateSimpleMessageTransform {
-            name: Ident {
-                value: "mask".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            config: vec![
-                (
-                    Ident {
-                        value: "type".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("mask".into()),
-                        span,
-                    },
-                ),
-                (
-                    Ident {
-                        value: "fields".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("name".into()),
-                        span,
-                    },
-                ),
-            ],
-        };
-        let smt2 = CreateSimpleMessageTransform {
-            name: Ident {
-                value: "drop".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            config: vec![
-                (
-                    Ident {
-                        value: "type".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("drop".into()),
-                        span,
-                    },
-                ),
-                (
-                    Ident {
-                        value: "blacklist".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    ValueWithSpan {
-                        value: SingleQuotedString("id".into()),
-                        span,
-                    },
-                ),
-            ],
-        };
-        registry.register_kafka_smt(smt1).unwrap();
-        registry.register_kafka_smt(smt2).unwrap();
-
-        // pipeline with both transforms and a predicate
-        let pipe = CreateSimpleMessageTransformPipeline {
-            name: Ident {
-                value: "pii".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            connector_type: KafkaConnectorType::Source,
-            steps: vec![
-                TransformCall::new(
-                    Ident {
-                        value: "mask".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    vec![],
-                ),
-                TransformCall::new(
-                    Ident {
-                        value: "drop".into(),
-                        quote_style: None,
-                        span,
-                    },
-                    vec![],
-                ),
-            ],
-            pipe_predicate: Some(ValueWithSpan {
-                value: SingleQuotedString("some_predicate".into()),
-                span,
-            }),
-        };
-        registry.register_smt_pipeline(pipe).unwrap();
-
-        let p = registry.get_smt_pipeline("pii").unwrap();
-        assert_eq!(p.transforms.len(), 2);
-        assert_eq!(p.predicate.as_deref(), Some("some_predicate"));
-    }
-
-    #[test]
-    fn register_duplicate_returns_error() {
-        let registry = MemoryCatalog::new();
-        let span = Span::new(Location::new(0, 0), Location::new(0, 0));
-
-        let smt = CreateSimpleMessageTransform {
-            name: Ident {
-                value: "dup".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            config: vec![],
-        };
-        registry.register_kafka_smt(smt.clone()).unwrap();
-        let err = registry.register_kafka_smt(smt).unwrap_err();
-        matches!(err, CatalogError::Duplicate);
-
-        // pipeline duplicate
-        use sqlparser::ast::{KafkaConnectorType, TransformCall};
-        let pipe = CreateSimpleMessageTransformPipeline {
-            name: Ident {
-                value: "p".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            connector_type: KafkaConnectorType::Source,
-            steps: vec![TransformCall::new(
-                Ident {
-                    value: "dup".into(),
-                    quote_style: None,
-                    span,
-                },
-                vec![],
-            )],
-            pipe_predicate: None,
-        };
-        registry.register_smt_pipeline(pipe.clone()).unwrap();
-        let err = registry.register_smt_pipeline(pipe).unwrap_err();
-        matches!(err, CatalogError::Duplicate);
-
-        // connector duplicate
-        let conn = CreateKafkaConnector {
-            name: Ident {
-                value: "c".into(),
-                quote_style: None,
-                span,
-            },
-            cluster_ident: Ident {value: "c".into(), quote_style: None, span},
-            if_not_exists: false,
-            connector_type: sqlparser::ast::KafkaConnectorType::Source,
-            with_properties: vec![],
-            with_pipelines: vec![],
-        };
-        registry.register_kafka_connector(conn.clone()).unwrap();
-        let err = registry.register_kafka_connector(conn).unwrap_err();
-        matches!(err, CatalogError::Duplicate);
-    }
-
-    #[test]
-    fn get_transform_ids_by_name_errors_on_missing() {
-        use sqlparser::ast::{KafkaConnectorType, TransformCall};
-        let registry = MemoryCatalog::new();
-        let span = Span::new(Location::new(0, 0), Location::new(0, 0));
-        let pipe = CreateSimpleMessageTransformPipeline {
-            name: Ident {
-                value: "p".into(),
-                quote_style: None,
-                span,
-            },
-            if_not_exists: false,
-            connector_type: KafkaConnectorType::Source,
-            steps: vec![TransformCall::new(
-                Ident {
-                    value: "missing".into(),
-                    quote_style: None,
-                    span,
-                },
-                vec![],
-            )],
-            pipe_predicate: None,
-        };
-        let err = registry.get_transform_ids_by_name(pipe).unwrap_err();
-        assert!(matches!(err, CatalogError::NotFound(_)));
-    }
+    fn compile_kafka_decl(
+        &self,
+        name: &str,
+        foundry_config: &FoundryConfig,
+    ) -> Result<KafkaConnectorDecl, CatalogError>;
 }

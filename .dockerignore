@@ -1,0 +1,4 @@
+target
+**/target
+**/node_modules
+foundry_web/ui/node_modules

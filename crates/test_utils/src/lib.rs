@@ -2,8 +2,8 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::env;
 use std::future::Future;
-use std::sync::Mutex;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 use testcontainers::core::client::docker_client_instance;
 use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
@@ -38,7 +38,7 @@ pub fn get_root_dir() -> PathBuf {
                 .expect("crate should live under <workspace>/crates/<crate>")
                 .to_path_buf()
         });
-    let root = workspace_root.join("example/foundry-project");
+    let root = workspace_root.join("example/dvdrental_example");
 
     root
 }
@@ -185,7 +185,6 @@ pub async fn setup_postgres() -> Result<PgTestContainer, Box<dyn std::error::Err
     })
 }
 
-
 pub async fn setup_kafka() -> Result<KafkaTestContainers, Box<dyn std::error::Error>> {
     let id = Uuid::new_v4();
     let connect_name = format!("kafka-connect-{}", id);
@@ -276,7 +275,7 @@ pub async fn setup_kafka() -> Result<KafkaTestContainers, Box<dyn std::error::Er
         kafka_connect: KafkaConnectTestContainer {
             container: kafka_connect,
             host: KAFKA_CONNECT_HOST.to_string(),
-            port: connect_rest_port.to_string()
+            port: connect_rest_port.to_string(),
         },
     })
 }

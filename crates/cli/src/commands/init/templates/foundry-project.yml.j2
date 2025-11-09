@@ -5,22 +5,26 @@ version: "1.0.0"
 
 compile_path: "compiled"
 
-paths:
-  models:
-    dir: {{ models_dir }}
-    {%- if layers %}
-    layers:
-        {% for layer in layers -%}
-        {{ layer.name }}: {{ layer.dir }}
-        {% endfor -%}
-    {%- endif %}
-  sources:
-    {% for source in sources -%}
-    {{ source.name }}:
-      path: {{ source.path }}
-      source_root: {{ source.source_root }}
-      kind: {{ source.kind }}
-    {% endfor %}
-  connections: connections.yml
-modelling_architecture: {{ modelling_arch }}
-connection_profile: dev
+models:
+  dir: {{ models_dir }}
+  analytics_projects:
+    {{ analytics_project.name }}:
+      target_connection: {{ analytics_project.target_connection }}
+      layers:
+          {{ analytics_project.layer_name }}: {{ analytics_project.layer_path }}
+
+sources:
+  warehouse:
+    specifications: {{ sources.warehouse.specifications }}
+    source_root: {{ sources.warehouse.source_root }}
+  kafka:
+    specifications: {{ sources.kafka.specifications }}
+    source_root: {{ sources.kafka.source_root }}
+    definitions: {{ sources.kafka.definitions }}
+  source_db:
+    specifications: {{ sources.source_db.specifications }}
+    source_root: {{ sources.source_db.source_root }}
+
+connection_profile:
+  profile: dev
+  path: connections.yml

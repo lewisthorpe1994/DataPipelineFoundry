@@ -6,7 +6,6 @@ license.workspace = true
 
 [dev-dependencies]
 test_utils = { workspace = true }
-ff_core = { workspace = true }
 
 [dependencies]
 serde_json = { workspace = true }
@@ -14,7 +13,7 @@ serde_yaml = "0.9.34+deprecated"
 serde = { workspace = true }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 parking_lot = "0.12.4"
-sqlparser = { workspace = true, features = ["json_example"]}
+sqlparser = { workspace = true, features = ["json_example", "kafka"]}
 common = { workspace = true }
 thiserror = "2.0.12"
 chrono = { version = "0.4.41", features = ["serde"] }

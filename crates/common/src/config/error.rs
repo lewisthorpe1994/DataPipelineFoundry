@@ -1,39 +1,107 @@
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use crate::error::diagnostics::DiagnosticMessage;
+use std::{error::Error as StdError, path::Path};
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ConfigError {
-    IncorrectPath(String),
-    MissingConnection(String),
-    ParseError(String),
-    PathError(std::io::Error),
+    #[error("incorrect path: {context}")]
+    IncorrectPath { context: DiagnosticMessage },
+    #[error("missing connection: {context}")]
+    MissingConnection { context: DiagnosticMessage },
+    #[error("parse error: {context}")]
+    ParseError {
+        context: DiagnosticMessage,
+        #[source]
+        source: Option<Box<dyn StdError + Send + Sync>>,
+    },
+    #[error("filesystem error: {context}")]
+    PathError {
+        context: DiagnosticMessage,
+        #[source]
+        source: Option<Box<dyn StdError + Send + Sync>>,
+    },
+    #[error("duplicate database specification: {context}")]
+    DuplicateDatabaseSpecification { context: DiagnosticMessage },
+    #[error("not found: {context}")]
+    NotFound { context: DiagnosticMessage },
 }
 
-impl Error for ConfigError {}
-impl Display for ConfigError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::IncorrectPath(path) => write!(f, "Incorrect path: {}", path),
-            Self::ParseError(err) => write!(f, "Parse error: {}", err),
-            Self::MissingConnection(path) => write!(f, "Missing connection: {}", path),
-            Self::PathError(err) => write!(f, "Path error: {}", err),
+impl ConfigError {
+    #[track_caller]
+    pub fn incorrect_path(path: impl AsRef<Path>) -> Self {
+        let message = format!("Expected path '{}' to exist", path.as_ref().display());
+        Self::IncorrectPath {
+            context: DiagnosticMessage::new(message),
+        }
+    }
+
+    #[track_caller]
+    pub fn missing_connection(path: impl AsRef<Path>) -> Self {
+        let message = format!(
+            "Connection profile not found at '{}'. Ensure the file exists and is readable.",
+            path.as_ref().display()
+        );
+        Self::MissingConnection {
+            context: DiagnosticMessage::new(message),
+        }
+    }
+
+    #[track_caller]
+    pub fn parse_error(message: impl Into<String>) -> Self {
+        Self::ParseError {
+            context: DiagnosticMessage::new(message.into()),
+            source: None,
+        }
+    }
+
+    #[track_caller]
+    pub fn duplicate_database(name: impl Into<String>) -> Self {
+        let message = format!(
+            "Found entries for both source and warehouse DBs for '{}'",
+            name.into()
+        );
+        Self::DuplicateDatabaseSpecification {
+            context: DiagnosticMessage::new(message),
+        }
+    }
+
+    #[track_caller]
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::NotFound {
+            context: DiagnosticMessage::new(message.into()),
         }
     }
 }
+
 impl From<std::io::Error> for ConfigError {
+    #[track_caller]
     fn from(err: std::io::Error) -> Self {
-        Self::IncorrectPath(err.to_string())
+        let message = err.to_string();
+        ConfigError::PathError {
+            context: DiagnosticMessage::new(message),
+            source: Some(Box::new(err)),
+        }
     }
 }
 
 impl From<serde_yaml::Error> for ConfigError {
+    #[track_caller]
     fn from(err: serde_yaml::Error) -> Self {
-        Self::ParseError(err.to_string())
+        let message = err.to_string();
+        ConfigError::ParseError {
+            context: DiagnosticMessage::new(message),
+            source: Some(Box::new(err)),
+        }
     }
 }
 
 impl From<walkdir::Error> for ConfigError {
+    #[track_caller]
     fn from(err: walkdir::Error) -> Self {
-        Self::PathError(std::io::Error::new(std::io::ErrorKind::Other, err))
+        let message = err.to_string();
+        ConfigError::PathError {
+            context: DiagnosticMessage::new(message),
+            source: Some(Box::new(err)),
+        }
     }
 }

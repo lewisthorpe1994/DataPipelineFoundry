@@ -1,5 +1,6 @@
 pub mod compile;
 pub mod init;
+pub mod kafka;
 pub mod run;
 
 // pub use compile::handle_compile;

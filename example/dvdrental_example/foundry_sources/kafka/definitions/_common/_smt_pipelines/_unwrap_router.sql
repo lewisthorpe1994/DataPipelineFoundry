@@ -1,0 +1,3 @@
+CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE preset_pipe (
+    reroute
+)

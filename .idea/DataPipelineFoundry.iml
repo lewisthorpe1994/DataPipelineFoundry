@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/dag/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/ff_core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/logging/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/sqlparser/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/test_utils/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/foundry_web/foundry_backend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/catalog/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/executor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/executor/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/shared_clients/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/test_utils/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/components/connector_versioning/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/components/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/components/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/components/connector_versioning_derive/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

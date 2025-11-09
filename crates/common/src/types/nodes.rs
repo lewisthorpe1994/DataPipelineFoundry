@@ -1,4 +1,4 @@
-use crate::config::components::model::ModelConfig;
+use crate::config::components::model::{ModelConfig, ResolvedModelConfig};
 use crate::types::Materialize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -15,12 +15,14 @@ pub struct SourceRef {
 pub struct ModelRef {
     pub table: String,
     pub schema: String,
+    pub name: String,
 }
 impl ModelRef {
-    pub fn new<S: Into<String>>(schema: S, table: S) -> Self {
+    pub fn new<S: Into<String>>(schema: S, table: S, name: S) -> Self {
         Self {
             schema: schema.into(),
             table: table.into(),
+            name: name.into(),
         }
     }
     pub fn to_string(&self) -> String {
@@ -166,7 +168,7 @@ pub struct ParsedInnerNode {
 pub enum ParsedNode {
     Model {
         node: ParsedInnerNode,
-        config: Option<ModelConfig>,
+        config: ResolvedModelConfig,
     },
     KafkaConnector {
         node: ParsedInnerNode,
@@ -177,6 +179,17 @@ pub enum ParsedNode {
     KafkaSmtPipeline {
         node: ParsedInnerNode,
     },
+}
+
+impl ParsedNode {
+    pub fn name(&self) -> String {
+        match self {
+            ParsedNode::Model { node, .. } => node.name.clone(),
+            ParsedNode::KafkaConnector { node, .. } => node.name.clone(),
+            ParsedNode::KafkaSmt { node, .. } => node.name.clone(),
+            ParsedNode::KafkaSmtPipeline { node, .. } => node.name.clone(),
+        }
+    }
 }
 
 pub trait Identifier {

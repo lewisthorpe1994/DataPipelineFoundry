@@ -3,8 +3,10 @@ mod commands;
 use crate::commands::compile::handle_compile;
 use crate::commands::handle_init;
 use crate::commands::init::InitArgs;
-use crate::commands::run::RunArgs;
+use crate::commands::kafka::{handle_kafka, KafkaSubcommand};
+use crate::commands::run::{handle_run, RunArgs};
 use clap::{Parser, Subcommand};
+use common::error::FFError;
 use std::path::PathBuf;
 use time::macros::format_description;
 use tracing_subscriber::fmt;
@@ -31,6 +33,9 @@ pub enum Cmd {
     Init(InitArgs),
     /// Compile the DAG and emit SQL
     Compile,
+    /// Commands for kafka connectors
+    #[command(subcommand)]
+    Kafka(KafkaSubcommand),
     /// Run the model DAG using the chosen target
     Run(RunArgs),
     /// Print the model dependency graph
@@ -38,7 +43,12 @@ pub enum Cmd {
     /// Clean generated files
     Clean,
 }
-
+fn run_cmd(func: Result<(), FFError>) {
+    if let Err(e) = func {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
+}
 fn main() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new("info") // fallback log level
@@ -64,7 +74,7 @@ fn main() {
 
     match cli.command {
         Cmd::Init(args) => {
-            if let Err(e) = handle_init(&args.path, args.project_name, args.flow_arch) {
+            if let Err(e) = handle_init(&args.path, args.project_name) {
                 eprintln!(
                     "Failed to initialize project at {}: {}",
                     args.path.display(),
@@ -73,19 +83,9 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Cmd::Compile => {
-            if let Err(e) = handle_compile() {
-                eprintln!("Compilation failed: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Cmd::Run(args) => {
-            // if let Err(e) = handle_run(args.model, cli.config_path) {
-            //     eprintln!("Run failed: {}", e);
-            //     std::process::exit(1);
-            // }
-            unimplemented!("Not implemented yet!");
-        }
+        Cmd::Compile => run_cmd(handle_compile(cli.config_path.clone())),
+        Cmd::Kafka(args) => run_cmd(handle_kafka(&args, cli.config_path.clone())),
+        Cmd::Run(args) => run_cmd(handle_run(args.model, cli.config_path)),
         _ => unimplemented!("Not implemented yet!"),
     }
 }

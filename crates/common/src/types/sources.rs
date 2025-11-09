@@ -1,19 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceType {
     Warehouse,
     Kafka,
-    Api,
+    #[serde(rename = "source_db")]
+    SourceDB,
 }
 impl Display for SourceType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             SourceType::Warehouse => write!(f, "warehouse"),
             SourceType::Kafka => write!(f, "kafka"),
-            SourceType::Api => write!(f, "api"),
+            SourceType::SourceDB => write!(f, "source_db"),
         }
     }
 }

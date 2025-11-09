@@ -1,0 +1,33 @@
+[package]
+name = "components"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { workspace = true, features = ["kafka-types"]}
+catalog = { workspace = true, optional = true}
+thiserror = { workspace = true }
+serde = { workspace = true, optional = true}
+serde_json = { workspace = true, optional = true}
+sqlparser = { workspace = true, optional = true }
+connector_versioning = { workspace = true, optional = true }
+connector_versioning_derive = {workspace = true, optional = true}
+regex = { workspace = true }
+
+[features]
+kafka = [
+    "dep:catalog",
+    "dep:serde_json",
+    "dep:sqlparser",
+    "dep:serde",
+    "dep:connector_versioning",
+    "dep:connector_versioning_derive"
+]
+
+serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+# show kafka APIs in docs.rs builds (optional)
+features = ["kafka-types", "serde"]
+rustdoc-args = ["--cfg", "docsrs"]

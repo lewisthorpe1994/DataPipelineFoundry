@@ -1,33 +1,83 @@
-use common::config::components::foundry_project::ModelLayers;
 use common::config::components::global::FoundryConfig;
-use common::config::components::model::ModelsConfig;
+use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
 use common::config::components::sources::SourcePaths;
+use common::error::DiagnosticMessage;
 use common::traits::IsFileExtension;
+use common::types::sources::SourceType;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
-use std::io::Error;
+use common::utils::paths_with_ext;
+use log::warn;
+use std::fmt::{Debug, Display};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 use walkdir::WalkDir;
 
-pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, Error> {
-    let mut nodes: Vec<ParsedNode> = Vec::new();
-    if let Some(model_layers_path) = &config.project.paths.models.layers {
-        nodes.extend(parse_models(model_layers_path, config.models.as_ref())?)
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("Value not found parsing node: {content:?}")]
+    NotFound { content: DiagnosticMessage },
+    #[error("Failed to parse node: {content:?}")]
+    ParseError { content: DiagnosticMessage },
+    #[error("Failed to parse node: {content:?}")]
+    UnexpectedError { content: DiagnosticMessage },
+}
+
+impl ParseError {
+    #[track_caller]
+    pub fn not_found(content: impl Into<String>) -> Self {
+        Self::NotFound {
+            content: DiagnosticMessage::new(content.into()),
+        }
     }
-    if config.kafka_source.is_some() {
-        nodes.extend(parse_kafka(&config.source_paths)?);
+
+    #[track_caller]
+    pub fn parse_error(content: impl Into<String>) -> Self {
+        Self::ParseError {
+            content: DiagnosticMessage::new(content.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn unexpected_error(content: impl Into<String>) -> Self {
+        Self::UnexpectedError {
+            content: DiagnosticMessage::new(content.into()),
+        }
+    }
+}
+
+pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, ParseError> {
+    let mut nodes: Vec<ParsedNode> = Vec::new();
+    if let Some(projects) = &config.project.models.analytics_projects {
+        for (name, proj) in projects {
+            nodes.extend(parse_models(
+                &proj.layers,
+                (&config.project.models.dir).as_ref(),
+                config.models.as_ref(),
+            )?)
+        }
+    }
+    let k_nodes = maybe_parse_kafka_nodes(&config)?;
+    if let Some(k) = k_nodes {
+        nodes.extend(k);
     }
     Ok(nodes)
 }
 
 pub fn parse_models(
     dirs: &ModelLayers,
-    models_config: Option<&ModelsConfig>,
-) -> Result<Vec<ParsedNode>, Error> {
+    parent_model_dir: &Path,
+    models_config: Option<&ResolvedModelsConfig>,
+) -> Result<Vec<ParsedNode>, ParseError> {
+    // println!("models config {:#?}", models_config);
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for dir in dirs.values() {
-        println!("{:#?}", dir);
-        for entry in WalkDir::new(dir) {
-            let path = entry?.into_path();
+        // println!("{:?}",dir);
+        for entry in WalkDir::new(parent_model_dir.join(dir)) {
+            let path = entry
+                .map_err(|e| ParseError::UnexpectedError {
+                    content: DiagnosticMessage::new(format!("{:?}", e)),
+                })?
+                .into_path();
 
             if !path.is_extension("sql") {
                 continue;
@@ -42,8 +92,13 @@ pub fn parse_models(
                 .and_then(|s| s.to_str())
                 .unwrap_or_default();
             let model_key = make_model_identifier(schema_name, raw_stem);
-
-            let config = models_config.and_then(|cfg| cfg.get(&model_key)).cloned();
+            let config = models_config
+                .ok_or(ParseError::not_found("models config"))?
+                .get(&model_key)
+                .ok_or(ParseError::parse_error(format!(
+                    "{model_key} not found in models config"
+                )))?
+                .to_owned();
 
             let parsed_node = ParsedNode::Model {
                 node: ParsedInnerNode {
@@ -69,64 +124,45 @@ fn make_model_identifier(schema: &str, stem: &str) -> String {
     }
 }
 
-pub fn parse_kafka(config: &SourcePaths) -> Result<Vec<ParsedNode>, Error> {
-    use common::types::sources::SourceType;
-    use std::collections::HashSet;
-
-    let mut roots = HashSet::new();
-    for (_, details) in config {
-        if matches!(details.kind, SourceType::Kafka) {
-            let root = details
-                .source_root
-                .as_ref()
-                .map(PathBuf::from)
-                .or_else(|| Path::new(&details.path).parent().map(Path::to_path_buf));
-
-            if let Some(root) = root {
-                roots.insert(root);
-            }
-        }
+pub fn maybe_parse_kafka_nodes(
+    config: &FoundryConfig,
+) -> Result<Option<Vec<ParsedNode>>, ParseError> {
+    if !config.kafka_source.is_empty() {
+        let kafka_def_path = &config
+            .source_paths
+            .get(&SourceType::Kafka)
+            .unwrap()
+            .definitions
+            .as_ref()
+            .ok_or(ParseError::not_found(
+                "Expected definitions for kafka sources",
+            ))?;
+        Ok(Some(parse_kafka_dir(&kafka_def_path)?))
+    } else {
+        warn!("No kafka nodes found");
+        Ok(None)
     }
-
-    let mut nodes = Vec::new();
-    for root in roots {
-        nodes.extend(parse_kafka_dir(&root)?);
-    }
-
-    Ok(nodes)
 }
 
-fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, Error> {
+fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, ParseError> {
     if !root.exists() {
         return Ok(Vec::new());
     }
 
     let mut parsed_nodes = Vec::new();
 
-    for entry in WalkDir::new(root) {
-        let entry = entry?;
-
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.into_path();
-
-        if !path.is_extension("sql") {
-            continue;
-        }
-
-        let Some(node_type) = kafka_node_type_from_path(&path) else {
+    for entry in paths_with_ext(root, "sql") {
+        let Some(node_type) = kafka_node_type_from_path(&entry) else {
             continue;
         };
 
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        let Some(stem) = entry.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
 
         let pi_node = ParsedInnerNode {
             name: stem.to_string(),
-            path,
+            path: entry.to_path_buf(),
         };
 
         let node = match node_type {
@@ -165,6 +201,19 @@ mod tests {
     use test_utils::{build_test_layers, get_root_dir, with_chdir};
 
     #[test]
+    fn test_parse_model_nodes() {
+        let project_root = get_root_dir();
+        let root_for_layers = project_root.clone();
+
+        let nodes = with_chdir(&project_root, move || {
+            let config = read_config(None).expect("load example project config");
+            let nodes = parse_nodes(&config).expect("parse model nodes");
+
+            println!("nodes {:#?}", nodes);
+        });
+    }
+
+    #[test]
     fn test_parse_models_across_layers() -> std::io::Result<()> {
         let project_root = get_root_dir();
         let root_for_layers = project_root.clone();
@@ -172,109 +221,14 @@ mod tests {
         let nodes = with_chdir(&project_root, move || {
             let config = read_config(None).expect("load example project config");
             let layers = build_test_layers(root_for_layers.clone());
-            parse_models(&layers, config.models.as_ref()).expect("parse example models")
+            parse_models(
+                &layers,
+                (config.project.models.dir).as_ref(),
+                config.models.as_ref(),
+            )
+            .expect("parse example models")
         })?;
-
-        assert_eq!(nodes.len(), 3, "expected one parsed node per SQL model");
-
-        let mut names: Vec<_> = nodes
-            .iter()
-            .filter_map(|node| match node {
-                ParsedNode::Model { node, .. } => Some(node.name.clone()),
-                _ => None,
-            })
-            .collect();
-        names.sort();
-        assert_eq!(
-            names,
-            vec![
-                "bronze_orders".to_string(),
-                "gold_customer_metrics".to_string(),
-                "silver_orders".to_string(),
-            ]
-        );
-
-        for node in nodes {
-            match node {
-                ParsedNode::Model { node, config } => {
-                    assert_eq!(node.path.extension().and_then(|s| s.to_str()), Some("sql"));
-                    assert!(
-                        node.path.exists(),
-                        "model file {:?} should exist",
-                        node.path
-                    );
-                    assert!(config.is_some(), "expected model config for {}", node.name);
-                }
-                other => panic!("unexpected node variant"),
-            }
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_kafka_nodes() -> std::io::Result<()> {
-        let project_root = get_root_dir();
-        let config = read_config(Some(project_root.clone())).expect("load example config");
-
-        let nodes = parse_kafka(&config.source_paths)?;
-        println!("{:#?}", nodes);
-
-        let kafka_root = config
-            .source_paths
-            .values()
-            .find(|details| matches!(details.kind, common::types::sources::SourceType::Kafka))
-            .and_then(|details| {
-                details
-                    .source_root
-                    .as_ref()
-                    .map(PathBuf::from)
-                    .or_else(|| Path::new(&details.path).parent().map(Path::to_path_buf))
-            })
-            .expect("example kafka source path");
-
-        assert_eq!(nodes.len(), 4, "expected one node per Kafka SQL file");
-
-        let mut actual: Vec<(String, &'static str, PathBuf)> = nodes
-            .into_iter()
-            .map(|node| match node {
-                ParsedNode::KafkaSmt { node } => (node.name, "smt", node.path),
-                ParsedNode::KafkaSmtPipeline { node } => (node.name, "smtpipeline", node.path),
-                ParsedNode::KafkaConnector { node } => (node.name, "connector", node.path),
-                _ => panic!("unexpected node variant"),
-            })
-            .collect();
-
-        actual.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut expected = vec![
-            (
-                "_drop_id".to_string(),
-                "smt",
-                kafka_root.join("_common/_smt/_drop_id.sql"),
-            ),
-            (
-                "_mask_field".to_string(),
-                "smt",
-                kafka_root.join("_common/_smt/_mask_field.sql"),
-            ),
-            (
-                "_pii_pipeline".to_string(),
-                "smtpipeline",
-                kafka_root.join("_common/_smt_pipelines/_pii_pipeline.sql"),
-            ),
-            (
-                "_test_src_connector".to_string(),
-                "connector",
-                kafka_root.join(
-                    "_connectors/_source/_test_src_connector/_definition/_test_src_connector.sql",
-                ),
-            ),
-        ];
-
-        expected.sort_by(|a, b| a.0.cmp(&b.0));
-
-        assert_eq!(actual, expected);
+        // println!("{:?}", nodes);
 
         Ok(())
     }

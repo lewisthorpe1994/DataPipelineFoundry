@@ -1,4 +1,5 @@
 use crate::error::DagError;
+use petgraph::Direction;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
     CreateSimpleMessageTransformPipeline,
@@ -74,5 +75,19 @@ impl Debug for DagNode {
         }}",
             self.name, self.node_type, self.is_executable, self.relations
         )
+    }
+}
+
+pub enum TransitiveDirection {
+    Incoming,
+    Outgoing,
+}
+
+impl From<TransitiveDirection> for Direction {
+    fn from(value: TransitiveDirection) -> Self {
+        match value {
+            TransitiveDirection::Incoming => Direction::Incoming,
+            TransitiveDirection::Outgoing => Direction::Outgoing,
+        }
     }
 }

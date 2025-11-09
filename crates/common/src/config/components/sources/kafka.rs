@@ -1,12 +1,15 @@
 use crate::config::components::sources::SourcePaths;
 use crate::config::loader::load_config;
 use crate::config::traits::{ConfigName, IntoConfigVec};
+use crate::error::ConfigError;
+use crate::types::schema::{Schema, Table};
 use crate::types::sources::SourceType;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{format, Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
 
 // ---------------- KafkaSource Config ----------------
 #[derive(Debug, Deserialize, Clone)]
@@ -72,32 +75,6 @@ impl From<HashMap<String, KafkaSourceConfig>> for KafkaSourceConfigs {
     }
 }
 
-impl TryFrom<SourcePaths> for KafkaSourceConfigs {
-    type Error = KafkaSourceConfigError;
-
-    fn try_from(value: SourcePaths) -> Result<Self, KafkaSourceConfigError> {
-        let mut configs: KafkaSourceConfigs = KafkaSourceConfigs::empty();
-        let mut found = false;
-        value
-            .into_iter()
-            .filter(|(_, details)| details.kind == SourceType::Kafka)
-            .for_each(|(_, details)| {
-                found = true;
-                let c: KafkaSourceConfigs =
-                    load_config::<KafkaSourceConfig, KafkaSourceFileConfigs, KafkaSourceConfigs>(
-                        (&details.path).as_ref(),
-                    )
-                    .expect("load kafka source config");
-                configs.extend(c);
-            });
-        if !found {
-            return Err(KafkaSourceConfigError::NoSources);
-        }
-
-        Ok(configs)
-    }
-}
-
 impl KafkaSourceConfigs {
     pub fn new(configs: HashMap<String, KafkaSourceConfig>) -> Self {
         Self(configs)
@@ -145,5 +122,51 @@ impl From<KafkaSourceConfigError> for JinjaError {
                 "No sources found".to_string(),
             ),
         }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct KafkaConnectorConfig {
+    pub schema: HashMap<String, Schema>,
+    pub name: String,
+    pub dag_executable: Option<bool>,
+}
+
+impl KafkaConnectorConfig {
+    pub fn table_include_list(&self) -> String {
+        self.schema
+            .iter()
+            .flat_map(|(s_name, schema)| {
+                schema
+                    .tables
+                    .iter()
+                    .map(move |(t_name, t)| format!("{}.{}", s_name, t_name))
+            })
+            .collect::<Vec<String>>()
+            .join(",")
+    }
+
+    pub fn column_include_list(&self, fields_only: bool) -> String {
+        self.schema
+            .iter()
+            .flat_map(|(s_name, schema)| {
+                schema.tables.iter().flat_map(move |(t_name, table)| {
+                    table.columns.iter().map(move |col| {
+                        if !fields_only {
+                            format!("{}.{}.{}", s_name, t_name, col.name)
+                        } else {
+                            format!("{}", col.name)
+                        }
+                    })
+                })
+            })
+            .collect::<Vec<String>>()
+            .join(",")
+    }
+}
+
+impl ConfigName for KafkaConnectorConfig {
+    fn name(&self) -> &str {
+        &self.name
     }
 }
