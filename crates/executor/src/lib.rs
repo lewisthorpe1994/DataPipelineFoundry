@@ -159,6 +159,12 @@ impl From<KafkaConnectClientError> for ExecutorError {
 }
 
 pub struct Executor {}
+impl Default for Executor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Executor {
     pub fn new() -> Self {
         Self {}
@@ -192,7 +198,7 @@ impl Executor {
                     })?;
 
                 let mut adapter = create_db_adapter(adapter_connection_obj).await?;
-                adapter.execute(&executable).await?;
+                adapter.execute(executable).await?;
                 Ok(ExecutorResponse::Ok)
             }
             DagNodeType::KafkaSourceConnector | DagNodeType::KafkaSinkConnector => {
@@ -213,7 +219,7 @@ impl Executor {
                 let kafka_client =
                     KafkaConnectClient::new(&kafka_conn.connect.host, &kafka_conn.connect.port);
 
-                let conn_config: KafkaConnectorDeployConfig = serde_json::from_str(&executable)
+                let conn_config: KafkaConnectorDeployConfig = serde_json::from_str(executable)
                     .map_err(|e| {
                         ExecutorError::config(format!(
                             "Failed to parse Kafka connector configuration for '{}': {e}",

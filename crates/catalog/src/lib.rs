@@ -12,12 +12,11 @@ use std::cmp::Ordering;
 use crate::error::CatalogError;
 use common::config::components::global::FoundryConfig;
 use common::config::components::sources::warehouse_source::DbConfig;
-use common::types::kafka::{KafkaConnectorType, SinkDbConnectionInfo, SourceDbConnectionInfo};
+use common::types::kafka::KafkaConnectorType;
 use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value as Json, Value};
 use sqlparser::ast::helpers::foundry_helpers::{AstValueFormatter, MacroFnCall, MacroFnCallType};
 use sqlparser::ast::{ObjectName, ObjectNamePart, Statement};
 use sqlparser::dialect::GenericDialect;
@@ -73,6 +72,12 @@ impl From<Uuid> for Key {
 #[derive(Clone)]
 pub struct MemoryCatalog {
     inner: Arc<RwLock<State>>,
+}
+
+impl Default for MemoryCatalog {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MemoryCatalog {
@@ -359,7 +364,7 @@ impl Register for MemoryCatalog {
 
         let mut g = self.inner.write();
         if g.connectors.contains_key(&ast.name().to_string()) {
-            return Err(CatalogError::duplicate(&ast.name().to_string()));
+            return Err(CatalogError::duplicate(ast.name().to_string()));
         }
         g.connectors.insert(ast.name().to_string(), ast);
         Ok(())
@@ -393,7 +398,7 @@ impl Register for MemoryCatalog {
                     .cloned()
                     .ok_or(CatalogError::not_found(format!(
                         "{} not found",
-                        name.to_string()
+                        name
                     )))?;
 
                 let args = if !step.args.is_empty() {
@@ -414,10 +419,7 @@ impl Register for MemoryCatalog {
                     alias: step.alias.map(|a| a.to_string()),
                 })
             }
-            let pred = match ast.pipe_predicate {
-                Some(p) => Some(p.formatted_string()),
-                None => None,
-            };
+            let pred = ast.pipe_predicate.map(|p| p.formatted_string());
             (transforms, pred)
         };
 
@@ -586,7 +588,7 @@ impl Getter for MemoryCatalog {
         let s = self.inner.read();
         let k = &key.into();
         match k {
-            Id(id) => s.transforms_by_id.get(&id).cloned(),
+            Id(id) => s.transforms_by_id.get(id).cloned(),
             Name(n) => s
                 .transform_name_to_id
                 .get(n)

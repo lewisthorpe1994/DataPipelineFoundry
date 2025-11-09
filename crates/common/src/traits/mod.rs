@@ -17,7 +17,7 @@ pub trait ToSerdeMap {
     where
         Self: Serialize,
     {
-        let obj = match serde_json::to_value(&self)? {
+        let obj = match serde_json::to_value(self)? {
             Value::Object(obj) => obj,
             _ => return Err(serde_json::Error::custom("expecting source db config")),
         };

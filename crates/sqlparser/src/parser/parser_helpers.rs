@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Function, TableFactor};
+use crate::ast::TableFactor;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
 

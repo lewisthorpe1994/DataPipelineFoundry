@@ -1,5 +1,4 @@
 use crate::errors::ValidationError;
-use crate::kafka::utils::validate_comma_seperated_list;
 use crate::predicates::PredicateRef;
 use crate::smt::errors::TransformBuildError;
 use crate::traits::{ComponentVersion, ValidateVersion};
@@ -7,7 +6,6 @@ use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::fmt::format;
 
 #[derive(Debug, Clone, Serialize, ConnectorVersionedDerive)]
 #[parser(error = crate::smt::errors::TransformBuildError)]

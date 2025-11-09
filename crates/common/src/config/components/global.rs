@@ -4,7 +4,7 @@ use crate::config::components::connections::{
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ResolvedModelsConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
-use crate::config::components::sources::warehouse_source::{DbConfig, DbConfigError};
+use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
 use crate::config::error::ConfigError;
 use std::collections::HashMap;
@@ -78,7 +78,6 @@ impl FoundryConfig {
             name,
             self.kafka_connectors
                 .keys()
-                .into_iter()
                 .map(|k| k.to_string())
                 .collect::<Vec<String>>()
                 .join(", "),
@@ -105,7 +104,7 @@ impl FoundryConfig {
             .schemas
             .iter()
             .flat_map(|(name, obj)| {
-                obj.tables.iter().map(move |(t_name, table)| {
+                obj.tables.iter().map(move |(t_name, _)| {
                     (config.database.name.clone(), name, t_name.clone())
                 })
             })

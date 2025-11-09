@@ -1,4 +1,4 @@
-use crate::config::components::model::{ModelConfig, ResolvedModelConfig};
+use crate::config::components::model::ResolvedModelConfig;
 use crate::types::Materialize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

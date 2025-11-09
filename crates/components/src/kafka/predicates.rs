@@ -1,5 +1,4 @@
 use crate::errors::KafkaConnectorCompileError;
-use catalog::PredicateDecl;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use serde_json::Value;
 use sqlparser::ast::{AstValueFormatter, PredicateReference};

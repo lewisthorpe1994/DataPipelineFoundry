@@ -5,7 +5,6 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
-use testcontainers::core::client::docker_client_instance;
 use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -38,9 +37,9 @@ pub fn get_root_dir() -> PathBuf {
                 .expect("crate should live under <workspace>/crates/<crate>")
                 .to_path_buf()
         });
-    let root = workspace_root.join("example/dvdrental_example");
+    
 
-    root
+    workspace_root.join("example/dvdrental_example")
 }
 
 pub fn build_test_layers(root: PathBuf) -> HashMap<String, String> {

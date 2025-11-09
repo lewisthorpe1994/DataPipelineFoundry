@@ -25,7 +25,7 @@ use common::types::{
     SourceDbConnectionInfo,
 };
 use connector_versioning::Version;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{Map as JsonMap, Value as Json, Value};
 use sqlparser::ast::{AstValueFormatter, CreateKafkaConnector, CreateSimpleMessageTransform};
 use std::collections::{HashMap, HashSet};
@@ -91,7 +91,7 @@ impl KafkaConnector {
     ) -> Result<Self, KafkaConnectorCompileError> {
         let conn = catalog.get_kafka_connector(name)?;
         let mut base_config: HashMap<String, String> = HashMap::new();
-        let version = Version::parse(&*conn.connector_version.formatted_string())
+        let version = Version::parse(&conn.connector_version.formatted_string())
             .map_err(|_| KafkaConnectorCompileError::unexpected_error("version placeholder"))?;
 
         base_config.insert(
@@ -171,7 +171,7 @@ impl KafkaConnector {
                 &KafkaConnectorType::Source,
             ) => Self::build_debezium_postgres_source(
                 base_config,
-                &foundry_config,
+                foundry_config,
                 conn.clone(),
                 cluster_config.bootstrap.servers.clone(),
                 &adapter_conf,
@@ -347,7 +347,7 @@ impl KafkaConnector {
             .unwrap_or_else(|| format!("{}_{}", pipeline_name, step.name));
 
         build_transform_from_config(transform_name.clone(), config, predicate, version)
-            .map_err(|err| KafkaConnectorCompileError::from(err))
+            .map_err(KafkaConnectorCompileError::from)
     }
 
     fn resolve_transform_config(

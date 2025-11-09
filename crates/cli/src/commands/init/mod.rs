@@ -135,11 +135,11 @@ where
     P: FileTemplate,
 {
     env.add_template(template_path.path(), template_path.template())
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     let temp_path_str = template_path.path();
     let template = env
         .get_template(temp_path_str)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     // render file
     let rendered = match ctx {
@@ -157,11 +157,11 @@ where
                 .write(true)
                 .create(true)
                 .open(write_path)
-                .expect(format!("Could not create {}", temp_path_str).as_str());
+                .unwrap_or_else(|_| panic!("Could not create {}", temp_path_str));
 
             file.write_all(r.as_bytes())?;
         }
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        Err(e) => return Err(std::io::Error::other(e)),
     }
     Ok(())
 }

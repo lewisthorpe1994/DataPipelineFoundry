@@ -7,15 +7,11 @@ use crate::smt::transforms::debezium::{
     TimezoneConverter,
 };
 use crate::smt::{SmtClass, SmtKind, SmtPreset, Transform};
-use crate::version_consts::DBZ_VERSION_3_3;
-use common::error::DiagnosticMessage;
 use connector_versioning::Version;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
-use thiserror::Error;
 
 fn predicate_of(kind: &SmtKind) -> Option<&PredicateRef> {
     match kind {

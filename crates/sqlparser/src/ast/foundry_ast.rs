@@ -367,7 +367,7 @@ pub struct CreateSimpleMessageTransformPredicate {
 impl Display for CreateSimpleMessageTransformPredicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pattern = match &self.pattern {
-            Some(p) => format!("USING PATTERN {}", p.to_string()),
+            Some(p) => format!("USING PATTERN {}", p),
             None => String::new(),
         };
 
@@ -583,8 +583,8 @@ pub enum ModelDef {
 impl Display for ModelDef {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Table(table) => write!(f, "{}", table.to_string()),
-            Self::View(view) => write!(f, "{}", view.to_string()),
+            Self::Table(table) => write!(f, "{}", table),
+            Self::View(view) => write!(f, "{}", view),
         }
     }
 }
@@ -663,7 +663,7 @@ impl CreateModel {
             }
         }
 
-        let sql = if mappings.len() > 0 {
+        let sql = if !mappings.is_empty() {
             let mut sql = self.model.to_string();
             for mapping in mappings {
                 if let (Some(replacement), Some(resolved)) =

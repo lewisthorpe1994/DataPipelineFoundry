@@ -1,14 +1,14 @@
 use crate::connectors::base::CommonKafkaConnector;
 
-use crate::errors::{ErrorBag, KafkaConnectorCompileError};
+use crate::errors::KafkaConnectorCompileError;
 use crate::kafka::errors::ValidationError;
-use crate::predicates::{Predicate, Predicates};
+use crate::predicates::Predicates;
 use crate::smt::utils::Transforms;
 use crate::traits::ComponentVersion;
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{BTreeSet, HashMap};
 
 pub const CONNECTOR_CLASS_NAME: &str = "io.debezium.connector.jdbc.JdbcSinkConnector";
@@ -248,9 +248,9 @@ impl DebeziumPostgresSinkConnector {
 
             if let Ok(regex) = regex::Regex::new(&pattern) {
                 let topics = topic_set
-                    .into_iter()
+                    .iter()
                     .filter_map(|topic| {
-                        if regex.is_match(&topic) {
+                        if regex.is_match(topic) {
                             Some(topic.to_string())
                         } else {
                             None

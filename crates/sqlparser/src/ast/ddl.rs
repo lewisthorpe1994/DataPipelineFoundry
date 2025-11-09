@@ -20,10 +20,9 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::fmt::{self, Debug, Display, Formatter, Write};
+use core::fmt::{self, Debug, Display, Write};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "visitor")]
 use sqlparser_derive::{Visit, VisitMut};

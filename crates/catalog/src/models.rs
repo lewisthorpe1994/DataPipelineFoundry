@@ -7,8 +7,7 @@ use serde_json::Value as Json;
 use sqlparser::ast::helpers::foundry_helpers::KvPairs;
 use sqlparser::ast::{
     AstValueFormatter, CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
-    CreateSimpleMessageTransformPipeline, CreateSimpleMessageTransformPredicate,
-    PredicateReference,
+    CreateSimpleMessageTransformPipeline,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
@@ -109,11 +108,11 @@ impl KafkaConnectorMeta {
 
         Self {
             name: ast.name.to_string(),
-            con_type: KafkaConnectorType::from(ast.connector_type),
+            con_type: ast.connector_type,
             config: KvPairs(ast.with_properties).into(),
             cluster_name: ast.cluster_ident.value,
             target: ast.db_ident.value,
-            target_schema: ast.schema_ident.and_then(|s| Some(s.value)),
+            target_schema: ast.schema_ident.map(|s| s.value),
             sql,
             pipelines,
             conn_provider: ast.connector_provider,

@@ -6,6 +6,7 @@ use crate::ast::{
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
+use crate::dialect::GenericDialect;
 
 #[cfg(feature = "kafka")]
 use crate::ast::{
@@ -143,8 +144,8 @@ impl KafkaParse for Parser<'_> {
         let version = if self.parse_keywords(&[Keyword::WITH, Keyword::CONNECTOR, Keyword::VERSION])
         {
             let v_ident = self.parse_value()?;
-            if self.parse_keywords(&[Keyword::AND, Keyword::PIPELINES]) {
-                if self.consume_token(&Token::LParen) {
+            if self.parse_keywords(&[Keyword::AND, Keyword::PIPELINES])
+                && self.consume_token(&Token::LParen) {
                     loop {
                         let ident = self.parse_identifier()?;
                         pipeline_idents.push(ident);
@@ -154,7 +155,6 @@ impl KafkaParse for Parser<'_> {
                         self.expect_token(&Token::Comma)?;
                     }
                 }
-            }
             v_ident
         } else {
             return Err(ParserError::ParserError(
@@ -407,7 +407,7 @@ impl ModelParse for Parser<'_> {
         };
 
         if self.parse_keywords(&[Keyword::AS, Keyword::DROP]) {
-            ()
+            
         } else {
             return Err(ParserError::ParserError(
                 "Expected a DROP statement to be present for CreateModel"
@@ -431,7 +431,7 @@ impl ModelParse for Parser<'_> {
         let drop_if_exists = self.parse_if_exists();
         let drop_name = self.parse_object_name(false)?;
         let cascade = self.parse_keyword(Keyword::CASCADE);
-        if cascade == false {
+        if !cascade {
             return Err(ParserError::ParserError(
                 "Cascade is required to drop the previous model when creating a new one."
                     .to_string(),
@@ -471,11 +471,11 @@ impl ModelParse for Parser<'_> {
 
 #[cfg(any(test, feature = "kafka"))]
 mod test {
-    use crate::ast::Statement;
-    use crate::dialect::GenericDialect;
+    use common::types::KafkaConnectorType;
     use crate::parser::Parser;
+    use crate::dialect::GenericDialect;
+    use crate::ast::Statement;
 
-    use common::types::kafka::connector::KafkaConnectorType;
 
     #[test]
     fn test_create_kafka_connector_source_no_pipeline() {

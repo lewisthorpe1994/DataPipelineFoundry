@@ -5,7 +5,7 @@ use crate::smt::utils::Transforms;
 use crate::traits::{ComponentVersion, ParseUtils};
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Common Kafka Connect per-connector settings (non–Debezium-specific).
 /// Flatten this into source/sink connector structs to accept these keys at top level.

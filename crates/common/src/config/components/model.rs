@@ -1,17 +1,15 @@
 use crate::config::error::ConfigError;
 use crate::config::loader::load_config;
-use crate::config::traits::{ConfigName, IntoConfigVec};
-use crate::traits::IsFileExtension;
+use crate::config::traits::ConfigName;
 use crate::types::schema::Column;
 use crate::types::Materialize;
 use crate::utils::paths_with_ext;
-use log::{error, warn};
+use log::warn;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::path::PathBuf;
-use walkdir::WalkDir;
 
 pub type ModelLayerName = String;
 pub type ModelLayerDir = String;
@@ -43,11 +41,6 @@ pub struct ModelsFileConfig {
     pub config: ModelConfig,
 }
 
-impl IntoConfigVec<ModelConfig> for ModelsFileConfig {
-    fn vec(self) -> Vec<ModelConfig> {
-        vec![self.config]
-    }
-}
 
 fn default_materialization() -> Materialize {
     Materialize::View
@@ -136,7 +129,7 @@ impl TryFrom<&HashMap<String, ResolvedModelLayerConfig>> for ResolvedModelsConfi
     fn try_from(value: &HashMap<String, ResolvedModelLayerConfig>) -> Result<Self, Self::Error> {
         let mut resolved = ResolvedModelsConfig::empty();
 
-        for (k, v) in value.iter() {
+        for (_, v) in value.iter() {
             for p in paths_with_ext(&v.path, "yml") {
                 let config = load_config::<ModelConfig>(&p)?;
                 for cfg in config.values() {

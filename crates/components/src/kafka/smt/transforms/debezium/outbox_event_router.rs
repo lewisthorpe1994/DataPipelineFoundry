@@ -48,6 +48,6 @@ impl OutboxEventRouter {
         config: HashMap<String, String>,
         version: Version,
     ) -> Result<Self, TransformBuildError> {
-        Ok(Self::generated_new(config, version)?)
+        Self::generated_new(config, version)
     }
 }

@@ -1,4 +1,4 @@
-use crate::functions::compile::{compile, CompileOptions};
+use crate::functions::compile::compile;
 use common::config::components::global::FoundryConfig;
 use common::error::FFError;
 use dag::types::{DagNode, TransitiveDirection};
@@ -15,7 +15,7 @@ async fn execute_dag_nodes(nodes: Vec<&DagNode>, config: &FoundryConfig) -> Resu
             };
 
             timeit!(format!("Executed node {}", &node.name), {
-                Executor::execute(&node, config)
+                Executor::execute(node, config)
                     .await
                     .map_err(FFError::run)?;
             });

@@ -4,22 +4,20 @@ pub mod types;
 use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, TransitiveDirection};
 use catalog::{
-    compare_catalog_node, Compile, Getter, IntoRelation, KafkaConnectorMeta, MemoryCatalog, NodeDec,
+    compare_catalog_node, Getter, KafkaConnectorMeta, MemoryCatalog, NodeDec,
 };
 use common::config::components::global::FoundryConfig;
-use common::types::kafka::KafkaConnectorType;
 use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
 use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
-use components::smt::SmtKind;
 use components::{
     KafkaConnector, KafkaConnectorConfig, KafkaSinkConnectorConfig, KafkaSourceConnectorConfig,
 };
-use log::{info, warn};
+use log::info;
 use petgraph::algo::{kosaraju_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::Direction;
-use sqlparser::ast::{CreateKafkaConnector, ModelSqlCompileError};
+use sqlparser::ast::ModelSqlCompileError;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
@@ -65,6 +63,12 @@ use std::time::Instant;
 pub struct ModelsDag {
     pub graph: DiGraph<DagNode, EmtpyEdge>,
     pub ref_to_index: HashMap<String, NodeIndex>,
+}
+
+impl Default for ModelsDag {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ModelsDag {
@@ -194,7 +198,7 @@ impl ModelsDag {
                     )?;
                 }
                 NodeDec::KafkaConnector(conn) => self.build_nodes_from_kafka_connector(
-                    &conn,
+                    conn,
                     registry,
                     config,
                     c_node.target.clone(),
@@ -253,7 +257,7 @@ impl ModelsDag {
         current_topics: &mut BTreeSet<String>,
     ) -> Result<(), DagError> {
         let connector =
-            KafkaConnector::compile_from_catalog(catalog, &connector_meta.name, &config)?;
+            KafkaConnector::compile_from_catalog(catalog, &connector_meta.name, config)?;
 
         let connector_json = connector.to_json_string()?;
 
@@ -379,7 +383,7 @@ impl ModelsDag {
         target: Option<String>,
         current_topics: &BTreeSet<String>,
     ) -> Result<(), DagError> {
-        let topics = connector.topic_names(&current_topics)?;
+        let topics = connector.topic_names(current_topics)?;
         let is_executable = config
             .get_kafka_connector_config(&meta.name)
             .map_err(|e| DagError::not_found(meta.name.clone()))?
@@ -441,7 +445,7 @@ impl ModelsDag {
         catalog: &MemoryCatalog,
         connector_json: String,
         target: Option<String>,
-        mut current_topics: &mut BTreeSet<String>,
+        current_topics: &mut BTreeSet<String>,
     ) -> Result<(), DagError> {
         let mut conn_rels: BTreeSet<String> = BTreeSet::new();
         if let Some(pipelines) = meta.pipelines.clone() {

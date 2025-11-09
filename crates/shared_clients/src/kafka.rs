@@ -88,7 +88,7 @@ impl From<reqwest::Error> for KafkaConnectClientError {
                 StatusCode::NOT_FOUND => KafkaConnectClientError::not_found(err.to_string()),
                 _ => KafkaConnectClientError::unexpected(format!(
                     "Unexpected error due to {} - status code {}",
-                    err.to_string(),
+                    err,
                     err
                 )),
             }
@@ -179,7 +179,7 @@ impl KafkaConnectClient {
             }
             status => Err(KafkaConnectClientError::unexpected(format!(
                 "Unexpected error trying to deploy connector due to {} - status code {}",
-                status.to_string(),
+                status,
                 status.as_u16()
             ))),
         }
