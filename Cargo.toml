@@ -50,3 +50,6 @@ executor = { path = "crates/executor" }
 components = { path = "crates/components", default-features = false}
 connector_versioning = { path = "crates/components/connector_versioning"}
 connector_versioning_derive = {path = "crates/components/connector_versioning_derive"}
+
+[workspace.lints.clippy]
+large_enum_variant = "allow"

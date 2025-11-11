@@ -2496,8 +2496,7 @@ impl<'a> Parser<'a> {
         self.expect_token(&Token::LParen)?;
         let mut trim_where = None;
         if let Token::Word(word) = self.peek_token().token {
-            if [Keyword::BOTH, Keyword::LEADING, Keyword::TRAILING].contains(&word.keyword)
-            {
+            if [Keyword::BOTH, Keyword::LEADING, Keyword::TRAILING].contains(&word.keyword) {
                 trim_where = Some(self.parse_trim_where()?);
             }
         }
@@ -11975,10 +11974,10 @@ impl<'a> Parser<'a> {
     /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
         if matches!(self.peek_tokens(), [Token::LBrace, Token::LBrace]) {
-            if let Some(parsed) = self.maybe_parse(|p| p.try_parse_braced_macro_table_factor())? {
-                if let Some(tf) = parsed {
-                    return Ok(tf);
-                }
+            if let Some(Some(tf)) =
+                self.maybe_parse(|p| p.try_parse_braced_macro_table_factor())?
+            {
+                return Ok(tf);
             }
         }
         if self.parse_keyword(Keyword::LATERAL) {

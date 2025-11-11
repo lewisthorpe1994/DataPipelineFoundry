@@ -88,8 +88,7 @@ impl From<reqwest::Error> for KafkaConnectClientError {
                 StatusCode::NOT_FOUND => KafkaConnectClientError::not_found(err.to_string()),
                 _ => KafkaConnectClientError::unexpected(format!(
                     "Unexpected error due to {} - status code {}",
-                    err,
-                    err
+                    err, err
                 )),
             }
         } else {

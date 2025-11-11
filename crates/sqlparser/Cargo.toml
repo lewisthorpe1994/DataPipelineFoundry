@@ -114,3 +114,6 @@ version = "1"
 version = "5.0"
 [dependencies]
 thiserror = "2.0.12"
+
+[lints]
+workspace = true

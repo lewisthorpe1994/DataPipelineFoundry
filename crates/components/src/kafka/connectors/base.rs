@@ -137,10 +137,7 @@ impl CommonKafkaConnector {
     ///
     /// This is generic over any config map that implements `ParseUtils`
     /// (e.g. `HashMap<String, String>`; or `serde_json::Map<String, Value>` if you implement `ParseUtils` for it).
-    pub fn new<C>(
-        mut config: C,
-        version: Version,
-    ) -> Result<Self, KafkaConnectorCompileError>
+    pub fn new<C>(mut config: C, version: Version) -> Result<Self, KafkaConnectorCompileError>
     where
         C: ParseUtils<KafkaConnectorCompileError>,
     {

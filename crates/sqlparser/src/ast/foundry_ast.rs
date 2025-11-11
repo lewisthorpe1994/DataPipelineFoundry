@@ -5,17 +5,17 @@ use crate::ast::{
     ViewColumnDef,
 };
 use crate::parser::ParserError;
+use common::error::DiagnosticMessage;
+#[cfg(feature = "kafka")]
+use common::types::kafka::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType};
 use core::fmt;
 use core::fmt::{Debug, Display, Formatter};
 #[cfg(feature = "json_example")]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use common::error::DiagnosticMessage;
 use thiserror::Error;
-#[cfg(feature = "kafka")]
-use common::types::kafka::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType};
 
-fn hashmap_from_ast_kv(kv: &Vec<(Ident, ValueWithSpan)>) -> HashMap<String, String> {
+fn hashmap_from_ast_kv(kv: &[(Ident, ValueWithSpan)]) -> HashMap<String, String> {
     kv.iter()
         .map(|(k, v)| (k.value.clone(), v.formatted_string()))
         .collect()
@@ -633,19 +633,16 @@ impl fmt::Display for CreateModel {
 #[derive(Debug, Error)]
 pub enum ModelSqlCompileError {
     #[error("SQL compilation error {context}")]
-    CompileError {context: DiagnosticMessage}
+    CompileError { context: DiagnosticMessage },
 }
 impl ModelSqlCompileError {
     #[track_caller]
-    pub fn model_sql_compile_error(context: impl Into<String>) -> Self {
+    pub fn compile_error(context: impl Into<String>) -> Self {
         Self::CompileError {
-            context: DiagnosticMessage::new(context.into())
+            context: DiagnosticMessage::new(context.into()),
         }
     }
 }
-
-
-
 
 impl CreateModel {
     pub fn compile<F>(&self, src_resolver: F) -> Result<String, ModelSqlCompileError>

@@ -99,8 +99,6 @@ impl KafkaConnectorMeta {
 
             if mapped.is_empty() {
                 None
-            } else if mapped.len() == 1 && mapped[0].trim().is_empty() {
-                None
             } else {
                 Some(mapped)
             }

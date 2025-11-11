@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "json_example")]
 use serde_json::{Map, Value as Json};
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MacroFnCallType {

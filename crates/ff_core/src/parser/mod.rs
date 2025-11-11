@@ -16,7 +16,7 @@ pub enum ParseError {
     #[error("Value not found parsing node: {content:?}")]
     NotFound { content: DiagnosticMessage },
     #[error("Failed to parse node: {content:?}")]
-    ParseError { content: DiagnosticMessage },
+    ParserError { content: DiagnosticMessage },
     #[error("Failed to parse node: {content:?}")]
     UnexpectedError { content: DiagnosticMessage },
 }
@@ -30,8 +30,8 @@ impl ParseError {
     }
 
     #[track_caller]
-    pub fn parse_error(content: impl Into<String>) -> Self {
-        Self::ParseError {
+    pub fn parser_error(content: impl Into<String>) -> Self {
+        Self::ParserError {
             content: DiagnosticMessage::new(content.into()),
         }
     }
@@ -47,7 +47,7 @@ impl ParseError {
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, ParseError> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
     if let Some(projects) = &config.project.models.analytics_projects {
-        for (_, proj) in projects {
+        for proj in projects.values() {
             nodes.extend(parse_models(
                 &proj.layers,
                 config.project.models.dir.as_ref(),
@@ -94,7 +94,7 @@ pub fn parse_models(
             let config = models_config
                 .ok_or(ParseError::not_found("models config"))?
                 .get(&model_key)
-                .ok_or(ParseError::parse_error(format!(
+                .ok_or(ParseError::parser_error(format!(
                     "{model_key} not found in models config"
                 )))?
                 .to_owned();

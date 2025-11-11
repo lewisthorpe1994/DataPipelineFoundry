@@ -106,8 +106,6 @@ pub use crate::ast::foundry_ast::{
     CreateSimpleMessageTransformPredicate, PredicateReference, TransformCall,
 };
 
-
-
 use crate::ast::helpers::key_value_options::KeyValueOptions;
 use crate::ast::helpers::stmt_data_loading::StageParamsObject;
 

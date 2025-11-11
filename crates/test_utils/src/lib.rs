@@ -37,7 +37,6 @@ pub fn get_root_dir() -> PathBuf {
                 .expect("crate should live under <workspace>/crates/<crate>")
                 .to_path_buf()
         });
-    
 
     workspace_root.join("example/dvdrental_example")
 }
@@ -101,7 +100,7 @@ where
         }
     }
     let _guard = Reset(original);
-
+    drop(_lock);
     Ok(f().await)
 }
 

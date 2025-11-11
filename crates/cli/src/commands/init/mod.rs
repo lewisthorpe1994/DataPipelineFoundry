@@ -55,7 +55,8 @@ PRESET debezium.by_logical_table_router EXTEND (
     "topic.regex" = 'postgres\\.([^.]+).([^.]+)',
     "topic.replacement" = 'dvdrental.$2'
  );"#;
-const SAMPLE_KAFKA_SMT_PIPELINE: &str = "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE unwrap_router SOURCE (\n    reroute\n);\n";
+const SAMPLE_KAFKA_SMT_PIPELINE: &str =
+    "CREATE SIMPLE MESSAGE TRANSFORM PIPELINE unwrap_router SOURCE (\n    reroute\n);\n";
 const SAMPLE_KAFKA_SOURCE_CONNECTOR_SQL: &str = "CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS example_source_connector\nUSING KAFKA CLUSTER 'example_kafka_cluster' (\n    \"tasks.max\" = \"1\",\n    \"snapshot.mode\" = \"initial\",\n    \"topic.prefix\" = \"postgres\"\n)\nWITH CONNECTOR VERSION '3.1' AND PIPELINES(unwrap_router)\nFROM SOURCE DATABASE 'example_source_db';\n";
 const SAMPLE_KAFKA_SOURCE_CONNECTOR_YAML: &str = "name: example_source_connector\nschema:\n  public:\n    tables:\n      example_table:\n        columns:\n          - name: id\n          - name: payload\n          - name: created_at\n";
 const SAMPLE_KAFKA_SINK_CONNECTOR_SQL: &str = "CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SINK IF NOT EXISTS example_sink_connector\nUSING KAFKA CLUSTER 'example_kafka_cluster' (\n    \"tasks.max\" = \"1\",\n    \"insert.mode\" = \"insert\",\n    \"delete.enabled\" = \"false\",\n    \"topics.regex\" = \"example\\\\.([^.]+)\"\n) WITH CONNECTOR VERSION '3.1'\nINTO WAREHOUSE DATABASE 'example_warehouse' USING SCHEMA 'raw';\n";
@@ -156,6 +157,7 @@ where
             let mut file = fs::OpenOptions::new()
                 .write(true)
                 .create(true)
+                .truncate(false)
                 .open(write_path)
                 .unwrap_or_else(|_| panic!("Could not create {}", temp_path_str));
 
@@ -350,7 +352,6 @@ mod tests {
         let contents = read_to_string(&expected);
         assert!(!contents.trim().is_empty());
     }
-
 
     fn init_project() -> (TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();

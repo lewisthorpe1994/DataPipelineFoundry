@@ -141,7 +141,7 @@ impl MemoryCatalog {
 
         for (name, dec) in g.sources.iter() {
             for (s_name, schema) in &dec.database.schemas {
-                for (t_name, _) in &schema.tables {
+                for t_name in schema.tables.keys() {
                     nodes.push(CatalogNode {
                         name: name.clone(),
                         declaration: NodeDec::WarehouseSource(WarehouseSourceDec {
@@ -360,10 +360,8 @@ impl Register for MemoryCatalog {
     }
 
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError> {
-        // let meta = KafkaConnectorMeta::new(ast);
-
         let mut g = self.inner.write();
-        if g.connectors.contains_key(&ast.name().to_string()) {
+        if g.connectors.contains_key(ast.name()) {
             return Err(CatalogError::duplicate(ast.name().to_string()));
         }
         g.connectors.insert(ast.name().to_string(), ast);
@@ -396,10 +394,7 @@ impl Register for MemoryCatalog {
                     .transform_name_to_id
                     .get(&name.to_string())
                     .cloned()
-                    .ok_or(CatalogError::not_found(format!(
-                        "{} not found",
-                        name
-                    )))?;
+                    .ok_or(CatalogError::not_found(format!("{} not found", name)))?;
 
                 let args = if !step.args.is_empty() {
                     Some(
@@ -444,8 +439,8 @@ impl Register for MemoryCatalog {
             let parts: Vec<String> = name
                 .0
                 .iter()
-                .filter_map(|p| match p {
-                    ObjectNamePart::Identifier(ident) => Some(ident.value.clone()),
+                .map(|p| match p {
+                    ObjectNamePart::Identifier(ident) => ident.value.clone(),
                 })
                 .collect();
 

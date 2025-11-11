@@ -41,7 +41,6 @@ pub struct ModelsFileConfig {
     pub config: ModelConfig,
 }
 
-
 fn default_materialization() -> Materialize {
     Materialize::View
 }

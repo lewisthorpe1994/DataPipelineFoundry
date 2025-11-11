@@ -125,7 +125,6 @@ pub struct PredicateRef {
 }
 
 impl PredicateRef {
-
     pub(crate) fn write_flat_to_map(&self, map: &mut BTreeMap<String, Value>, smt_prefix: &str) {
         map.insert(
             format!("{smt_prefix}predicate"),

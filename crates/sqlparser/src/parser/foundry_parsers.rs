@@ -144,16 +144,17 @@ impl KafkaParse for Parser<'_> {
         {
             let v_ident = self.parse_value()?;
             if self.parse_keywords(&[Keyword::AND, Keyword::PIPELINES])
-                && self.consume_token(&Token::LParen) {
-                    loop {
-                        let ident = self.parse_identifier()?;
-                        pipeline_idents.push(ident);
-                        if self.consume_token(&Token::RParen) {
-                            break;
-                        }
-                        self.expect_token(&Token::Comma)?;
+                && self.consume_token(&Token::LParen)
+            {
+                loop {
+                    let ident = self.parse_identifier()?;
+                    pipeline_idents.push(ident);
+                    if self.consume_token(&Token::RParen) {
+                        break;
                     }
+                    self.expect_token(&Token::Comma)?;
                 }
+            }
             v_ident
         } else {
             return Err(ParserError::ParserError(
@@ -405,7 +406,6 @@ impl ModelParse for Parser<'_> {
         };
 
         if self.parse_keywords(&[Keyword::AS, Keyword::DROP]) {
-            
         } else {
             return Err(ParserError::ParserError(
                 "Expected a DROP statement to be present for CreateModel"
@@ -416,9 +416,9 @@ impl ModelParse for Parser<'_> {
 
         let model_type = if self.parse_keyword(Keyword::TABLE) {
             ObjectType::Table
-        } else if self.parse_keywords(&[Keyword::MATERIALIZED, Keyword::VIEW]) {
-            ObjectType::View
-        } else if self.parse_keyword(Keyword::VIEW) {
+        } else if self.parse_keywords(&[Keyword::MATERIALIZED, Keyword::VIEW])
+            || self.parse_keyword(Keyword::VIEW)
+        {
             ObjectType::View
         } else {
             return Err(ParserError::ParserError(
@@ -472,7 +472,7 @@ mod test {
 
     #[test]
     fn test_create_kafka_connector_source_no_pipeline() {
-    use sqlparser::parser::{Parser, GenericDialect};
+        use sqlparser::parser::{GenericDialect, Parser};
         let sql = r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
             "connector.class" = "io.confluent.connect.kafka.KafkaSourceConnector",
             "key.converter" = "org.apache.kafka.connect.json.JsonConverter",
@@ -512,7 +512,7 @@ mod test {
 
     #[test]
     fn test_parse_create_predicate() {
-        use sqlparser::parser::{Parser, GenericDialect};
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"CREATE KAFKA SIMPLE MESSAGE TRANSFORM PREDICATE 'pred_name'
         USING PATTERN '1234*' FROM KIND "TopicNameMatches""#;
@@ -523,8 +523,8 @@ mod test {
 
     #[test]
     fn test_parse_smt() {
-        use sqlparser::parser::{Parser, GenericDialect};
         use sqlparser::ast::Statement;
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"CREATE KAFKA SIMPLE MESSAGE TRANSFORM cast_hash_cols_to_int (
   type      = 'org.apache.kafka.connect.transforms.Cast$Value',
@@ -555,8 +555,8 @@ mod test {
 
     #[test]
     fn test_parse_smt_with_preset() {
-        use sqlparser::parser::{Parser, GenericDialect};
         use sqlparser::ast::Statement;
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"CREATE KAFKA SIMPLE MESSAGE TRANSFORM unwrap PRESET debezium.unwrap_default"#;
         let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
@@ -578,8 +578,8 @@ mod test {
 
     #[test]
     fn test_parse_smt_with_preset_and_overrides() {
-        use sqlparser::parser::{Parser, GenericDialect};
         use sqlparser::ast::Statement;
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"CREATE KAFKA SIMPLE MESSAGE TRANSFORM routed PRESET debezium.unwrap_default EXTEND (
   "delete.handling.mode" = 'rewrite'
@@ -605,8 +605,8 @@ mod test {
 
     #[test]
     fn test_parse_simple_message_transform_pipeline() {
-        use sqlparser::parser::{Parser, GenericDialect};
         use sqlparser::ast::Statement;
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"
         CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
@@ -634,8 +634,8 @@ mod test {
 
     #[test]
     fn test_parse_simple_message_transform_pipeline_with_alias() {
-        use sqlparser::parser::{Parser, GenericDialect};
         use sqlparser::ast::Statement;
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"
         CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline (
@@ -665,10 +665,10 @@ mod test {
     #[cfg(feature = "kafka")]
     #[test]
     fn test_create_kafka_connector_sink_no_pipeline() {
+        use common::types::KafkaConnectorType;
         use sqlparser::ast::Statement;
         use sqlparser::dialect::GenericDialect;
         use sqlparser::parser::Parser;
-        use common::types::KafkaConnectorType;
 
         let sql = r#"CREATE SINK KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
         "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
@@ -793,9 +793,9 @@ mod test {
 
     #[test]
     fn test_create_kafka_connector_sink_with_pipelines() {
-        use sqlparser::ast::Statement;
-        use sqlparser::parser::{Parser, GenericDialect};
         use common::types::KafkaConnectorType;
+        use sqlparser::ast::Statement;
+        use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"
     CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink

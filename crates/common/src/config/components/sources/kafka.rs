@@ -123,8 +123,8 @@ impl KafkaConnectorConfig {
             .flat_map(|(s_name, schema)| {
                 schema
                     .tables
-                    .iter()
-                    .map(move |(t_name, _)| format!("{}.{}", s_name, t_name))
+                    .keys()
+                    .map(move |t_name| format!("{}.{}", s_name, t_name))
             })
             .collect::<Vec<String>>()
             .join(",")

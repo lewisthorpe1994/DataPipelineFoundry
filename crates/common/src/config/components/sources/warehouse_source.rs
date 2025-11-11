@@ -77,9 +77,9 @@ impl DbConfigs {
             .schemas
             .iter()
             .flat_map(|(name, obj)| {
-                obj.tables.iter().map(move |(t_name, _)| {
-                    (config.database.name.clone(), name, t_name.clone())
-                })
+                obj.tables
+                    .keys()
+                    .map(move |t_name| (config.database.name.clone(), name, t_name.clone()))
             })
             .find(|(_, _, t)| t == table);
 

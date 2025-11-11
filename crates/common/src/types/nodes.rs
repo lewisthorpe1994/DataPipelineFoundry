@@ -25,7 +25,7 @@ impl ModelRef {
             name: name.into(),
         }
     }
-    pub fn to_string(&self) -> String {
+    pub fn to_identifier(&self) -> String {
         format!("{}.{}", self.schema, self.table)
     }
 }

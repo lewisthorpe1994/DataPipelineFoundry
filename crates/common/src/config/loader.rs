@@ -1,12 +1,8 @@
 use crate::config::components::connections::{AdapterConnectionDetails, DatabaseAdapterType};
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::global::FoundryConfig;
-use crate::config::components::model::{
-    ResolvedModelLayerConfig, ResolvedModelsConfig,
-};
-use crate::config::components::sources::kafka::{
-    KafkaConnectorConfig, KafkaSourceConfig,
-};
+use crate::config::components::model::{ResolvedModelLayerConfig, ResolvedModelsConfig};
+use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::{SourcePathConfig, SourcePaths};
 use crate::config::error::ConfigError;
@@ -114,10 +110,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         match config {
             Some(config) => {
                 let definitions_config = match &config.definitions {
-                    Some(def) => {
-                        
-                        load_config::<KafkaConnectorConfig>(def)?
-                    }
+                    Some(def) => load_config::<KafkaConnectorConfig>(def)?,
                     None => HashMap::new(),
                 };
                 (
@@ -139,7 +132,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
     let models_config = if let Some(proj) = &proj_config.models.analytics_projects {
         let mut resolved_layers: HashMap<String, ResolvedModelLayerConfig> = HashMap::new();
 
-        for (_, project) in proj {
+        for project in proj.values() {
             let configs: HashMap<String, ResolvedModelLayerConfig> = project
                 .layers
                 .iter()
