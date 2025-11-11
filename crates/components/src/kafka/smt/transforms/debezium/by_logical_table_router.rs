@@ -76,7 +76,7 @@ impl ByLogicalTableRouter {
         config: HashMap<String, String>,
         version: Version,
     ) -> Result<Self, TransformBuildError> {
-        let mut smt = Self::generated_new(config, version)?;
+        let smt = Self::generated_new(config, version)?;
 
         if let Some(regex) = smt.topic_regex.as_ref() {
             if regex.trim().is_empty() {

@@ -1,14 +1,13 @@
 use common::config::components::global::FoundryConfig;
 use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
-use common::config::components::sources::SourcePaths;
 use common::error::DiagnosticMessage;
 use common::traits::IsFileExtension;
 use common::types::sources::SourceType;
 use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
 use log::warn;
-use std::fmt::{Debug, Display};
-use std::path::{Path, PathBuf};
+use std::fmt::Debug;
+use std::path::Path;
 use thiserror::Error;
 use walkdir::WalkDir;
 
@@ -17,7 +16,7 @@ pub enum ParseError {
     #[error("Value not found parsing node: {content:?}")]
     NotFound { content: DiagnosticMessage },
     #[error("Failed to parse node: {content:?}")]
-    ParseError { content: DiagnosticMessage },
+    ParserError { content: DiagnosticMessage },
     #[error("Failed to parse node: {content:?}")]
     UnexpectedError { content: DiagnosticMessage },
 }
@@ -31,8 +30,8 @@ impl ParseError {
     }
 
     #[track_caller]
-    pub fn parse_error(content: impl Into<String>) -> Self {
-        Self::ParseError {
+    pub fn parser_error(content: impl Into<String>) -> Self {
+        Self::ParserError {
             content: DiagnosticMessage::new(content.into()),
         }
     }
@@ -48,15 +47,15 @@ impl ParseError {
 pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, ParseError> {
     let mut nodes: Vec<ParsedNode> = Vec::new();
     if let Some(projects) = &config.project.models.analytics_projects {
-        for (name, proj) in projects {
+        for proj in projects.values() {
             nodes.extend(parse_models(
                 &proj.layers,
-                (&config.project.models.dir).as_ref(),
+                config.project.models.dir.as_ref(),
                 config.models.as_ref(),
             )?)
         }
     }
-    let k_nodes = maybe_parse_kafka_nodes(&config)?;
+    let k_nodes = maybe_parse_kafka_nodes(config)?;
     if let Some(k) = k_nodes {
         nodes.extend(k);
     }
@@ -95,7 +94,7 @@ pub fn parse_models(
             let config = models_config
                 .ok_or(ParseError::not_found("models config"))?
                 .get(&model_key)
-                .ok_or(ParseError::parse_error(format!(
+                .ok_or(ParseError::parser_error(format!(
                     "{model_key} not found in models config"
                 )))?
                 .to_owned();
@@ -115,7 +114,7 @@ pub fn parse_models(
 }
 
 fn make_model_identifier(schema: &str, stem: &str) -> String {
-    if stem.starts_with(&format!("{}", schema)) {
+    if stem.starts_with(&schema.to_string()) {
         stem.to_string()
     } else if stem.starts_with('_') {
         format!("{}{}", schema, stem)
@@ -137,7 +136,7 @@ pub fn maybe_parse_kafka_nodes(
             .ok_or(ParseError::not_found(
                 "Expected definitions for kafka sources",
             ))?;
-        Ok(Some(parse_kafka_dir(&kafka_def_path)?))
+        Ok(Some(parse_kafka_dir(kafka_def_path)?))
     } else {
         warn!("No kafka nodes found");
         Ok(None)

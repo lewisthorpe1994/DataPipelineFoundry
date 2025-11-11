@@ -1,5 +1,4 @@
 use crate::errors::KafkaConnectorCompileError;
-use catalog::PredicateDecl;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use serde_json::Value;
 use sqlparser::ast::{AstValueFormatter, PredicateReference};
@@ -126,18 +125,6 @@ pub struct PredicateRef {
 }
 
 impl PredicateRef {
-    pub(crate) fn write_flat<M: SerializeMap>(
-        &self,
-        map: &mut M,
-        smt_prefix: &str,
-    ) -> Result<(), M::Error> {
-        map.serialize_entry(&(smt_prefix.to_string() + "predicate"), &self.name)?;
-        if let Some(neg) = self.negate {
-            map.serialize_entry(&(smt_prefix.to_string() + "negate"), &neg)?;
-        }
-        Ok(())
-    }
-
     pub(crate) fn write_flat_to_map(&self, map: &mut BTreeMap<String, Value>, smt_prefix: &str) {
         map.insert(
             format!("{smt_prefix}predicate"),

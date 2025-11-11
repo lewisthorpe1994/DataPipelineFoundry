@@ -5,16 +5,17 @@ use crate::ast::{
     ViewColumnDef,
 };
 use crate::parser::ParserError;
+use common::error::DiagnosticMessage;
+#[cfg(feature = "kafka")]
+use common::types::kafka::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType};
 use core::fmt;
 use core::fmt::{Debug, Display, Formatter};
 #[cfg(feature = "json_example")]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
 
-#[cfg(feature = "kafka")]
-use common::types::kafka::{KafkaConnectorProvider, KafkaConnectorSupportedDb, KafkaConnectorType};
-
-fn hashmap_from_ast_kv(kv: &Vec<(Ident, ValueWithSpan)>) -> HashMap<String, String> {
+fn hashmap_from_ast_kv(kv: &[(Ident, ValueWithSpan)]) -> HashMap<String, String> {
     kv.iter()
         .map(|(k, v)| (k.value.clone(), v.formatted_string()))
         .collect()
@@ -367,7 +368,7 @@ pub struct CreateSimpleMessageTransformPredicate {
 impl Display for CreateSimpleMessageTransformPredicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pattern = match &self.pattern {
-            Some(p) => format!("USING PATTERN {}", p.to_string()),
+            Some(p) => format!("USING PATTERN {}", p),
             None => String::new(),
         };
 
@@ -583,8 +584,8 @@ pub enum ModelDef {
 impl Display for ModelDef {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Table(table) => write!(f, "{}", table.to_string()),
-            Self::View(view) => write!(f, "{}", view.to_string()),
+            Self::Table(table) => write!(f, "{}", table),
+            Self::View(view) => write!(f, "{}", view),
         }
     }
 }
@@ -599,46 +600,50 @@ pub struct CreateModel {
     pub macro_fn_call: Vec<MacroFnCall>,
 }
 
-impl fmt::Display for CreateModel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let model = match &self.model {
-            ModelDef::Table(stmt) => "TABLE",
-            ModelDef::View(stmt) => {
-                if stmt.materialized {
-                    "MATERIALIZED VIEW"
-                } else {
-                    "VIEW"
-                }
+fn fmt_create_model(f: &mut Formatter<'_>, model: &CreateModel) -> fmt::Result {
+    let m = match &model.model {
+        ModelDef::Table(_) => "TABLE",
+        ModelDef::View(stmt) => {
+            if stmt.materialized {
+                "MATERIALIZED VIEW"
+            } else {
+                "VIEW"
             }
-        };
+        }
+    };
 
-        write!(
-            f,
-            "CREATE MODEL {schema}.{name} AS\n\
+    write!(
+        f,
+        "CREATE MODEL {schema}.{name} AS\n\
             DROP {model} IF EXISTS {schema}.{name} CASCADE;\n\
             {statement}",
-            name = self.name,
-            model = model,
-            statement = self.model,
-            schema = self.schema,
-        )
-    }
+        name = model.name,
+        model = m,
+        statement = model.model,
+        schema = model.schema,
+    )
 }
-pub struct ModelSqlCompileError(pub String);
 
-impl Debug for ModelSqlCompileError {
+impl fmt::Display for CreateModel {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+        fmt_create_model(f, self)
     }
 }
 
-impl Display for ModelSqlCompileError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+#[derive(Debug, Error)]
+pub enum ModelSqlCompileError {
+    #[error("SQL compilation error {context}")]
+    CompileError { context: DiagnosticMessage },
+}
+impl ModelSqlCompileError {
+    #[track_caller]
+    pub fn compile_error(context: impl Into<String>) -> Self {
+        Self::CompileError {
+            context: DiagnosticMessage::new(context.into()),
+        }
     }
 }
 
-impl std::error::Error for ModelSqlCompileError {}
 impl CreateModel {
     pub fn compile<F>(&self, src_resolver: F) -> Result<String, ModelSqlCompileError>
     where
@@ -663,7 +668,7 @@ impl CreateModel {
             }
         }
 
-        let sql = if mappings.len() > 0 {
+        let sql = if !mappings.is_empty() {
             let mut sql = self.model.to_string();
             for mapping in mappings {
                 if let (Some(replacement), Some(resolved)) =
@@ -682,7 +687,7 @@ impl CreateModel {
         };
 
         let model = match &self.model {
-            ModelDef::Table(stmt) => "TABLE",
+            ModelDef::Table(_) => "TABLE",
             ModelDef::View(stmt) => {
                 if stmt.materialized {
                     "MATERIALIZED VIEW"

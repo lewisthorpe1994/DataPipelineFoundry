@@ -1,8 +1,5 @@
-use crate::config::components::sources::SourcePaths;
-use crate::config::loader::load_config;
-use crate::config::traits::{ConfigName, IntoConfigVec};
+use crate::config::traits::ConfigName;
 use crate::types::schema::Database;
-use crate::types::sources::SourceType;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,12 +48,6 @@ pub struct WarehouseSourceFileConfigs {
     warehouse_sources: Vec<DbConfig>,
 }
 
-impl IntoConfigVec<DbConfig> for WarehouseSourceFileConfigs {
-    fn vec(self) -> Vec<DbConfig> {
-        self.warehouse_sources
-    }
-}
-
 impl From<HashMap<String, DbConfig>> for DbConfigs {
     fn from(value: HashMap<String, DbConfig>) -> Self {
         Self::new(value)
@@ -86,9 +77,9 @@ impl DbConfigs {
             .schemas
             .iter()
             .flat_map(|(name, obj)| {
-                obj.tables.iter().map(move |(t_name, table)| {
-                    (config.database.name.clone(), name, t_name.clone())
-                })
+                obj.tables
+                    .keys()
+                    .map(move |t_name| (config.database.name.clone(), name, t_name.clone()))
             })
             .find(|(_, _, t)| t == table);
 

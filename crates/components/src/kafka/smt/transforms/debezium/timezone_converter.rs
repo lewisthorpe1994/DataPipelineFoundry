@@ -7,7 +7,6 @@ use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::fmt::format;
 
 #[derive(Debug, Clone, Serialize, ConnectorVersionedDerive)]
 #[parser(error = crate::smt::errors::TransformBuildError)]

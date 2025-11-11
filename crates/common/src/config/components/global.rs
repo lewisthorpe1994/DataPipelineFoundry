@@ -4,7 +4,7 @@ use crate::config::components::connections::{
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ResolvedModelsConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
-use crate::config::components::sources::warehouse_source::{DbConfig, DbConfigError};
+use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
 use crate::config::error::ConfigError;
 use std::collections::HashMap;
@@ -23,6 +23,7 @@ pub struct FoundryConfig {
     pub source_paths: SourcePaths,
 }
 impl FoundryConfig {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         project: FoundryProjectConfig,
         warehouse_source: HashMap<String, DbConfig>,
@@ -78,7 +79,6 @@ impl FoundryConfig {
             name,
             self.kafka_connectors
                 .keys()
-                .into_iter()
                 .map(|k| k.to_string())
                 .collect::<Vec<String>>()
                 .join(", "),
@@ -105,9 +105,9 @@ impl FoundryConfig {
             .schemas
             .iter()
             .flat_map(|(name, obj)| {
-                obj.tables.iter().map(move |(t_name, table)| {
-                    (config.database.name.clone(), name, t_name.clone())
-                })
+                obj.tables
+                    .keys()
+                    .map(move |t_name| (config.database.name.clone(), name, t_name.clone()))
             })
             .find(|(_, _, t)| t == table);
 

@@ -2875,6 +2875,7 @@ dependencies = [
  "serde_json",
  "simple_logger",
  "sqlparser_derive",
+ "thiserror",
 ]
 
 [[package]]

@@ -7,15 +7,11 @@ use crate::smt::transforms::debezium::{
     TimezoneConverter,
 };
 use crate::smt::{SmtClass, SmtKind, SmtPreset, Transform};
-use crate::version_consts::DBZ_VERSION_3_3;
-use common::error::DiagnosticMessage;
 use connector_versioning::Version;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
-use thiserror::Error;
 
 fn predicate_of(kind: &SmtKind) -> Option<&PredicateRef> {
     match kind {
@@ -358,61 +354,6 @@ fn populate_decode_logical_message_content(
     smt: &DecodeLogicalDecodingMessageContent,
 ) {
     insert_optional(map, prefix, "fields.null.include", &smt.converted_timezone);
-}
-
-fn populate_filter(map: &mut BTreeMap<String, Value>, prefix: &str, smt: &Filter) {
-    insert_optional(map, prefix, "topic.regex", &smt.topic_regex);
-    insert_optional(map, prefix, "language", &smt.language);
-    insert_optional(map, prefix, "condition", &smt.condition);
-    insert_optional(map, prefix, "expression", &smt.expression);
-    insert_optional(map, prefix, "null.handling.mode", &smt.null_handling_mode);
-}
-
-fn populate_header_to_value(map: &mut BTreeMap<String, Value>, prefix: &str, smt: &HeaderToValue) {
-    insert_optional(map, prefix, "headers", &smt.headers);
-    insert_optional(map, prefix, "fields", &smt.fields);
-    insert_optional(map, prefix, "operation", &smt.operation);
-}
-
-fn populate_outbox_event_router(
-    map: &mut BTreeMap<String, Value>,
-    prefix: &str,
-    smt: &OutboxEventRouter,
-) {
-    insert_optional(map, prefix, "id", &smt.id);
-    insert_optional(map, prefix, "aggregatetype", &smt.aggregatetype);
-    insert_optional(map, prefix, "aggregateid", &smt.aggregateid);
-    insert_optional(map, prefix, "payload", &smt.payload);
-}
-
-fn populate_partition_routing(
-    map: &mut BTreeMap<String, Value>,
-    prefix: &str,
-    smt: &PartitionRouting,
-) {
-    insert_optional(
-        map,
-        prefix,
-        "partition.payload.fields",
-        &smt.partition_payload_fields,
-    );
-    insert_optional(map, prefix, "partition.topic.num", &smt.partition_topic_num);
-    insert_optional(
-        map,
-        prefix,
-        "partition.hash.function",
-        &smt.partition_hash_function,
-    );
-}
-
-fn populate_timezone_converter(
-    map: &mut BTreeMap<String, Value>,
-    prefix: &str,
-    smt: &TimezoneConverter,
-) {
-    insert_optional(map, prefix, "converted.timezone", &smt.converted_timezone);
-    insert_optional(map, prefix, "include.list", &smt.include_list);
-    insert_optional(map, prefix, "exclude.list", &smt.exclude_list);
 }
 
 fn populate_custom(map: &mut BTreeMap<String, Value>, prefix: &str, custom: &Custom) {

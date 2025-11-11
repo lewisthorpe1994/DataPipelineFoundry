@@ -1,11 +1,9 @@
 use crate::errors::KafkaConnectorCompileError;
 use crate::kafka::errors::ValidationError;
-use crate::predicates::Predicates;
-use crate::smt::utils::Transforms;
 use crate::traits::{ComponentVersion, ParseUtils};
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned as ConnectorVersionedDerive;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Common Kafka Connect per-connector settings (non–Debezium-specific).
 /// Flatten this into source/sink connector structs to accept these keys at top level.
@@ -139,12 +137,7 @@ impl CommonKafkaConnector {
     ///
     /// This is generic over any config map that implements `ParseUtils`
     /// (e.g. `HashMap<String, String>`; or `serde_json::Map<String, Value>` if you implement `ParseUtils` for it).
-    pub fn new<C>(
-        mut config: C,
-        transforms: Option<Transforms>,
-        predicates: Option<Predicates>,
-        version: Version,
-    ) -> Result<Self, KafkaConnectorCompileError>
+    pub fn new<C>(mut config: C, version: Version) -> Result<Self, KafkaConnectorCompileError>
     where
         C: ParseUtils<KafkaConnectorCompileError>,
     {

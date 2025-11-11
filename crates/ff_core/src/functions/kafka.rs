@@ -40,7 +40,7 @@ pub async fn handle_kafka_compile(
 
             client
                 .validate_connector(
-                    &compiled.config.connector_class(),
+                    compiled.config.connector_class(),
                     &compiled.to_json().map_err(FFError::compile)?,
                 )
                 .await

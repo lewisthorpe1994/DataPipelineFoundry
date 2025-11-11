@@ -52,7 +52,7 @@ pub struct ValueSpec {
 }
 
 pub fn version_supported(version: Version, supported: &[Version]) -> bool {
-    supported.iter().any(|v| *v == version)
+    supported.contains(&version)
 }
 
 pub fn values_for_version(
@@ -106,7 +106,7 @@ pub trait ConnectorVersioned: Serialize {
 
         for (key, val) in obj {
             // serde has already applied skip_serializing_if; only present keys matter
-            if let Some(_non_null) = present(&val) {
+            if let Some(_non_null) = present(val) {
                 let allowed = compat.get(key.as_str()).copied().unwrap_or(Compat::Always);
                 if !allowed.allows(target) {
                     errs.push(format!(
@@ -167,7 +167,7 @@ pub trait ConnectorVersioned: Serialize {
         let compat: HashMap<&'static str, Compat> = Self::field_compat().iter().copied().collect();
 
         for (k, val) in obj {
-            if !present(&val).is_some() {
+            if present(val).is_none() {
                 continue;
             }
             let allowed = compat.get(k.as_str()).copied().unwrap_or(Compat::Always);

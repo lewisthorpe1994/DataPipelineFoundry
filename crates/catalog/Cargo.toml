@@ -18,4 +18,5 @@ common = { workspace = true }
 thiserror = "2.0.12"
 chrono = { version = "0.4.41", features = ["serde"] }
 
-
+[lints]
+workspace = true

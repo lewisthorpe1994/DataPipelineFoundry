@@ -2,16 +2,11 @@ use crate::ast::{
     Expr, Function, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
     Query, SetExpr, TableFactor, TableWithJoins, ValueWithSpan,
 };
-use crate::keywords::Keyword;
-use crate::parser::{Parser, ParserError};
-use crate::tokenizer::Token;
-use core::fmt::{Display, Formatter};
+use crate::parser::ParserError;
 #[cfg(feature = "json_example")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "json_example")]
 use serde_json::{Map, Value as Json};
-
-use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -31,7 +26,7 @@ pub struct MacroFnCall {
 pub fn collect_ref_source_calls(query: &Query) -> Vec<MacroFnCall> {
     let mut refs = Vec::new();
     let mut sources = Vec::new();
-    let _ = collect_in_query(&query, &mut refs, &mut sources);
+    let _ = collect_in_query(query, &mut refs, &mut sources);
 
     fn into_macro(kind: MacroFnCallType, func: Function) -> MacroFnCall {
         let call_def = func.to_string();

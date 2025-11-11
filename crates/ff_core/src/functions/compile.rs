@@ -5,7 +5,6 @@ use common::error::FFError;
 use components::KafkaConnector;
 use dag::types::DagNodeType;
 use dag::ModelsDag;
-use log::info;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::fs;

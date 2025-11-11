@@ -1,16 +1,13 @@
 use crate::connectors::base::CommonKafkaConnector;
-use crate::connectors::SoftValidate;
 use crate::errors::*;
-use crate::predicates::{Predicate, Predicates};
-use crate::smt::transforms::debezium::ExtractNewRecordState;
+use crate::predicates::Predicates;
 use crate::smt::utils::Transforms;
-use crate::smt::{SmtKind, Transform};
-use crate::traits::{ComponentVersion, ParseUtils, RaiseErrorOnNone};
+use crate::smt::SmtKind;
+use crate::traits::ComponentVersion;
 use crate::HasConnectorClass;
 use connector_versioning::{ConnectorVersioned, Version};
 use connector_versioning_derive::ConnectorVersioned;
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde::Serialize;
 use std::collections::HashMap;
 
 pub const CONNECTOR_CLASS_NAME: &str = "io.debezium.connector.postgresql.PostgresConnector";

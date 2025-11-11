@@ -185,7 +185,7 @@ impl ErrorBag {
 
     pub fn check_allowed<'a>(&mut self, name: &str, value: Option<&'a str>, allowed: &[&'a str]) {
         if let Some(v) = value {
-            if !allowed.iter().any(|a| *a == v) {
+            if !allowed.contains(&v) {
                 self.push(format!(
                     "{} has invalid value '{}'. Allowed: {}",
                     name,

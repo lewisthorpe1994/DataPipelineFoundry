@@ -1,4 +1,4 @@
-use crate::config::components::model::{ModelConfig, ResolvedModelConfig};
+use crate::config::components::model::ResolvedModelConfig;
 use crate::types::Materialize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -25,7 +25,7 @@ impl ModelRef {
             name: name.into(),
         }
     }
-    pub fn to_string(&self) -> String {
+    pub fn to_identifier(&self) -> String {
         format!("{}.{}", self.schema, self.table)
     }
 }

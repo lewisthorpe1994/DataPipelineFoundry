@@ -1,15 +1,10 @@
-use crate::config::components::sources::SourcePaths;
-use crate::config::loader::load_config;
-use crate::config::traits::{ConfigName, IntoConfigVec};
-use crate::error::ConfigError;
-use crate::types::schema::{Schema, Table};
-use crate::types::sources::SourceType;
+use crate::config::traits::ConfigName;
+use crate::types::schema::Schema;
 use minijinja::{Error as JinjaError, ErrorKind as JinjaErrorKind};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt::{format, Debug, Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
-use std::path::{Path, PathBuf};
 
 // ---------------- KafkaSource Config ----------------
 #[derive(Debug, Deserialize, Clone)]
@@ -55,17 +50,6 @@ impl IntoIterator for KafkaSourceConfigs {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
-    }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct KafkaSourceFileConfigs {
-    kafka_sources: Vec<KafkaSourceConfig>,
-}
-
-impl IntoConfigVec<KafkaSourceConfig> for KafkaSourceFileConfigs {
-    fn vec(self) -> Vec<KafkaSourceConfig> {
-        self.kafka_sources
     }
 }
 
@@ -139,8 +123,8 @@ impl KafkaConnectorConfig {
             .flat_map(|(s_name, schema)| {
                 schema
                     .tables
-                    .iter()
-                    .map(move |(t_name, t)| format!("{}.{}", s_name, t_name))
+                    .keys()
+                    .map(move |t_name| format!("{}.{}", s_name, t_name))
             })
             .collect::<Vec<String>>()
             .join(",")
@@ -155,7 +139,7 @@ impl KafkaConnectorConfig {
                         if !fields_only {
                             format!("{}.{}.{}", s_name, t_name, col.name)
                         } else {
-                            format!("{}", col.name)
+                            col.name.to_string()
                         }
                     })
                 })

@@ -1,4 +1,7 @@
 use crate::error::DagError;
+use catalog::{KafkaConnectorMeta, MemoryCatalog};
+use common::config::components::global::FoundryConfig;
+use components::{KafkaSinkConnectorConfig, KafkaSourceConnectorConfig};
 use petgraph::Direction;
 use sqlparser::ast::{
     CreateKafkaConnector, CreateModel, CreateSimpleMessageTransform,
@@ -35,7 +38,7 @@ pub type DagResult<T> = Result<T, DagError>;
 
 #[derive(Debug, Clone)]
 pub enum NodeAst {
-    Model(CreateModel),
+    Model(Box<CreateModel>),
     KafkaSmt(CreateSimpleMessageTransform),
     KafkaSmtPipeline(CreateSimpleMessageTransformPipeline),
     KafkaConnector(CreateKafkaConnector),
@@ -90,4 +93,24 @@ impl From<TransitiveDirection> for Direction {
             TransitiveDirection::Outgoing => Direction::Outgoing,
         }
     }
+}
+
+pub struct BuildSrcKafkaConnectorNodeArgs<'a> {
+    pub connector: KafkaSourceConnectorConfig,
+    pub config: &'a FoundryConfig,
+    pub meta: &'a KafkaConnectorMeta,
+    pub catalog: &'a MemoryCatalog,
+    pub connector_json: String,
+    pub target: Option<String>,
+    pub current_topics: &'a BTreeSet<String>,
+}
+
+pub struct BuildSinkKafkaConnectorNodeArgs<'a> {
+    pub connector: KafkaSinkConnectorConfig,
+    pub config: &'a FoundryConfig,
+    pub meta: &'a KafkaConnectorMeta,
+    pub catalog: &'a MemoryCatalog,
+    pub connector_json: String,
+    pub target: Option<String>,
+    pub current_topics: &'a BTreeSet<String>,
 }

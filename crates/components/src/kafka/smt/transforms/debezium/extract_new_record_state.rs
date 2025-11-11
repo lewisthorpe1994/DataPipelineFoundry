@@ -101,7 +101,7 @@ impl ExtractNewRecordState {
         config: HashMap<String, String>,
         version: Version,
     ) -> Result<Self, TransformBuildError> {
-        let mut smt = Self::generated_new(config, version)?;
+        let smt = Self::generated_new(config, version)?;
 
         if let Some(arg) = smt.route_by_field.as_ref() {
             if arg.trim().is_empty() {

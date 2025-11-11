@@ -1,20 +1,19 @@
 use crate::{AsyncDatabaseAdapter, DatabaseAdapterError};
 use async_trait::async_trait;
-use std::io::ErrorKind;
 use tokio_postgres::error::SqlState;
-use tokio_postgres::{Client, Error, NoTls, Row};
+use tokio_postgres::{Client, Error, NoTls};
 /* ----- error conversion stays almost the same ----- */
 
 impl From<Error> for DatabaseAdapterError {
     fn from(err: Error) -> Self {
         if let Some(e) = err.as_db_error() {
-            match e.code() {
-                &SqlState::CONNECTION_DOES_NOT_EXIST => {
+            match *e.code() {
+                SqlState::CONNECTION_DOES_NOT_EXIST => {
                     DatabaseAdapterError::invalid_connection(e.to_string())
                 }
-                &SqlState::SYNTAX_ERROR => DatabaseAdapterError::syntax(e.to_string()),
-                &SqlState::IO_ERROR => {
-                    DatabaseAdapterError::from(std::io::Error::new(ErrorKind::Other, e.to_string()))
+                SqlState::SYNTAX_ERROR => DatabaseAdapterError::syntax(e.to_string()),
+                SqlState::IO_ERROR => {
+                    DatabaseAdapterError::from(std::io::Error::other(e.to_string()))
                 }
                 _ => DatabaseAdapterError::unexpected(e.to_string()),
             }
