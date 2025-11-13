@@ -2,9 +2,9 @@ FROM mcr.microsoft.com/devcontainers/rust:2-1-bullseye
 
 WORKDIR /workspace
 
-# System dependencies needed for crates that rely on OpenSSL
+# System dependencies needed for crates that rely on OpenSSL and the web UI build
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests first to leverage Docker layer caching when dependencies do not change

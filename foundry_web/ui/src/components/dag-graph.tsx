@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import cytoscape from "cytoscape";
 import dagre from "cytoscape-dagre";
 
-import kafkaIcon from "@/assets/kafka.svg?url";
+import kafkaIcon from "@/assets/Apache_Kafka_logo.svg?url";
 import dpfIcon from "@/assets/dpf.svg?url";
 import dbIcon from "@/assets/db.svg?url";
 import externalIcon from "@/assets/external.svg?url";
@@ -58,7 +58,7 @@ const graphStyle: CyStylesheet[] = [
       "text-max-width": "240px",
       "line-height": 1.35,
       width: 360,
-      height: 190,
+      height: 220,
       ghost: "yes",
       "ghost-offset-x": "2px",
       "ghost-offset-y": "4px",
@@ -83,32 +83,13 @@ const graphStyle: CyStylesheet[] = [
     } as any
   },
   {
-    selector: "node[resource_type=\"source\"]",
+    selector: "node[resource_type=\"DB\"]",
     style: { "background-color": "#5fb825", "border-color": "#5fb825" } as any
   },
   {
-    selector: "node[resource_type=\"exposure\"]",
-    style: { "background-color": "#ff694b", "border-color": "#ff694b" } as any
+    selector: "node[resource_type=\"Kafka\"]",
+    style: { "background-color": "#ad7608", "border-color": "#ad7608" } as any
   },
-  {
-    selector: "node[resource_type=\"metric\"]",
-    style: { "background-color": "#ff5688", "border-color": "#ff5688" } as any
-  },
-  {
-    selector: "node[resource_type=\"semantic_model\"]",
-    style: { "background-color": "#ffa8c2", "border-color": "#ffa8c2" } as any
-  },
-  {
-    selector: "node[resource_type=\"saved_query\"]",
-    style: { "background-color": "#ff7f50", "border-color": "#ff7f50" } as any
-  },
-  {
-    selector: "node[resource_type=\"external\"]",
-    style: {
-      "background-color": "#64748b",
-      "border-color": "#475569"
-    } as any
-  }
 ];
 
 interface DagGraphProps {
@@ -175,7 +156,7 @@ function buildElements(manifest: Manifest): CyElement[] {
       data: {
         id: node.name,
         label: formatLabel(node.name),
-        resource_type: node.resource_type ?? "model",
+        resource_type: node.node_type ?? "model",
         icon
       },
       classes: "horizontal"

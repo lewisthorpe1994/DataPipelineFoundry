@@ -1,10 +1,17 @@
 mod commands;
 
-use crate::commands::compile::handle_compile;
-use crate::commands::handle_init;
-use crate::commands::init::InitArgs;
-use crate::commands::kafka::{handle_kafka, KafkaSubcommand};
-use crate::commands::run::{handle_run, RunArgs};
+use crate::commands::{
+    handle_run,
+    handle_web,
+    handle_kafka,
+    handle_compile,
+    handle_init,
+    InitArgs,
+    KafkaSubcommand,
+    RunArgs,
+    WebArgs,
+};
+
 use clap::{Parser, Subcommand};
 use common::error::FFError;
 use std::path::PathBuf;
@@ -42,6 +49,8 @@ pub enum Cmd {
     Graph,
     /// Clean generated files
     Clean,
+    /// Run the Foundry web UI (backend + frontend)
+    Web(WebArgs),
 }
 fn run_cmd(func: Result<(), FFError>) {
     if let Err(e) = func {
@@ -85,7 +94,8 @@ fn main() {
         }
         Cmd::Compile => run_cmd(handle_compile(cli.config_path.clone())),
         Cmd::Kafka(args) => run_cmd(handle_kafka(&args, cli.config_path.clone())),
-        Cmd::Run(args) => run_cmd(handle_run(args.model, cli.config_path)),
+        Cmd::Run(args) => run_cmd(handle_run(args.model, cli.config_path.clone())),
+        Cmd::Web(args) => run_cmd(handle_web(args, cli.config_path.clone())),
         _ => unimplemented!("Not implemented yet!"),
     }
 }

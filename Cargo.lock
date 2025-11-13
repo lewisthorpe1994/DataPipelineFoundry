@@ -916,6 +916,7 @@ dependencies = [
  "common",
  "components",
  "ff_core",
+ "foundry_backend",
  "log",
  "minijinja",
  "serde",
