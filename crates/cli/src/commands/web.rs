@@ -28,10 +28,6 @@ pub struct WebArgs {
     /// Path to the frontend workspace (defaults to foundry_web/ui)
     #[arg(long)]
     pub frontend_dir: Option<PathBuf>,
-
-    /// npm script to run for the frontend
-    #[arg(long, default_value = "dev")]
-    pub frontend_script: String,
 }
 
 pub fn handle_web(args: WebArgs, config_path: Option<PathBuf>) -> Result<(), FFError> {
@@ -48,7 +44,7 @@ pub fn handle_web(args: WebArgs, config_path: Option<PathBuf>) -> Result<(), FFE
     let mut frontend_child = if args.no_frontend {
         None
     } else {
-        Some(spawn_frontend(&frontend_dir, &args.frontend_script)?)
+        Some(spawn_frontend(&frontend_dir)?)
     };
 
     init_logging();
@@ -111,7 +107,7 @@ fn default_frontend_dir() -> PathBuf {
     workspace_root.join("foundry_web/ui")
 }
 
-fn spawn_frontend(dir: &Path, script: &str) -> Result<Child, FFError> {
+fn spawn_frontend(dir: &Path) -> Result<Child, FFError> {
     if !dir.exists() {
         return Err(FFError::run_msg(format!(
             "frontend directory '{}' does not exist",
@@ -121,7 +117,7 @@ fn spawn_frontend(dir: &Path, script: &str) -> Result<Child, FFError> {
 
     Command::new("npm")
         .arg("run")
-        .arg(script)
+        .arg("dev")
         .current_dir(dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

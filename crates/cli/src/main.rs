@@ -1,15 +1,8 @@
 mod commands;
 
 use crate::commands::{
-    handle_run,
-    handle_web,
-    handle_kafka,
-    handle_compile,
-    handle_init,
-    InitArgs,
-    KafkaSubcommand,
-    RunArgs,
-    WebArgs,
+    handle_compile, handle_init, handle_kafka, handle_run, handle_web, InitArgs, KafkaSubcommand,
+    RunArgs, WebArgs,
 };
 
 use clap::{Parser, Subcommand};

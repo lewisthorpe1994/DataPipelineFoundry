@@ -14,6 +14,9 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY foundry_web ./foundry_web
 
+# Install UI dependencies so `npm run` commands used by the CLI succeed
+RUN cd foundry_web/ui && npm install
+
 # Build and install the CLI during image build so it can be reused at runtime
 RUN CARGO_TARGET_DIR=/tmp/devcontainer-target cargo install --path crates/cli --locked --root /usr/local
 
