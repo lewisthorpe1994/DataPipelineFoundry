@@ -8,12 +8,12 @@ import ReactFlow, {
   Edge,
   EdgeProps,
   EdgeTypes,
+  Handle,
   MarkerType,
   Node,
   NodeProps,
   NodeTypes,
   Position,
-  Handle,
   getSmoothStepPath,
   useEdgesState,
   useNodesState
@@ -27,6 +27,8 @@ import dbIcon from "@/assets/db.svg?url";
 import externalIcon from "@/assets/external.svg?url";
 import { cn } from "@/lib/utils";
 import type { Manifest } from "@/types/manifest";
+
+import "./dag-graph.css";
 
 interface DagGraphProps {
   manifest: Manifest;
@@ -53,8 +55,8 @@ const ICONS = {
   none: undefined
 } as const;
 
-const NODE_WIDTH = 380;
-const NODE_HEIGHT = 190;
+const NODE_WIDTH = 360;
+const NODE_HEIGHT = 180;
 
 const nodeTypes: NodeTypes = { turbo: TurboNode };
 const edgeTypes: EdgeTypes = { turbo: TurboEdge };
@@ -80,7 +82,7 @@ export function DagGraph({ manifest }: DagGraphProps) {
   }, [layouted.nodes, layouted.edges, setNodes, setEdges]);
 
   return (
-    <div className="absolute inset-0 h-full w-full overflow-hidden rounded-xl border border-border bg-slate-950">
+    <div className="dag-graph absolute inset-0 h-full w-full overflow-hidden rounded-xl border border-border">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -89,20 +91,19 @@ export function DagGraph({ manifest }: DagGraphProps) {
         defaultEdgeOptions={defaultEdgeOptions}
         fitView
         fitViewOptions={{ padding: 0.25 }}
-        minZoom={0.4}
-        maxZoom={1.4}
+        minZoom={0.08}
+        maxZoom={1.5}
         nodesConnectable={false}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        panOnScroll
-        zoomOnPinch
         zoomOnScroll
+        zoomOnPinch
         panOnDrag
         proOptions={{ hideAttribution: true }}
         className="h-full w-full"
       >
         <Background id="turbo-grid" variant={BackgroundVariant.Dots} size={1} gap={24} color="#1f2937" />
-        <Controls showInteractive={false} className="border-none bg-slate-900/80 text-white" />
+        <Controls showInteractive={false} />
       </ReactFlow>
     </div>
   );
@@ -182,7 +183,7 @@ function buildGraph(manifest: Manifest): LayoutResult {
 function layout(nodes: Node<TurboNodeData>[], edges: Edge<TurboEdgeData>[]) {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: "LR", nodesep: 120, ranksep: 160, edgesep: 40 });
+  graph.setGraph({ rankdir: "LR", nodesep: 150, ranksep: 180, edgesep: 60 });
 
   nodes.forEach((node) => {
     graph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
@@ -211,49 +212,45 @@ function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
   const handleGlow = `0 6px 20px ${data.accentColor}66`;
 
   return (
-    <div className="relative h-full w-full">
+    <div className="turbo-node relative h-full w-full">
       <Handle
         type="target"
         position={Position.Left}
         isConnectable={false}
         style={{
           background: data.accentColor,
-          width: 24,
-          height: 24,
+          width: 20,
+          height: 20,
           borderRadius: 999,
           border: "3px solid #020617",
           boxShadow: handleGlow
         }}
         className="-translate-x-1/2"
       />
-      <div
-        className={cn(
-          "flex h-full w-full flex-col rounded-3xl border-2 text-white shadow-[0_30px_80px_rgba(15,23,42,0.6)]",
-          selected && "ring-2 ring-cyan-300/70"
-        )}
+      <div className={cn("turbo-frame", selected && "selected")}
         style={{
-          borderColor: data.accentColor,
-          backgroundImage: data.background,
-          boxShadow: `0 20px 60px rgba(15,23,42,0.45), inset 0 0 0 1px ${data.accentColor}33`
+          boxShadow: `0 30px 80px rgba(15,23,42,0.5)`
         }}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-white/15 px-6 py-4">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.35em] text-white/60">
-              {data.resourceType}
-            </span>
-            <span className="text-lg font-semibold leading-tight text-white break-words">
-              {data.label}
-            </span>
+        <div
+          className="turbo-inner"
+          style={{
+            backgroundImage: data.background,
+            borderColor: `${data.accentColor}55`
+          }}
+        >
+          <div className="turbo-header">
+            <div className="turbo-meta">
+              <span className="turbo-resource">{data.resourceType}</span>
+              <span className="turbo-title">{data.label}</span>
+            </div>
+            {data.icon ? (
+              <span className="turbo-icon">
+                <img src={data.icon} alt="" className="h-7 w-7 object-contain" />
+              </span>
+            ) : null}
           </div>
-          {data.icon ? (
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
-              <img src={data.icon} alt="" className="h-8 w-8 object-contain" />
-            </span>
-          ) : null}
-        </div>
-        <div className="flex flex-1 items-center px-6 text-sm text-white/80">
-          <p className="leading-relaxed">{data.detail ?? "External dependency"}</p>
+          <div className="turbo-detail">{data.detail ?? "External dependency"}</div>
         </div>
       </div>
       <Handle
@@ -262,8 +259,8 @@ function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
         isConnectable={false}
         style={{
           background: data.accentColor,
-          width: 24,
-          height: 24,
+          width: 20,
+          height: 20,
           borderRadius: 999,
           border: "3px solid #020617",
           boxShadow: handleGlow
