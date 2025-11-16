@@ -916,7 +916,7 @@ dependencies = [
  "common",
  "components",
  "ff_core",
- "foundry_backend",
+ "foundry_web",
  "log",
  "minijinja",
  "serde",
@@ -1120,7 +1120,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "foundry_backend"
+name = "foundry_web"
 version = "0.1.0"
 dependencies = [
  "actix-cors",

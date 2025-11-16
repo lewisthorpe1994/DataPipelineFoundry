@@ -14,7 +14,7 @@ members = [
     "crates/components",
     "crates/components/connector_versioning",
     "crates/components/connector_versioning_derive",
-    "foundry_web/foundry_backend"
+    "foundry_web"
 ]
 
 [workspace.package]
@@ -50,6 +50,7 @@ executor = { path = "crates/executor" }
 components = { path = "crates/components", default-features = false}
 connector_versioning = { path = "crates/components/connector_versioning"}
 connector_versioning_derive = {path = "crates/components/connector_versioning_derive"}
+foundry_web = { path = "foundry_web"}
 
 [workspace.lints.clippy]
 large_enum_variant = "allow"

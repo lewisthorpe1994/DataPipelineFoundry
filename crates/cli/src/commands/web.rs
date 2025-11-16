@@ -4,7 +4,7 @@ use std::process::{Child, Command, Stdio};
 use clap::Args;
 use common::config::loader::read_config;
 use common::error::FFError;
-use foundry_backend::{init_logging, run_backend, BackendConfig};
+use foundry_web::{init_logging, run_backend, BackendConfig};
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Args)]

@@ -6,10 +6,7 @@ use std::process::Command;
 fn main() {
     let manifest_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
-    let ui_dir = manifest_dir
-        .parent()
-        .expect("backend crate not inside foundry_web")
-        .join("ui");
+    let ui_dir = manifest_dir.join("ui");
 
     let package_json = ui_dir.join("package.json");
     let lock_file = ui_dir.join("package-lock.json");

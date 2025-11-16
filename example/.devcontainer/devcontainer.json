@@ -8,5 +8,12 @@
             "backend" : "RustRover",
 //            "projectDir": "/workspace/example/dvdrental_example"
         }
+    },
+    "forwardPorts": ["5173:5173"],
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
+        }
     }
+
 }
