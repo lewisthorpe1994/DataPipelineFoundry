@@ -11974,9 +11974,7 @@ impl<'a> Parser<'a> {
     /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
         if matches!(self.peek_tokens(), [Token::LBrace, Token::LBrace]) {
-            if let Some(Some(tf)) =
-                self.maybe_parse(|p| p.try_parse_braced_macro_table_factor())?
-            {
+            if let Some(Some(tf)) = self.maybe_parse(|p| p.try_parse_braced_macro_table_factor())? {
                 return Ok(tf);
             }
         }
