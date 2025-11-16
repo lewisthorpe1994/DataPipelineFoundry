@@ -86,19 +86,8 @@
   gap: 10px;
 }
 
-.dag-graph .icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
 .dag-graph .resource {
-  font-size: 10px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.35em;
   text-transform: uppercase;
@@ -120,8 +109,8 @@
 
 .dag-graph .cloud {
   border-radius: 100%;
-  width: 30px;
-  height: 30px;
+  width: 42px;
+  height: 42px;
   right: 0;
   position: absolute;
   top: 0;
@@ -140,6 +129,13 @@
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.dag-graph .cloud .cloud-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
 }
 
 .dag-graph .react-flow__handle {

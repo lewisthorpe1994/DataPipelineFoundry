@@ -232,7 +232,11 @@ function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
     <div className="turbo-node relative h-full w-full">
       <div className="cloud gradient">
         <div>
-          <Cloud className="h-4 w-4" />
+          {data.icon ? (
+            <img src={data.icon} alt="" className="cloud-icon" />
+          ) : (
+            <Cloud className="h-4 w-4 text-white" />
+          )}
         </div>
       </div>
       <div
@@ -247,17 +251,6 @@ function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
           }}
         >
           <div className="body">
-            {data.icon ? (
-              <div
-                className="icon"
-                style={{
-                  borderColor: `${data.accentColor}44`,
-                  backgroundColor: `${data.accentColor}1a`
-                }}
-              >
-                <img src={data.icon} alt="" className="h-6 w-6 object-contain" />
-              </div>
-            ) : null}
             <div>
               <div className="resource" style={{ color: `${data.accentColor}cc` }}>
                 {data.resourceType}
