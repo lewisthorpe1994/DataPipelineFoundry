@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  APP_NAME: foundry
+  APP_NAME: dpf
 
 jobs:
   package:
@@ -61,6 +61,7 @@ jobs:
         run: |
           npm ci
           npm run build
+          node -e "require('fs').writeFileSync('.npm-install.stamp','npm ci completed')"
 
       - name: Build CLI binary
         run: cargo build --locked --release -p dpf
