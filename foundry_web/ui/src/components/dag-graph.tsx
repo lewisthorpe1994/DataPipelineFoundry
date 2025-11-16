@@ -235,18 +235,33 @@ function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
           <Cloud className="h-4 w-4" />
         </div>
       </div>
-      <div className={cn("wrapper gradient", selected && "selected")}
-        style={{ boxShadow: `0 30px 80px rgba(15,23,42,0.45)` }}
+      <div
+        className={cn("wrapper gradient", selected && "selected")}
+        style={{ boxShadow: `0 30px 80px ${data.accentColor}33` }}
       >
-        <div className="inner">
+        <div
+          className="inner"
+          style={{
+            backgroundImage: data.background,
+            borderColor: `${data.accentColor}55`
+          }}
+        >
           <div className="body">
             {data.icon ? (
-              <div className="icon">
+              <div
+                className="icon"
+                style={{
+                  borderColor: `${data.accentColor}44`,
+                  backgroundColor: `${data.accentColor}1a`
+                }}
+              >
                 <img src={data.icon} alt="" className="h-6 w-6 object-contain" />
               </div>
             ) : null}
             <div>
-              <div className="resource">{data.resourceType}</div>
+              <div className="resource" style={{ color: `${data.accentColor}cc` }}>
+                {data.resourceType}
+              </div>
               <div className="title">{data.label}</div>
               <div className="subtitle">{data.detail ?? "External dependency"}</div>
             </div>
