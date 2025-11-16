@@ -15,19 +15,21 @@
   max-width: 360px;
 }
 
+
 .turbo-frame {
   position: relative;
   border-radius: 26px;
   padding: 3px;
   display: flex;
   background: transparent;
+  overflow: hidden;
 }
 
 .turbo-frame::before {
   content: "";
   position: absolute;
-  inset: 0;
-  border-radius: 28px;
+  padding-bottom: calc(100% * 1.41421356237);
+  width: calc(100% * 1.41421356237);
   background: conic-gradient(
     from -160deg at 50% 50%,
     #e92a67 0deg,
@@ -35,6 +37,10 @@
     #2a8af6 240deg,
     #e92a67 360deg
   );
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(0deg);
+  border-radius: 100%;
   animation: turbo-spin 8s linear infinite;
   z-index: 0;
 }
@@ -109,7 +115,7 @@
 
 @keyframes turbo-spin {
   100% {
-    transform: rotate(-360deg);
+    transform: translate(-50%, -50%) rotate(-360deg);
   }
 }
 
