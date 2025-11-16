@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+  APP_NAME: foundry
+
+jobs:
+  package:
+    name: Build ${{ matrix.asset_suffix }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_suffix: linux-x86_64
+            archive_ext: tar.gz
+            binary_extension: ''
+          - os: macos-13
+            asset_suffix: macos-x86_64
+            archive_ext: tar.gz
+            binary_extension: ''
+          - os: macos-14
+            asset_suffix: macos-arm64
+            archive_ext: tar.gz
+            binary_extension: ''
+          - os: windows-latest
+            asset_suffix: windows-x86_64
+            archive_ext: zip
+            binary_extension: '.exe'
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: foundry_web/ui/package-lock.json
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+
+      - name: Build frontend bundle
+        working-directory: foundry_web/ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build CLI binary
+        run: cargo build --locked --release -p dpf
+
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG_BASENAME="${APP_NAME}-${VERSION}-${{ matrix.asset_suffix }}"
+          PKG_ROOT="${{ github.workspace }}/dist"
+          PKG_DIR="${PKG_ROOT}/${PKG_BASENAME}"
+          mkdir -p "${PKG_DIR}/web-ui-dist"
+          cp README.md INSTALL.md "${PKG_DIR}"
+          cp "target/release/dpf" "${PKG_DIR}/${APP_NAME}"
+          cp -R foundry_web/ui/dist/. "${PKG_DIR}/web-ui-dist/"
+          tar -czf "${PKG_ROOT}/${PKG_BASENAME}.tar.gz" -C "${PKG_ROOT}" "${PKG_BASENAME}"
+
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkgRoot = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $pkgBaseName = "${env:APP_NAME}-$env:VERSION-${{ matrix.asset_suffix }}"
+          $pkgDir = Join-Path $pkgRoot $pkgBaseName
+          New-Item -ItemType Directory -Force -Path (Join-Path $pkgDir 'web-ui-dist') | Out-Null
+          Copy-Item README.md, INSTALL.md -Destination $pkgDir
+          Copy-Item "target\\release\\dpf${{ matrix.binary_extension }}" -Destination (Join-Path $pkgDir "${env:APP_NAME}${{ matrix.binary_extension }}")
+          Copy-Item -Recurse -Force foundry_web\\ui\\dist\\* -Destination (Join-Path $pkgDir 'web-ui-dist')
+          Compress-Archive -Path (Join-Path $pkgDir '*') -DestinationPath (Join-Path $pkgRoot "$pkgBaseName.zip") -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ env.VERSION }}-${{ matrix.asset_suffix }}
+          path: dist/${{ env.APP_NAME }}-${{ env.VERSION }}-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
+
+  publish:
+    name: Publish release artifacts
+    needs: package
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APP_NAME }}-*
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -R dist
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
