@@ -2,19 +2,17 @@ import { useEffect, useMemo } from "react";
 import ReactFlow, {
   Background,
   BackgroundVariant,
-  BaseEdge,
   Controls,
   DefaultEdgeOptions,
   Edge,
   EdgeProps,
   EdgeTypes,
   Handle,
-  MarkerType,
   Node,
   NodeProps,
   NodeTypes,
   Position,
-  getSmoothStepPath,
+  getBezierPath,
   useEdgesState,
   useNodesState
 } from "reactflow";
@@ -27,6 +25,7 @@ import dbIcon from "@/assets/db.svg?url";
 import externalIcon from "@/assets/external.svg?url";
 import { cn } from "@/lib/utils";
 import type { Manifest } from "@/types/manifest";
+import { Cloud } from "lucide-react";
 
 import "./dag-graph.css";
 
@@ -63,7 +62,7 @@ const edgeTypes: EdgeTypes = { turbo: TurboEdge };
 
 const defaultEdgeOptions: DefaultEdgeOptions = {
   type: "turbo",
-  markerEnd: { type: MarkerType.ArrowClosed, color: "#67e8f9", width: 18, height: 18 }
+  markerEnd: "edge-circle"
 };
 
 type LayoutResult = {
@@ -104,6 +103,26 @@ export function DagGraph({ manifest }: DagGraphProps) {
       >
         <Background id="turbo-grid" variant={BackgroundVariant.Dots} size={1} gap={24} color="#1f2937" />
         <Controls showInteractive={false} />
+        <svg className="absolute h-0 w-0">
+          <defs>
+            <linearGradient id="edge-gradient">
+              <stop offset="0%" stopColor="#ae53ba" />
+              <stop offset="100%" stopColor="#2a8af6" />
+            </linearGradient>
+            <marker
+              id="edge-circle"
+              viewBox="-5 -5 10 10"
+              refX="0"
+              refY="0"
+              markerUnits="strokeWidth"
+              markerWidth="10"
+              markerHeight="10"
+              orient="auto"
+            >
+              <circle stroke="#2a8af6" strokeOpacity="0.75" r="2" cx="0" cy="0" />
+            </marker>
+          </defs>
+        </svg>
       </ReactFlow>
     </div>
   );
@@ -169,9 +188,7 @@ function buildGraph(manifest: Manifest): LayoutResult {
         id: `${source}|${node.name}`,
         source,
         target: node.name,
-        type: "turbo",
-        data: { color: palette.edge },
-        markerEnd: { type: MarkerType.ArrowClosed, color: palette.edge, width: 18, height: 18 }
+        type: "turbo"
       });
     });
   });
@@ -213,87 +230,80 @@ function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
 
   return (
     <div className="turbo-node relative h-full w-full">
-      <Handle
-        type="target"
-        position={Position.Left}
-        isConnectable={false}
-        style={{
-          background: data.accentColor,
-          width: 20,
-          height: 20,
-          borderRadius: 999,
-          border: "3px solid #020617",
-          boxShadow: handleGlow
-        }}
-        className="-translate-x-1/2"
-      />
-      <div className={cn("turbo-frame", selected && "selected")}
-        style={{
-          boxShadow: `0 30px 80px rgba(15,23,42,0.5)`
-        }}
-      >
-        <div
-          className="turbo-inner"
-          style={{
-            backgroundImage: data.background,
-            borderColor: `${data.accentColor}55`
-          }}
-        >
-          <div className="turbo-header">
-            <div className="turbo-meta">
-              <span className="turbo-resource">{data.resourceType}</span>
-              <span className="turbo-title">{data.label}</span>
-            </div>
-            {data.icon ? (
-              <span className="turbo-icon">
-                <img src={data.icon} alt="" className="h-7 w-7 object-contain" />
-              </span>
-            ) : null}
-          </div>
-          <div className="turbo-detail">{data.detail ?? "External dependency"}</div>
+      <div className="cloud gradient">
+        <div>
+          <Cloud className="h-4 w-4" />
         </div>
       </div>
-      <Handle
-        type="source"
-        position={Position.Right}
-        isConnectable={false}
-        style={{
-          background: data.accentColor,
-          width: 20,
-          height: 20,
-          borderRadius: 999,
-          border: "3px solid #020617",
-          boxShadow: handleGlow
-        }}
-        className="translate-x-1/2"
-      />
+      <div className={cn("wrapper gradient", selected && "selected")}
+        style={{ boxShadow: `0 30px 80px rgba(15,23,42,0.45)` }}
+      >
+        <div className="inner">
+          <div className="body">
+            {data.icon ? (
+              <div className="icon">
+                <img src={data.icon} alt="" className="h-6 w-6 object-contain" />
+              </div>
+            ) : null}
+            <div>
+              <div className="resource">{data.resourceType}</div>
+              <div className="title">{data.label}</div>
+              <div className="subtitle">{data.detail ?? "External dependency"}</div>
+            </div>
+          </div>
+          <Handle
+            type="target"
+            position={Position.Left}
+            isConnectable={false}
+            style={{
+              background: data.accentColor,
+              width: 20,
+              height: 20,
+              borderRadius: 999,
+              border: "3px solid #020617",
+              boxShadow: handleGlow
+            }}
+            className="-translate-x-1/2"
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            isConnectable={false}
+            style={{
+              background: data.accentColor,
+              width: 20,
+              height: 20,
+              borderRadius: 999,
+              border: "3px solid #020617",
+              boxShadow: handleGlow
+            }}
+            className="translate-x-1/2"
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-function TurboEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, data, markerEnd }: EdgeProps<TurboEdgeData>) {
-  const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
+function TurboEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, markerEnd }: EdgeProps<TurboEdgeData>) {
+  const xEqual = sourceX === targetX;
+  const yEqual = sourceY === targetY;
+
+  const [edgePath] = getBezierPath({
+    sourceX: xEqual ? sourceX + 0.0001 : sourceX,
+    sourceY: yEqual ? sourceY + 0.0001 : sourceY,
     sourcePosition,
     targetX,
     targetY,
-    targetPosition,
-    borderRadius: 24
+    targetPosition
   });
 
-  const stroke = data?.color ?? "#67e8f9";
-
   return (
-    <BaseEdge
+    <path
       id={id}
-      path={edgePath}
+      className="react-flow__edge-path"
+      d={edgePath}
       markerEnd={markerEnd}
-      style={{
-        stroke,
-        strokeWidth: 3,
-        filter: "drop-shadow(0px 8px 24px rgba(103,232,249,0.35))"
-      }}
     />
   );
 }
