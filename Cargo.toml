@@ -1,19 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/cli",
-    "crates/ff_core",
-    "crates/common",
-    "crates/sqlparser",
-    "crates/logging",
-    "crates/test_utils",
-    "crates/executor",
-    "crates/catalog",
-    "crates/dag",
-    "crates/shared_clients",
-    "crates/components",
-    "crates/components/connector_versioning",
-    "crates/components/connector_versioning_derive",
+    "dpf_core/cli",
+    "dpf_core/ff_core",
+    "dpf_core/common",
+    "dpf_core/sqlparser",
+    "dpf_core/logging",
+    "dpf_core/test_utils",
+    "dpf_core/executor",
+    "dpf_core/catalog",
+    "dpf_core/dag",
+    "dpf_core/shared_clients",
+    "dpf_core/components",
+    "dpf_core/components/connector_versioning",
+    "dpf_core/components/connector_versioning_derive",
     "foundry_web"
 ]
 
@@ -23,7 +23,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-# Common deps shared across crates
+# Common deps shared across dpf_core
 clap = { version = "4", features = ["derive"] }
 petgraph = "0.6"
 tracing = "0.1.41"
@@ -38,18 +38,18 @@ regex = "1.10"
 tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 tokio-postgres = { version = "0.7", features = ["runtime"] }
 
-common = { path = "crates/common", default-features = false }
-ff_core = { path = "crates/ff_core" }
-sqlparser = { path = "crates/sqlparser" }
-logging = { path = "crates/logging"}
-test_utils = { path = "crates/test_utils" }
-dag = { path = "crates/dag"}
-shared_clients = { path = "crates/shared_clients" }
-catalog = { path = "crates/catalog" }
-executor = { path = "crates/executor" }
-components = { path = "crates/components", default-features = false}
-connector_versioning = { path = "crates/components/connector_versioning"}
-connector_versioning_derive = {path = "crates/components/connector_versioning_derive"}
+common = { path = "dpf_core/common", default-features = false }
+ff_core = { path = "dpf_core/ff_core" }
+sqlparser = { path = "dpf_core/sqlparser" }
+logging = { path = "dpf_core/logging"}
+test_utils = { path = "dpf_core/test_utils" }
+dag = { path = "dpf_core/dag"}
+shared_clients = { path = "dpf_core/shared_clients" }
+catalog = { path = "dpf_core/catalog" }
+executor = { path = "dpf_core/executor" }
+components = { path = "dpf_core/components", default-features = false}
+connector_versioning = { path = "dpf_core/components/connector_versioning"}
+connector_versioning_derive = {path = "dpf_core/components/connector_versioning_derive"}
 foundry_web = { path = "foundry_web"}
 
 [workspace.lints.clippy]
