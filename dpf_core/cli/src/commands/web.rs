@@ -37,14 +37,15 @@ pub fn handle_web(args: WebArgs, config_path: Option<PathBuf>) -> Result<(), FFE
     let manifest_path =
         resolve_manifest_path(args.manifest, &project_root, &cfg.project.compile_path)?;
 
-    let static_dir = args.static_dir;
+    let static_dir = args.static_dir.or_else(detect_packaged_static_dir);
 
     let frontend_dir = args.frontend_dir.unwrap_or_else(|| default_frontend_dir());
 
-    let mut frontend_child = if args.no_frontend {
-        None
-    } else {
+    let should_spawn_frontend = !args.no_frontend && static_dir.is_none();
+    let mut frontend_child = if should_spawn_frontend {
         Some(spawn_frontend(&frontend_dir)?)
+    } else {
+        None
     };
 
     init_logging();
@@ -61,6 +62,16 @@ pub fn handle_web(args: WebArgs, config_path: Option<PathBuf>) -> Result<(), FFE
     }
 
     result.map_err(FFError::run)
+}
+
+fn detect_packaged_static_dir() -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let candidate = exe_dir.join("web-ui-dist");
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 fn resolve_project_root(config_path: &Option<PathBuf>) -> Result<PathBuf, FFError> {

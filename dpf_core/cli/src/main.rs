@@ -39,9 +39,6 @@ pub enum Cmd {
     /// Run the model DAG using the chosen target
     Run(RunArgs),
     /// Print the model dependency graph
-    Graph,
-    /// Clean generated files
-    Clean,
     /// Run the Foundry web UI (backend + frontend)
     Web(WebArgs),
 }
@@ -53,7 +50,7 @@ fn run_cmd(func: Result<(), FFError>) {
 }
 fn main() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("info") // fallback log level
+        EnvFilter::new("info")
     });
     let time_format =
         format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]");
@@ -67,8 +64,8 @@ fn main() {
                 .with_thread_names(false)
                 .with_line_number(false)
                 .with_file(false)
-                .with_span_events(fmt::format::FmtSpan::NONE) // 👈 Disable span name output
-                .compact(), // 👈 Fancy pre-built output
+                .with_span_events(fmt::format::FmtSpan::NONE)
+                .compact(),
         )
         .with(filter)
         .init();
