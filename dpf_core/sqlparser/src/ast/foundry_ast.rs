@@ -936,7 +936,6 @@ mod tests {
         "#;
 
         let got = calls(sql);
-        // Expected traversal order: CTE a, CTE b, body FROM, then joins (a, b are table names, not macros)
         assert_eq!(
             got,
             vec![
@@ -947,7 +946,6 @@ mod tests {
         );
     }
 
-    // Your original compile test remains as-is, asserting replacement behavior.
     #[test]
     fn compile_replaces_ref_and_source_macros() {
         let sql = r#"
@@ -972,7 +970,7 @@ mod tests {
         }
 
         let compiled = model
-            .compile(|schema, table| resolver(schema, table))
+            .compile(resolver)
             .expect("compile");
 
         assert!(compiled.contains("bronze.orders"));

@@ -241,22 +241,20 @@ impl Executor {
 
 #[cfg(test)]
 mod test {
-    use crate::{Executor, ExecutorError};
+    
     use common::config::components::connections::AdapterConnectionDetails;
-    use common::config::components::sources::kafka::{
-        KafkaBootstrap, KafkaConnect, KafkaSourceConfig, KafkaSourceConfigs,
-    };
-    use common::config::loader::read_config;
-    use common::types::kafka::KafkaConnectorType;
-    use dag::types::{DagNode, DagNodeType};
+    
+    
+    
+    
     use shared_clients::create_db_adapter;
-    use shared_clients::kafka::KafkaConnectClient;
-    use std::collections::HashMap;
-    use std::time::Duration;
-    use test_utils::{get_root_dir, setup_kafka, setup_postgres, with_chdir_async};
-    use test_utils::{NET_HOST, PG_DB, PG_PASSWORD, PG_USER};
-    use tokio::time::sleep;
-    use uuid::Uuid;
+    
+    
+    
+    
+    
+    
+    
 
     async fn set_up_table(pg_conn: AdapterConnectionDetails) {
         let mut adapter = create_db_adapter(pg_conn).await.unwrap();
