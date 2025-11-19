@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dev-dependencies]
+matches = "0.1"
 test_utils = { workspace = true }
 
 [dependencies]

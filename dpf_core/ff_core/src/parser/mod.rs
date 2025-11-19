@@ -196,119 +196,118 @@ fn kafka_node_type_from_path(path: &Path) -> Option<NodeTypes> {
 mod tests {
     use super::*;
     use common::config::loader::read_config;
-    use std::path::{Path, PathBuf};
-    use test_utils::{build_test_layers, get_root_dir, with_chdir};
+    use std::path::Path;
+    use test_utils::{project_fixture, with_chdir};
 
     #[test]
     fn test_parse_model_nodes() {
-        let project_root = get_root_dir();
-        let root_for_layers = project_root.clone();
+        let fixture = project_fixture("dvdrental_example").expect("copy example project");
 
-        let nodes = with_chdir(&project_root, move || {
+        with_chdir(fixture.path(), move || {
             let config = read_config(None).expect("load example project config");
             let nodes = parse_nodes(&config).expect("parse model nodes");
 
-            println!("nodes {:#?}", nodes);
-        });
-    }
+            let mut models = Vec::new();
+            let mut connectors = Vec::new();
+            let mut smts = Vec::new();
+            let mut pipelines = Vec::new();
 
-    #[test]
-    fn test_parse_models_across_layers() -> std::io::Result<()> {
-        let project_root = get_root_dir();
-        let root_for_layers = project_root.clone();
+            for node in nodes {
+                match node {
+                    ParsedNode::Model { node, config } => models.push((node, config)),
+                    ParsedNode::KafkaConnector { node } => connectors.push(node),
+                    ParsedNode::KafkaSmt { node } => smts.push(node),
+                    ParsedNode::KafkaSmtPipeline { node } => pipelines.push(node),
+                }
+            }
 
-        let nodes = with_chdir(&project_root, move || {
-            let config = read_config(None).expect("load example project config");
-            let layers = build_test_layers(root_for_layers.clone());
-            parse_models(
-                &layers,
-                (config.project.models.dir).as_ref(),
-                config.models.as_ref(),
-            )
-            .expect("parse example models")
-        })?;
-        // println!("{:?}", nodes);
+            const EXPECTED_MODELS: &[(&str, &str)] = &[
+                (
+                    "bronze_latest_customer",
+                    "foundry_models/dvdrental_analytics/bronze/_latest_customer/_latest_customer.sql",
+                ),
+                (
+                    "bronze_latest_film",
+                    "foundry_models/dvdrental_analytics/bronze/_latest_film/_latest_film.sql",
+                ),
+                (
+                    "bronze_latest_inventory",
+                    "foundry_models/dvdrental_analytics/bronze/_latest_inventory/_latest_inventory.sql",
+                ),
+                (
+                    "bronze_latest_rental",
+                    "foundry_models/dvdrental_analytics/bronze/_latest_rental/_latest_rental.sql",
+                ),
+                (
+                    "gold_customer_daily_financials",
+                    "foundry_models/dvdrental_analytics/gold/_customer_daily_financials/_customer_daily_financials.sql",
+                ),
+                (
+                    "silver_customer_agg_rentals_by_day",
+                    "foundry_models/dvdrental_analytics/silver/_customer_agg_rentals_by_day/_customer_agg_rentals_by_day.sql",
+                ),
+                (
+                    "silver_customer_agg_payments_by_day",
+                    "foundry_models/dvdrental_analytics/silver/_customer_agg_payments_by_day/_customer_agg_payments_by_day.sql",
+                ),
+                (
+                    "silver_rental_customer",
+                    "foundry_models/dvdrental_analytics/silver/_rental_customer/_rental_customer.sql",
+                ),
+            ];
 
-        Ok(())
-    }
+            const EXPECTED_CONNECTORS: &[(&str, &str)] = &[
+                (
+                    "_film_rental_inventory_customer_payment_sink",
+                    "foundry_sources/kafka/definitions/_connectors/_sink/_film_rental_inventory_customer_payment_sink/_definition/_film_rental_inventory_customer_payment_sink.sql",
+                ),
+                (
+                    "_film_rental_inventory_customer_payment_src",
+                    "foundry_sources/kafka/definitions/_connectors/_source/_film_rental_inventory_customer_payment_src/_definition/_film_rental_inventory_customer_payment_src.sql",
+                ),
+            ];
 
-    #[test]
-    fn test_parse_nodes_collects_models_and_kafka() -> std::io::Result<()> {
-        let project_root = get_root_dir();
+            const EXPECTED_SMT_PIPELINES: &[(&str, &str)] = &[ (
+                "_unwrap_router",
+                "foundry_sources/kafka/definitions/_common/_smt_pipelines/_unwrap_router.sql",
+            )];
 
-        let nodes = with_chdir(&project_root, || {
-            let config = read_config(None).expect("load example project config");
-            parse_nodes(&config).expect("parse example nodes")
-        })?;
+            const EXPECTED_SMTS: &[(&str, &str)] = &[ (
+                "_reroute",
+                "foundry_sources/kafka/definitions/_common/_smt/_reroute.sql",
+            )];
 
-        assert_eq!(
-            nodes.len(),
-            7,
-            "expected three model nodes and four kafka nodes"
-        );
+            assert_eq!(models.len(), EXPECTED_MODELS.len());
+            for (name, path_suffix) in EXPECTED_MODELS {
+                assert!(models.iter().any(|(node, _)| {
+                    node.name == *name && node.path.ends_with(Path::new(path_suffix))
+                }), "missing model {name}");
+            }
 
-        let mut actual: Vec<(String, &'static str, PathBuf)> = nodes
-            .into_iter()
-            .map(|node| match node {
-                ParsedNode::Model { node, .. } => (node.name, "model", node.path),
-                ParsedNode::KafkaSmt { node } => (node.name, "smt", node.path),
-                ParsedNode::KafkaSmtPipeline { node } => (node.name, "smtpipeline", node.path),
-                ParsedNode::KafkaConnector { node } => (node.name, "connector", node.path),
-            })
-            .map(|(name, ty, path)| {
-                let path = if path.is_absolute() {
-                    path
-                } else {
-                    project_root.join(path)
-                };
-                (name, ty, path)
-            })
-            .collect();
+            assert_eq!(connectors.len(), EXPECTED_CONNECTORS.len());
+            for (name, path_suffix) in EXPECTED_CONNECTORS {
+                assert!(connectors
+                    .iter()
+                    .any(|node| node.name == *name && node.path.ends_with(Path::new(path_suffix))),
+                    "missing kafka connector {name}");
+            }
 
-        actual.sort_by(|a, b| a.0.cmp(&b.0));
+            assert_eq!(pipelines.len(), EXPECTED_SMT_PIPELINES.len());
+            for (name, path_suffix) in EXPECTED_SMT_PIPELINES {
+                assert!(pipelines
+                    .iter()
+                    .any(|node| node.name == *name && node.path.ends_with(Path::new(path_suffix))),
+                    "missing kafka smt pipeline {name}");
+            }
 
-        let mut expected = vec![
-            (
-                "_drop_id".to_string(),
-                "smt",
-                project_root.join("foundry-sources/kafka/_common/_smt/_drop_id.sql"),
-            ),
-            (
-                "_mask_field".to_string(),
-                "smt",
-                project_root.join("foundry-sources/kafka/_common/_smt/_mask_field.sql"),
-            ),
-            (
-                "_pii_pipeline".to_string(),
-                "smtpipeline",
-                project_root.join("foundry-sources/kafka/_common/_smt_pipelines/_pii_pipeline.sql"),
-            ),
-            (
-                "_test_src_connector".to_string(),
-                "connector",
-                project_root.join("foundry-sources/kafka/_connectors/_source/_test_src_connector/_definition/_test_src_connector.sql"),
-            ),
-            (
-                "bronze_orders".to_string(),
-                "model",
-                project_root.join("foundry_models/bronze/_orders/_orders.sql"),
-            ),
-            (
-                "gold_customer_metrics".to_string(),
-                "model",
-                project_root.join("foundry_models/gold/_customer_metrics/_customer_metrics.sql"),
-            ),
-            (
-                "silver_orders".to_string(),
-                "model",
-                project_root.join("foundry_models/silver/_orders/_orders.sql"),
-            ),
-        ];
-
-        expected.sort_by(|a, b| a.0.cmp(&b.0));
-
-        assert_eq!(actual, expected);
-
-        Ok(())
+            assert_eq!(smts.len(), EXPECTED_SMTS.len());
+            for (name, path_suffix) in EXPECTED_SMTS {
+                assert!(smts
+                    .iter()
+                    .any(|node| node.name == *name && node.path.ends_with(Path::new(path_suffix))),
+                    "missing kafka smt {name}");
+            }
+        })
+        .expect("change directory to fixture");
     }
 }

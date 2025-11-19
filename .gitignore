@@ -1,4 +1,8 @@
 target/
+example/dvdrental_example/compiled
+example/dvdrental_example/.idea
 node_modules/
 **/node_modules/
 foundry_web/ui/.npm-install.stamp
+foundry_web/ui/dist
+.idea

@@ -9,7 +9,7 @@ use crate::config::error::ConfigError;
 use crate::config::traits::ConfigName;
 use crate::types::sources::SourceType;
 use crate::utils::paths_with_ext;
-use log::info;
+use log::{debug, info};
 use serde::de::{DeserializeOwned, Error};
 use serde::Deserialize;
 use serde_yaml::{self, Error as YamlError, Value};
@@ -24,7 +24,7 @@ where
 {
     let mut sources: HashMap<String, V> = HashMap::new();
     for entry in paths_with_ext(path, "yml") {
-        info!("loading source from {}", entry.display());
+        debug!("loading source from {}", entry.display());
         let file = fs::File::open(&entry)?;
         let source: V = serde_yaml::from_reader(file)?;
         sources.insert(source.name().to_string(), source);

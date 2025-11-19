@@ -1,6 +1,5 @@
 pub mod error;
 pub mod models;
-mod tests;
 
 pub use models::*;
 use sqlparser::ast::{
@@ -10,7 +9,6 @@ use sqlparser::ast::{
 use std::cmp::Ordering;
 
 use crate::error::CatalogError;
-use common::config::components::global::FoundryConfig;
 use common::config::components::sources::warehouse_source::DbConfig;
 use common::types::kafka::KafkaConnectorType;
 use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
@@ -208,7 +206,7 @@ pub trait Register: Send + Sync + 'static {
         &self,
         parsed_stmts: Vec<Statement>,
         target: Option<String>,
-        node: &ParsedNode,
+        name: &str,
     ) -> Result<(), CatalogError>;
     fn register_kafka_connector(&self, ast: CreateKafkaConnector) -> Result<(), CatalogError>;
     fn register_kafka_smt(&self, ast: CreateSimpleMessageTransform) -> Result<(), CatalogError>;
@@ -220,7 +218,7 @@ pub trait Register: Send + Sync + 'static {
         &self,
         ast: CreateModel,
         target: String,
-        node: &ParsedNode,
+        node: &str,
     ) -> Result<(), CatalogError>;
     fn register_warehouse_sources(
         &self,
@@ -312,7 +310,7 @@ impl Register for MemoryCatalog {
                     &node_path.display()
                 ))
             })?;
-            self.register_object(parsed, target, &node)?;
+            self.register_object(parsed, target, &node.name())?;
         }
         Ok(())
     }
@@ -320,7 +318,7 @@ impl Register for MemoryCatalog {
         &self,
         parsed_stmts: Vec<Statement>,
         target: Option<String>,
-        node: &ParsedNode,
+        name: &str,
     ) -> Result<(), CatalogError> {
         if parsed_stmts.len() == 1 {
             match parsed_stmts[0].clone() {
@@ -338,7 +336,7 @@ impl Register for MemoryCatalog {
                     target.ok_or_else(|| {
                         CatalogError::missing_config("Missing target name for model")
                     })?,
-                    node,
+                    name,
                 )?,
                 Statement::CreateSMTPredicate(stmt) => {
                     self.register_kafka_smt_predicate(stmt)?;
@@ -432,7 +430,7 @@ impl Register for MemoryCatalog {
         &self,
         ast: CreateModel,
         target: String,
-        node: &ParsedNode,
+        name: &str,
     ) -> Result<(), CatalogError> {
         // derive schema/name from underlying model definition
         fn split_schema_table(name: &ObjectName) -> (String, String) {
@@ -507,14 +505,11 @@ impl Register for MemoryCatalog {
             target,
         };
 
-        // println!("model dec {:?}", model_dec)
-
         let mut g = self.inner.write();
-        let name = node.name();
-        if g.models.contains_key(&name) {
-            return Err(CatalogError::duplicate(&name));
+        if g.models.contains_key(name) {
+            return Err(CatalogError::duplicate(name));
         }
-        g.models.insert(name, model_dec);
+        g.models.insert(name.to_string(), model_dec);
         Ok(())
     }
 
@@ -638,10 +633,138 @@ impl Getter for MemoryCatalog {
     }
 }
 
-pub trait Compile: Send + Sync + 'static + Getter {
-    fn compile_kafka_decl(
-        &self,
-        name: &str,
-        foundry_config: &FoundryConfig,
-    ) -> Result<KafkaConnectorDecl, CatalogError>;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use matches::assert_matches;
+
+    fn parse_stmt(sql: &str) -> Statement {
+        let mut stmts = Parser::parse_sql(&GenericDialect, sql).expect("parse_sql");
+        stmts.remove(0)
+    }
+
+    fn parse_model(sql: &str) -> CreateModel {
+        match parse_stmt(sql) {
+            Statement::CreateModel(cm) => cm,
+            other => panic!("expected CreateModel, got {:?}", other),
+        }
+    }
+
+    fn parse_kafka_connector(sql: &str) -> CreateKafkaConnector {
+        match parse_stmt(sql) {
+            Statement::CreateKafkaConnector(conn) => conn,
+            other => panic!("expected CreateKafkaConnector, got {:?}", other),
+        }
+    }
+
+    fn parse_transform(sql: &str) -> CreateSimpleMessageTransform {
+        match parse_stmt(sql) {
+            Statement::CreateSMTransform(t) => t,
+            other => panic!("expected CreateSMTransform, got {:?}", other),
+        }
+    }
+
+    fn parse_pipeline(sql: &str) -> CreateSimpleMessageTransformPipeline {
+        match parse_stmt(sql) {
+            Statement::CreateSMTPipeline(p) => p,
+            other => panic!("expected CreateSMTPipeline, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn register_model_extracts_refs_and_sources() {
+        let catalog = MemoryCatalog::new();
+        let sql = r#"
+            CREATE MODEL bronze.some_model AS
+            DROP VIEW IF EXISTS bronze.some_model CASCADE;
+            CREATE VIEW bronze.some_model AS
+            SELECT * FROM ref('bronze','dim') d
+            JOIN source('warehouse','raw_table') s ON 1=1
+        "#;
+
+        let create = parse_model(sql);
+        catalog
+            .register_model(create, "analytics".into(), "bronze_some_model")
+            .expect("register");
+
+        let stored = catalog.get_model("bronze_some_model").expect("model exist");
+        assert_eq!(stored.target, "analytics");
+        assert_eq!(stored.schema, "bronze");
+        assert_eq!(stored.name, "some_model");
+        assert_eq!(stored.refs.len(), 1);
+        assert_eq!(stored.refs[0].name, "bronze_dim");
+        assert_eq!(stored.sources.len(), 1);
+        assert_eq!(stored.sources[0].source_name, "warehouse");
+        assert_eq!(stored.sources[0].source_table, "raw_table");
+    }
+
+    #[test]
+    fn register_kafka_connector_rejects_duplicates() {
+        let catalog = MemoryCatalog::new();
+        let sql = r#"
+            CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS dvdrental
+            USING KAFKA CLUSTER 'test_cluster' (
+                "database.hostname" = "localhost",
+                "database.user" = "app",
+                "database.password" = "secret",
+                "database.dbname" = "app_db",
+                "topic.prefix" = "app"
+            ) WITH CONNECTOR VERSION '3.1'
+            FROM SOURCE DATABASE 'adapter_source'
+        "#;
+
+        let conn = parse_kafka_connector(sql);
+        catalog
+            .register_kafka_connector(conn.clone())
+            .expect("first insert succeeds");
+        let err = catalog
+            .register_kafka_connector(conn.clone())
+            .expect_err("second insert should fail");
+        assert_matches!(err, CatalogError::Duplicate { .. });
+
+        // Stored connector can still be read back
+        catalog
+            .get_kafka_connector(conn.name())
+            .expect("connector persisted");
+    }
+
+    const TRANSFORM_SQL: &str = r#"
+        CREATE KAFKA SIMPLE MESSAGE TRANSFORM hash_email (
+            "type" = 'org.apache.kafka.connect.transforms.MaskField$Value'
+        )
+    "#;
+
+    const PIPELINE_SQL: &str = r#"
+        CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE preset_pipe (
+            hash_email
+        ) WITH PIPELINE PREDICATE 'only_customers'
+    "#;
+
+    #[test]
+    fn smt_pipeline_requires_known_transforms() {
+        let catalog = MemoryCatalog::new();
+        let err = catalog
+            .register_smt_pipeline(parse_pipeline(PIPELINE_SQL))
+            .expect_err("pipeline should fail without registered transforms");
+        assert_matches!(err, CatalogError::NotFound { .. });
+    }
+
+    #[test]
+    fn smt_pipeline_registration_persists_steps() {
+        let catalog = MemoryCatalog::new();
+        catalog
+            .register_kafka_smt(parse_transform(TRANSFORM_SQL))
+            .expect("register transform");
+
+        catalog
+            .register_smt_pipeline(parse_pipeline(PIPELINE_SQL))
+            .expect("register pipeline");
+
+        let pipeline = catalog
+            .get_smt_pipeline("preset_pipe")
+            .expect("pipeline stored");
+        assert_eq!(pipeline.transforms.len(), 1);
+        assert_eq!(pipeline.transforms[0].name, "hash_email");
+        assert_eq!(pipeline.predicate.as_deref(), Some("only_customers"));
+    }
 }

@@ -111,7 +111,7 @@ impl From<KafkaSourceConfigError> for JinjaError {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct KafkaConnectorConfig {
-    pub schema: HashMap<String, Schema>,
+    pub schema: HashMap<String, Schema>, // # TODO - change to include_list
     pub name: String,
     pub dag_executable: Option<bool>,
 }

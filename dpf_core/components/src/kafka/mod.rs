@@ -2,9 +2,10 @@ pub mod connectors;
 pub mod errors;
 pub mod predicates;
 pub mod smt;
+#[cfg(test)]
+mod tests;
 pub mod traits;
 mod utils;
-pub mod version_consts;
 
 use crate::connectors::sink::debezium_postgres::{
     DebeziumPostgresSinkConnector, CONNECTOR_CLASS_NAME as DBZ_SINK_CONNECTOR_CLASS_NAME,

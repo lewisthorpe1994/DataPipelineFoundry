@@ -1,10 +1,13 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::future::Future;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
+use tempfile::TempDir;
 use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -27,8 +30,8 @@ pub const NET_HOST: &str = "127.0.0.1";
 pub static TEST_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 /// Connection details used when writing `connections.yml` for a test project.
-pub fn get_root_dir() -> PathBuf {
-    let workspace_root = std::env::var("CARGO_WORKSPACE_DIR")
+fn workspace_root() -> PathBuf {
+    std::env::var("CARGO_WORKSPACE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -36,9 +39,69 @@ pub fn get_root_dir() -> PathBuf {
                 .nth(2)
                 .expect("crate should live under <workspace>/crates/<crate>")
                 .to_path_buf()
-        });
+        })
+}
 
-    workspace_root.join("example/dvdrental_example")
+/// Absolute path to the checked-in dvdrental example project.
+pub fn get_root_dir() -> PathBuf {
+    workspace_root().join("example/dvdrental_example")
+}
+
+/// Temporary copy of an example Foundry project for use in tests.
+pub struct ProjectFixture {
+    _tempdir: TempDir,
+    path: PathBuf,
+}
+
+impl ProjectFixture {
+    /// Path to the root of the copied project.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Clone `examples/<name>` into a fresh temporary directory.
+pub fn project_fixture(name: &str) -> io::Result<ProjectFixture> {
+    let template_root = workspace_root().join("example").join(name);
+    if !template_root.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "example project '{name}' not found at {}",
+                template_root.display()
+            ),
+        ));
+    }
+
+    let tempdir = tempfile::tempdir()?;
+    copy_dir_recursive(&template_root, tempdir.path())?;
+
+    Ok(ProjectFixture {
+        path: tempdir.path().to_path_buf(),
+        _tempdir: tempdir,
+    })
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = dst.join(entry.file_name());
+        let metadata = entry.metadata()?;
+
+        if metadata.is_dir() {
+            copy_dir_recursive(&path, &target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&path, &target)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn build_test_layers(root: PathBuf) -> HashMap<String, String> {

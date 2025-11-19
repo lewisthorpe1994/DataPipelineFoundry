@@ -232,7 +232,7 @@ impl ModelsDag {
         }
 
         info!(
-            "ModelsDag::build completed in {:.3}s",
+            "Dag build completed in {:.3}s",
             started.elapsed().as_secs_f64()
         );
         Ok(())
@@ -662,7 +662,6 @@ impl ModelsDag {
             writeln!(dot, "    {} [label=\"{}\"];", idx.index(), node.name).unwrap();
         }
 
-        // 🔁 Reverse edge direction for visual data flow
         for edge in self.graph.edge_references() {
             writeln!(
                 dot,
@@ -715,34 +714,101 @@ mod tests {
     use catalog::Register;
     use common::config::loader::read_config;
     use ff_core::parser::parse_nodes;
+    use std::collections::BTreeSet;
     use test_utils::{get_root_dir, with_chdir};
+    #[test]
+    fn upsert_node_merges_relations_and_detects_duplicates() {
+        let mut dag = ModelsDag::new();
+        dag.upsert_node(
+            "model".into(),
+            false,
+            dummy_model_node("model", Some(&["bronze_a"])),
+        )
+        .expect("inserts first node");
+
+        dag.upsert_node(
+            "model".into(),
+            false,
+            dummy_model_node("model", Some(&["bronze_b"])),
+        )
+        .expect("merge relations");
+
+        let stored = dag.get("model").expect("node present");
+        let rels: Vec<_> = stored.relations.clone().unwrap().into_iter().collect();
+        assert_eq!(rels, vec!["bronze_a".to_string(), "bronze_b".to_string()]);
+
+        let err = dag
+            .upsert_node("model".into(), true, dummy_model_node("model", None))
+            .expect_err("duplicate should error");
+        assert!(matches!(err, DagError::DuplicateNode { .. }));
+    }
 
     #[test]
-    fn test_graph() -> Result<(), DagError> {
-        env_logger::Builder::new()
-            .filter_level(log::LevelFilter::Info)
-            .is_test(true)
-            .try_init()
-            .ok();
-        let cat = MemoryCatalog::new();
-        let project_root = get_root_dir();
-        with_chdir(&project_root, move || {
-            let config = read_config(None).expect("load example project config");
-            let wh_config = config.warehouse_source.clone();
-            let nodes = parse_nodes(&config).expect("parse example models");
-            // println!("{:#?}", nodes);
-            cat.register_nodes(nodes, wh_config)
-                .expect("register nodes");
+    fn included_nodes_filter_preserves_order() {
+        let dag = build_linear_dag();
+        let mut included = BTreeSet::new();
+        included.insert(dag.get_index("middle").unwrap());
+        included.insert(dag.get_index("tail").unwrap());
 
-            let mut dag = ModelsDag::new();
-            dag.build(&cat, &config).expect("build models");
-            // println!("{:#?}", dag);
-            let ordered = dag.toposort().expect("toposort");
-            for o in ordered {
-                println!("{:#?}", dag.graph[o]);
-            }
-        })?;
+        let nodes = dag
+            .get_included_dag_nodes(Some(&included))
+            .expect("subset succeeds");
+        assert_eq!(names(&nodes), vec!["middle", "tail"]);
+    }
 
-        Ok(())
+    #[test]
+    fn transitive_closure_respects_direction() {
+        let dag = build_linear_dag();
+
+        let upstream = dag
+            .transitive_closure("middle", TransitiveDirection::Incoming)
+            .expect("incoming");
+        assert_eq!(names(&upstream), vec!["head"]);
+
+        let downstream = dag
+            .transitive_closure("middle", TransitiveDirection::Outgoing)
+            .expect("outgoing");
+        assert_eq!(names(&downstream), vec!["tail"]);
+    }
+
+    #[test]
+    fn model_execution_order_includes_upstream_and_downstream() {
+        let dag = build_linear_dag();
+        let plan = dag
+            .get_model_execution_order("middle")
+            .expect("execution order");
+        assert_eq!(names(&plan), vec!["head", "middle", "tail"]);
+    }
+
+    fn dummy_model_node(name: &str, rels: Option<&[&str]>) -> DagNode {
+        DagNode {
+            name: name.to_string(),
+            ast: None,
+            compiled_obj: None,
+            node_type: DagNodeType::Model,
+            is_executable: true,
+            relations: rels.map(|items| items.iter().map(|s| s.to_string()).collect()),
+            target: None,
+        }
+    }
+
+    fn build_linear_dag() -> ModelsDag {
+        let mut dag = ModelsDag::new();
+        for name in ["head", "middle", "tail"] {
+            dag.upsert_node(name.into(), false, dummy_model_node(name, None))
+                .expect("insert node");
+        }
+
+        let head = dag.get_index("head").unwrap();
+        let middle = dag.get_index("middle").unwrap();
+        let tail = dag.get_index("tail").unwrap();
+
+        dag.graph.add_edge(head, middle, EmtpyEdge);
+        dag.graph.add_edge(middle, tail, EmtpyEdge);
+        dag
+    }
+
+    fn names(nodes: &[&DagNode]) -> Vec<String> {
+        nodes.iter().map(|n| n.name.clone()).collect()
     }
 }

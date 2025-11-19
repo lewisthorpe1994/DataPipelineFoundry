@@ -54,3 +54,6 @@ foundry_web = { path = "foundry_web"}
 
 [workspace.lints.clippy]
 large_enum_variant = "allow"
+
+[alias]
+test-all = "test --workspace --all-targets --features sqlparser/kafka"
