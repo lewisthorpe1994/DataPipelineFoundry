@@ -32,3 +32,5 @@ connection_profile:
   profile: dev
   path: connections.yml
 
+python:
+  script_path: foundry_python
