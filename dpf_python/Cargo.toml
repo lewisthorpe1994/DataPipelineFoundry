@@ -1,0 +1,15 @@
+[package]
+name = "dpf_python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dpf_python"
+crate-type = ["cdylib"]
+
+[package.metadata.maturin]
+python-source = "python"
+
+[dependencies]
+pyo3 = { version = "0.27.1", features = ["extension-module"] }
+common = { workspace = true }

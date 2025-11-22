@@ -14,8 +14,8 @@ members = [
     "dpf_core/components",
     "dpf_core/components/connector_versioning",
     "dpf_core/components/connector_versioning_derive",
-    "foundry_web"
-]
+    "foundry_web",
+    "dpf_python"]
 
 [workspace.package]
 version = "0.1.0"

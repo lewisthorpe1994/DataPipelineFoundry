@@ -3,7 +3,7 @@ name = "dvdrental-foundry-python"
 version = "0.1.0"
 description = "Python ETL workspace for the FlowFoundry dvdrental example"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["dpf_python"]
 
 [tool.uv]
 managed = true
@@ -11,6 +11,7 @@ cache-dir = ".uv-cache"
 
 [tool.uv.sources]
 bronze_rental_enricher = { workspace = true }
+dpf_python = { path = "../../../dpf_python", editable = true }
 
 [tool.uv.workspace]
 # Each ETL lives under foundry_python/jobs/<etl_name> with its own pyproject.toml

@@ -5,7 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Iterable, Optional
-
+import dpf_python
 import dlt
 import psycopg
 import requests
@@ -20,69 +20,69 @@ class FilmRow:
     release_year: Optional[int] = None
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Fetch TMDB metadata and load it into the film_supplimentatry table via dlt",
-    )
-    parser.add_argument("--pg-host", default=os.getenv("PGHOST", "localhost"), help="Source Postgres host")
-    parser.add_argument(
-        "--pg-port",
-        type=int,
-        default=int(os.getenv("PGPORT", "5432")),
-        help="Source Postgres port",
-    )
-    parser.add_argument("--pg-user", default=os.getenv("PGUSER", "postgres"), help="Source Postgres user")
-    parser.add_argument(
-        "--pg-password",
-        default=os.getenv("PGPASSWORD", "postgres"),
-        help="Source Postgres password",
-    )
-    parser.add_argument(
-        "--pg-database",
-        default=os.getenv("PGDATABASE", "dvdrental"),
-        help="Database that hosts the film table",
-    )
-    parser.add_argument(
-        "--dest-host",
-        default=os.getenv("DEST_HOST") or os.getenv("PGHOST", "localhost"),
-        help="Destination Postgres host",
-    )
-    parser.add_argument(
-        "--dest-port",
-        type=int,
-        default=int(os.getenv("DEST_PORT") or os.getenv("PGPORT", "5432")),
-        help="Destination Postgres port",
-    )
-    parser.add_argument(
-        "--dest-user",
-        default=os.getenv("DEST_USER") or os.getenv("PGUSER", "postgres"),
-        help="Destination Postgres user",
-    )
-    parser.add_argument(
-        "--dest-password",
-        default=os.getenv("DEST_PASSWORD") or os.getenv("PGPASSWORD", "postgres"),
-        help="Destination Postgres password",
-    )
-    parser.add_argument(
-        "--dest-database",
-        default=os.getenv("DEST_DATABASE", "dvdrental_analytics"),
-        help="Destination Postgres database",
-    )
-    parser.add_argument(
-        "--dest-schema",
-        default=os.getenv("DEST_SCHEMA", "film_enrichment"),
-        help="Destination schema name",
-    )
-    parser.add_argument(
-        "--language",
-        default="en-US",
-        help="Preferred TMDB language when selecting keyword matches",
-    )
-    parser.add_argument(
-        "--tmdb-api-key",
-        help="TMDB API key. Falls back to the TMDB_API_KEY environment variable if omitted",
-    )
-    return parser.parse_args()
+# def parse_args() -> argparse.Namespace:
+#     parser = argparse.ArgumentParser(
+#         description="Fetch TMDB metadata and load it into the film_supplimentatry table via dlt",
+#     )
+#     parser.add_argument("--pg-host", default=os.getenv("PGHOST", "localhost"), help="Source Postgres host")
+#     parser.add_argument(
+#         "--pg-port",
+#         type=int,
+#         default=int(os.getenv("PGPORT", "5432")),
+#         help="Source Postgres port",
+#     )
+#     parser.add_argument("--pg-user", default=os.getenv("PGUSER", "postgres"), help="Source Postgres user")
+#     parser.add_argument(
+#         "--pg-password",
+#         default=os.getenv("PGPASSWORD", "postgres"),
+#         help="Source Postgres password",
+#     )
+#     parser.add_argument(
+#         "--pg-database",
+#         default=os.getenv("PGDATABASE", "dvdrental"),
+#         help="Database that hosts the film table",
+#     )
+#     parser.add_argument(
+#         "--dest-host",
+#         default=os.getenv("DEST_HOST") or os.getenv("PGHOST", "localhost"),
+#         help="Destination Postgres host",
+#     )
+#     parser.add_argument(
+#         "--dest-port",
+#         type=int,
+#         default=int(os.getenv("DEST_PORT") or os.getenv("PGPORT", "5432")),
+#         help="Destination Postgres port",
+#     )
+#     parser.add_argument(
+#         "--dest-user",
+#         default=os.getenv("DEST_USER") or os.getenv("PGUSER", "postgres"),
+#         help="Destination Postgres user",
+#     )
+#     parser.add_argument(
+#         "--dest-password",
+#         default=os.getenv("DEST_PASSWORD") or os.getenv("PGPASSWORD", "postgres"),
+#         help="Destination Postgres password",
+#     )
+#     parser.add_argument(
+#         "--dest-database",
+#         default=os.getenv("DEST_DATABASE", "dvdrental_analytics"),
+#         help="Destination Postgres database",
+#     )
+#     parser.add_argument(
+#         "--dest-schema",
+#         default=os.getenv("DEST_SCHEMA", "film_enrichment"),
+#         help="Destination schema name",
+#     )
+#     parser.add_argument(
+#         "--language",
+#         default="en-US",
+#         help="Preferred TMDB language when selecting keyword matches",
+#     )
+#     parser.add_argument(
+#         "--tmdb-api-key",
+#         help="TMDB API key. Falls back to the TMDB_API_KEY environment variable if omitted",
+#     )
+#     return parser.parse_args()
 
 
 def load_films(conn_str: str) -> list[FilmRow]:
@@ -145,8 +145,8 @@ def _fetch_tmdb_row(
     }
 
 
-@dlt.resource(name="film_supplimentatry", write_disposition="merge", primary_key="film_id")
-def film_supplimentatry_resource(
+@dlt.resource(name="film_supplementary", write_disposition="merge", primary_key="film_id")
+def film_supplementary_resource(
     films: list[FilmRow],
     api_key: str,
     language: str,
@@ -164,50 +164,45 @@ def film_supplimentatry_resource(
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    args = parse_args()
 
-    api_key = args.tmdb_api_key or os.getenv("TMDB_API_KEY")
+    config = dpf_python.FoundryConfig()
+    api_key = '1234'
     if not api_key:
         raise SystemExit("TMDB API key is required (set TMDB_API_KEY or pass --tmdb-api-key)")
 
+    db_config = config.get_db_adapter_details('dvd_rental')
+
     source_conn = (
-        f"host={args.pg_host} port={args.pg_port} user={args.pg_user} "
-        f"password={args.pg_password} dbname={args.pg_database}"
+        f"host={db_config.host} port={db_config.port} user={db_config.user} "
+        f"password={db_config.password} dbname={db_config.database}"
     )
-    films = load_films(source_conn)
-    if not films:
-        logging.warning(
-            "No films returned from dvdrental.film using connection %s:%s. Check credentials/permissions.",
-            args.pg_host,
-            args.pg_port,
-        )
-        return 0
-
-    resource = film_supplimentatry_resource(films, api_key=api_key, language=args.language)
-
-    dest_credentials = {
-        "database": args.dest_database,
-        "host": args.dest_host,
-        "port": args.dest_port,
-        "user": args.dest_user,
-        "password": args.dest_password,
-    }
-    pipeline = dlt.pipeline(
-        pipeline_name="tmdb_film_supplimentatry",
-        destination="postgres",
-        dataset_name=args.dest_schema,
-        credentials=dest_credentials,
-    )
-
-    load_info = pipeline.run(resource)
-    metrics = getattr(load_info, "metrics", {}) or {}
-    rows_loaded = metrics.get("rows") or metrics.get("rows_loaded") or 0
-    logging.info(
-        "Loaded %s TMDB supplement rows into table film_supplimentatry (schema=%s, database=%s)",
-        rows_loaded,
-        args.dest_schema,
-        args.dest_database,
-    )
+    # films = load_films(source_conn)
+    #
+    # resource = film_supplementary_resource(films, api_key=api_key, language=args.language)
+    #
+    # dest_credentials = {
+    #     "database": args.dest_database,
+    #     "host": args.dest_host,
+    #     "port": args.dest_port,
+    #     "user": args.dest_user,
+    #     "password": args.dest_password,
+    # }
+    # pipeline = dlt.pipeline(
+    #     pipeline_name="tmdb_film_supplementary",
+    #     destination="postgres",
+    #     dataset_name=args.dest_schema,
+    #     credentials=dest_credentials,
+    # )
+    #
+    # load_info = pipeline.run(resource)
+    # metrics = getattr(load_info, "metrics", {}) or {}
+    # rows_loaded = metrics.get("rows") or metrics.get("rows_loaded") or 0
+    # logging.info(
+    #     "Loaded %s TMDB supplement rows into table film_supplementary (schema=%s, database=%s)",
+    #     rows_loaded,
+    #     args.dest_schema,
+    #     args.dest_database,
+    # )
     return 0
 
 
