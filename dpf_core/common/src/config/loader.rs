@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use crate::config::components::sources::api::ApiSourceConfig;
 
 pub fn load_config<V>(path: &Path) -> Result<HashMap<String, V>, ConfigError>
 where
@@ -46,7 +47,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
     let config_root = proj_config_file_path
         .parent()
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("../../../../.."));
+        .ok_or_else(|| ConfigError::not_found("No project root found for foundry-project.yml"))?;
 
     let connections_path = resolve_path(
         &config_root,
@@ -157,6 +158,12 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         None
     };
 
+    let api_sources = match resolved_sources.get(&SourceType::Api) {
+        Some(config) => load_config::<ApiSourceConfig>(&config.specifications)?,
+        None => HashMap::new(),
+    };
+       
+
     let conn_profile = proj_config.connection_profile.clone();
 
     let config = FoundryConfig::new(
@@ -169,6 +176,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         k_sources,
         resolved_sources,
         k_definitions,
+        api_sources,
     );
 
     Ok(config)

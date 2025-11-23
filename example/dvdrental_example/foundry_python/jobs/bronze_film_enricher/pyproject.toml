@@ -1,5 +1,5 @@
 [project]
-name = "bronze_rental_enricher"
+name = "bronze_film_enricher"
 version = "0.1.0"
 description = "FlowFoundry ETL job that enriches DVDRental films with TMDB metadata"
 requires-python = ">=3.11"

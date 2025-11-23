@@ -1,0 +1,19 @@
+name: tmdb_api
+base_url: https://api.themoviedb.org/3
+default_headers:
+  Accept: application/json
+
+auth:
+  kind: api_key_query
+  token: token
+  query_name: api_key
+
+endpoints:
+  discover_movie:
+    path: /discover/movie
+    method: GET
+    query_params:
+      include_adult: "false"
+      include_video: "false"
+      sort_by: popularity.desc
+    schema_name: raw.film_supplementary

@@ -83,10 +83,10 @@ services:
     build:
       context: ../..
       dockerfile: example/.devcontainer/dpf/Dockerfile
-      args:
-        HTTP_PROXY: http://host.docker.internal:9000
-        HTTPS_PROXY: http://host.docker.internal:9000
-        NO_PROXY: localhost,127.0.0.1,.local,host.docker.internal,*.docker.internal,172.17.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+#      args:
+#        HTTP_PROXY: http://host.docker.internal:9000
+#        HTTPS_PROXY: http://host.docker.internal:9000
+#        NO_PROXY: localhost,127.0.0.1,.local,host.docker.internal,*.docker.internal,172.17.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     container_name: dpf
     networks:
       - example-net

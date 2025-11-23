@@ -8,6 +8,7 @@ use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
 use crate::config::error::ConfigError;
 use std::collections::HashMap;
+use crate::config::components::sources::api::ApiSourceConfig;
 
 // ---------------- global config ----------------
 #[derive(Debug)]
@@ -16,6 +17,7 @@ pub struct FoundryConfig {
     pub warehouse_source: HashMap<String, DbConfig>,
     pub kafka_source: HashMap<String, KafkaSourceConfig>,
     pub source_db_configs: HashMap<String, DbConfig>,
+    pub api_sources: HashMap<String, ApiSourceConfig>,
     pub connections: ConnectionsConfig,
     pub models: Option<ResolvedModelsConfig>,
     pub kafka_connectors: HashMap<String, KafkaConnectorConfig>,
@@ -34,6 +36,7 @@ impl FoundryConfig {
         kafka_source: HashMap<String, KafkaSourceConfig>,
         source_paths: SourcePaths,
         kafka_connectors: HashMap<String, KafkaConnectorConfig>,
+        api_sources: HashMap<String, ApiSourceConfig>,
     ) -> Self {
         Self {
             project,
@@ -41,6 +44,7 @@ impl FoundryConfig {
             connections,
             models,
             source_db_configs,
+            api_sources,
             connection_profile,
             kafka_source,
             source_paths,
@@ -82,6 +86,19 @@ impl FoundryConfig {
                 .map(|k| k.to_string())
                 .collect::<Vec<String>>()
                 .join(", "),
+        )))
+    }
+
+    pub fn get_api_source(&self, name: &str) -> Result<&ApiSourceConfig, ConfigError> {
+        let api_source = self.api_sources.get(name);
+        api_source.ok_or(ConfigError::not_found(format!(
+            "Api source {} not found in registered config, available sources are {}",
+            name,
+            self.api_sources
+                .keys()
+                .map(|k| k.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
         )))
     }
 

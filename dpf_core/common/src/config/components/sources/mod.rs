@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+pub mod api;
 pub mod kafka;
 pub mod warehouse_source;
 
