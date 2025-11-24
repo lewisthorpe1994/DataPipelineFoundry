@@ -84,6 +84,5 @@ fn main() {
         Cmd::Kafka(args) => run_cmd(handle_kafka(&args, cli.config_path.clone())),
         Cmd::Run(args) => run_cmd(handle_run(args.model, cli.config_path.clone())),
         Cmd::Web(args) => run_cmd(handle_web(args, cli.config_path.clone())),
-        _ => unimplemented!("Not implemented yet!"),
     }
 }

@@ -6,10 +6,10 @@ use crate::api::PyApiSourceConfig;
 
 #[pyclass(eq, frozen, name = "SourceType")]
 #[derive(PartialEq, Clone, Copy)]
-pub struct PySourceType(pub SourceType);
+pub struct PyDataEndpointType(pub SourceType);
 
 #[pymethods]
-impl PySourceType {
+impl PyDataEndpointType {
     #[classattr]
     pub const WAREHOUSE: Self = Self(SourceType::Warehouse);
     #[classattr]
@@ -30,13 +30,13 @@ impl PySourceType {
     }
 
     fn __repr__(&self) -> String {
-        format!("SourceType.{}", self.value())
+        format!("DataEndpointType.{}", self.value())
     }
 }
 
-#[pyclass(name = "Source", eq)]
+#[pyclass(name = "DataEndpoint", eq)]
 #[derive(PartialEq, Clone)]
-pub enum Source {
+pub enum DataEndpoint {
     Warehouse {
         field_identifier: String,
         connection_details: AdapterConnectionDetails,

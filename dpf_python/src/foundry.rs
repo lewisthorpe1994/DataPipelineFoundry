@@ -7,7 +7,9 @@ use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use std::env;
 use std::path::{Path, PathBuf};
+use common::types::sources::SourceType;
 use crate::api::PyApiSourceConfig;
+use crate::types::{DataEndpoint, PyDataEndpointType};
 
 #[pyclass(name = "FoundryConfig")]
 pub struct FoundryConfig(GlobalFoundry);
@@ -132,6 +134,40 @@ impl FoundryConfig {
             .get_api_source(name)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
         Ok(PyApiSourceConfig(cfg.clone()))
+    }
+
+    pub fn get_data_endpoint(
+        &self,
+        name: String,
+        ep_type: PyDataEndpointType,
+        identifier: Option<String>
+    ) -> PyResult<DataEndpoint> {
+        let ep = match ep_type.0 {
+            SourceType::SourceDB => {
+                let db_creds = self.get_db_adapter_details(&name)?;
+                DataEndpoint::SourceDb {
+                    field_identifier: identifier.ok_or_else(|| PyValueError::new_err("Source DB requires an identifier"))?,
+                    connection_details: db_creds,
+                }
+            },
+            SourceType::Warehouse => {
+                let db_creds = self.get_db_adapter_details(&name)?;
+                DataEndpoint::Warehouse {
+                    field_identifier: identifier.ok_or_else(|| PyValueError::new_err("Warehouse requires an identifier"))?,
+                    connection_details: db_creds,
+                }
+            }
+            SourceType::Kafka => {
+                let cluster_config = self.get_kafka_cluster_conn(&name)?;
+                DataEndpoint::Kafka { cluster_name: name, cluster_config}
+            },
+            SourceType::Api => {
+                let api_src = self.get_api_source_config(&name)?;
+                DataEndpoint::Api { name, config: api_src}
+            }
+        };
+
+        Ok(ep)
     }
 }
 

@@ -9,7 +9,7 @@ use crate::config::error::ConfigError;
 use crate::config::traits::ConfigName;
 use crate::types::sources::SourceType;
 use crate::utils::paths_with_ext;
-use log::{debug, info};
+use log::debug;
 use serde::de::{DeserializeOwned, Error};
 use serde::Deserialize;
 use serde_yaml::{self, Error as YamlError, Value};

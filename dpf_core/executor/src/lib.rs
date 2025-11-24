@@ -291,6 +291,7 @@ mod tests {
             HashMap::new(),
             SourcePaths::default(),
             HashMap::new(),
+            HashMap::new()
         )
     }
 
