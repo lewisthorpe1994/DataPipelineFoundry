@@ -5,7 +5,8 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Iterable, Optional
-import dpf_python
+from dpf_python import source, DataEndpointType, FoundryConfig
+
 import dlt
 import psycopg
 import requests
@@ -13,7 +14,8 @@ from dlt.destinations import postgres
 
 TMDB_DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
 
-FILMS_SOURCE_TABLE = dpf_python.source('public.film')
+FILMS_SOURCE_TABLE = source(name='dvd_rental', src_type=DataEndpointType.SOURCE_DB, identifier='public.film')
+TMDB = source(name='tmdb_api', src_type=DataEndpointType.API)
 
 @dataclass
 class FilmRow:
@@ -102,7 +104,7 @@ def film_supplementary_resource(
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    config = dpf_python.FoundryConfig()
+    config = FoundryConfig()
     api_key = '9127fc7a1362d4b835d669216761589d'
     if not api_key:
         raise SystemExit("TMDB API key is required (set TMDB_API_KEY or pass --tmdb-api-key)")

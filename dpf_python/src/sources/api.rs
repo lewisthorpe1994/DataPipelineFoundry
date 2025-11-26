@@ -183,3 +183,13 @@ impl PyApiSourceConfig {
         Py::new(py, PyApiEndpointConfig(endpoint))
     }
 }
+
+#[pymodule]
+pub fn kafka(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<PyApiSourceConfig>()?;
+    module.add_class::<PyApiEndpointConfig>()?;
+    module.add_class::<PyApiAuth>()?;
+    module.add_class::<PyApiAuthKind>()?;
+    module.add_class::<PyHttpMethod>()?;
+    Ok(())
+}

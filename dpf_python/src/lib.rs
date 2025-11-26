@@ -1,21 +1,16 @@
-mod api;
 mod connections;
-mod db;
 mod foundry;
-mod kafka;
 mod types;
+mod sources;
 
-use pyo3::exceptions::PyValueError;
-use api::{PyApiAuth, PyApiAuthKind, PyApiEndpointConfig, PyApiSourceConfig, PyHttpMethod};
+use sources::api::{PyApiAuth, PyApiAuthKind, PyApiEndpointConfig, PyApiSourceConfig, PyHttpMethod};
 use connections::{AdapterConnectionDetails, PyConnectionProfile};
-use db::PyDbConfig;
+use sources::db::PyDbConfig;
 use foundry::FoundryConfig;
-use kafka::{PyKafkaBootstrap, PyKafkaConnect, PyKafkaConnectorConfig, PyKafkaSourceConfig};
+use sources::kafka::{PyKafkaBootstrap, PyKafkaConnect, PyKafkaConnectorConfig, PyKafkaSourceConfig};
 use pyo3::prelude::*;
-use pyo3::types::PyString;
 use pyo3::wrap_pyfunction;
-use common::types::sources::SourceType;
-use types::{PyDataEndpointType, DataEndpoint};
+use types::{DataEndpoint, PyDataEndpointType};
 
 #[pyfunction]
 #[pyo3(signature = (name, ep_type, identifier))]

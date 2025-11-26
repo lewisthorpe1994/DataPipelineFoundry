@@ -1,6 +1,6 @@
 use crate::connections::{AdapterConnectionDetails, PyConnectionProfile};
-use crate::db::PyDbConfig;
-use crate::kafka::{PyKafkaConnectorConfig, PyKafkaSourceConfig};
+use crate::sources::db::PyDbConfig;
+use crate::sources::kafka::{PyKafkaConnectorConfig, PyKafkaSourceConfig};
 use common::config::components::global::FoundryConfig as GlobalFoundry;
 use common::config::loader::read_config;
 use pyo3::exceptions::{PyKeyError, PyValueError};
@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use std::env;
 use std::path::{Path, PathBuf};
 use common::types::sources::SourceType;
-use crate::api::PyApiSourceConfig;
+use crate::sources::api::PyApiSourceConfig;
 use crate::types::{DataEndpoint, PyDataEndpointType};
 
 #[pyclass(name = "FoundryConfig")]

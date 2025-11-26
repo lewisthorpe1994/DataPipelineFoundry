@@ -28,3 +28,9 @@ impl PyDbConfig {
         Ok(schema.tables.keys().cloned().collect())
     }
 }
+
+#[pymodule]
+pub fn db(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<PyDbConfig>()?;
+    Ok(())
+}

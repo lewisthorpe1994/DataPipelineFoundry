@@ -1,8 +1,8 @@
 use crate::connections::AdapterConnectionDetails;
-use crate::kafka::PyKafkaSourceConfig;
+use crate::sources::kafka::PyKafkaSourceConfig;
 use common::types::sources::SourceType;
 use pyo3::prelude::*;
-use crate::api::PyApiSourceConfig;
+use crate::sources::api::PyApiSourceConfig;
 
 #[pyclass(eq, frozen, name = "SourceType")]
 #[derive(PartialEq, Clone, Copy)]

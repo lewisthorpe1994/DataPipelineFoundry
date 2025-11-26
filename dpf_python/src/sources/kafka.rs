@@ -91,3 +91,13 @@ impl PyKafkaConnectorConfig {
         self.0.column_include_list(fields_only)
     }
 }
+
+pub fn add_kafka_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    let sub = PyModule::new(py, "kafka")?;
+    sub.add_class::<PyKafkaBootstrap>()?;
+    sub.add_class::<PyKafkaConnect>()?;
+    sub.add_class::<PyKafkaSourceConfig>()?;
+    sub.add_class::<PyKafkaConnectorConfig>()?;
+    // parent.add_submodule(&sub)?;
+    Ok(())
+}
