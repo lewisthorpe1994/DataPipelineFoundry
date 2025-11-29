@@ -98,6 +98,6 @@ pub fn add_kafka_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyRe
     sub.add_class::<PyKafkaConnect>()?;
     sub.add_class::<PyKafkaSourceConfig>()?;
     sub.add_class::<PyKafkaConnectorConfig>()?;
-    // parent.add_submodule(&sub)?;
+    parent.add_submodule(&sub)?;
     Ok(())
 }

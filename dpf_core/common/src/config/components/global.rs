@@ -8,6 +8,7 @@ use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
 use crate::config::error::ConfigError;
 use std::collections::HashMap;
+use crate::config::components::python::PythonConfig;
 use crate::config::components::sources::api::ApiSourceConfig;
 
 // ---------------- global config ----------------

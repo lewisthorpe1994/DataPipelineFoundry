@@ -185,11 +185,13 @@ impl PyApiSourceConfig {
 }
 
 #[pymodule]
-pub fn kafka(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<PyApiSourceConfig>()?;
-    module.add_class::<PyApiEndpointConfig>()?;
-    module.add_class::<PyApiAuth>()?;
-    module.add_class::<PyApiAuthKind>()?;
-    module.add_class::<PyHttpMethod>()?;
+pub fn add_api_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    let sub = PyModule::new(py,"api")?;
+    sub.add_class::<PyApiSourceConfig>()?;
+    sub.add_class::<PyApiEndpointConfig>()?;
+    sub.add_class::<PyApiAuth>()?;
+    sub.add_class::<PyApiAuthKind>()?;
+    sub.add_class::<PyHttpMethod>()?;
+    parent.add_submodule(&sub)?;
     Ok(())
 }

@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-bronze-rental-enricher = "bronze_rental_enricher.__main__:main"
+bronze-film-enricher = "bronze_film_enricher.__main__:main"
 
 [tool.uv]
 package = true

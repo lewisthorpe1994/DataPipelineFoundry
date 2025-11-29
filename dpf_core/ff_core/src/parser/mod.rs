@@ -9,7 +9,9 @@ use log::warn;
 use std::fmt::Debug;
 use std::path::Path;
 use thiserror::Error;
+use toml::Table;
 use walkdir::WalkDir;
+use common::config::components::python::PythonConfig;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -192,6 +194,18 @@ fn kafka_node_type_from_path(path: &Path) -> Option<NodeTypes> {
     None
 }
 
+fn parse_python_nodes(py_cfg: &PythonConfig) -> Result<Vec<ParsedNode>, ParseError> {
+    let workspace_path = Path::new(&py_cfg.workspace_dir).join("pyproject.toml");
+    let file = std::fs::read_to_string(workspace_path)
+        .map_err(|e| ParseError::parser_error(format!("{:?}", e)))?;
+    let workspace_cfg = toml::from_str::<Table>(&file)
+        .map_err(|e| ParseError::parser_error(format!("{:?}", e)))?;
+    let mut parsed_nodes = Vec::new();
+    println!("{:#?}", workspace_cfg);
+    Ok(parsed_nodes)
+
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,5 +323,15 @@ mod tests {
             }
         })
         .expect("change directory to fixture");
+    }
+    
+    #[test]
+    fn test_parse_python_nodes() {
+        let fixture = project_fixture("dvdrental_example").expect("copy example project");
+
+        with_chdir(fixture.path(), move || {
+            let config = read_config(None).expect("load example project config");
+            parse_python_nodes(&config.project.python.unwrap()).unwrap()
+        }).expect("load example project config");
     }
 }

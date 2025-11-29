@@ -30,7 +30,9 @@ impl PyDbConfig {
 }
 
 #[pymodule]
-pub fn db(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<PyDbConfig>()?;
+pub fn add_db_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    let sub = PyModule::new(py, "db")?;
+    sub.add_class::<PyDbConfig>()?;
+    parent.add_submodule(&sub)?;
     Ok(())
 }

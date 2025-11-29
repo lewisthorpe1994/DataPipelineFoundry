@@ -5,7 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Iterable, Optional
-from dpf_python import source, DataEndpointType, FoundryConfig
+from dpf_python import source, DataResourceType, FoundryConfig
 
 import dlt
 import psycopg
@@ -14,8 +14,8 @@ from dlt.destinations import postgres
 
 TMDB_DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
 
-FILMS_SOURCE_TABLE = source(name='dvd_rental', src_type=DataEndpointType.SOURCE_DB, identifier='public.film')
-TMDB = source(name='tmdb_api', src_type=DataEndpointType.API)
+FILMS_SOURCE_TABLE = source(name='dvd_rental', ep_type=DataResourceType.SOURCE_DB, identifier='public.film')
+TMDB = source(name='tmdb_api', ep_type=DataResourceType.API)
 
 @dataclass
 class FilmRow:

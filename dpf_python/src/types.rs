@@ -4,12 +4,12 @@ use common::types::sources::SourceType;
 use pyo3::prelude::*;
 use crate::sources::api::PyApiSourceConfig;
 
-#[pyclass(eq, frozen, name = "SourceType")]
+#[pyclass(eq, frozen, name = "DataResource")]
 #[derive(PartialEq, Clone, Copy)]
-pub struct PyDataEndpointType(pub SourceType);
+pub struct PyDataResourceType(pub SourceType);
 
 #[pymethods]
-impl PyDataEndpointType {
+impl PyDataResourceType {
     #[classattr]
     pub const WAREHOUSE: Self = Self(SourceType::Warehouse);
     #[classattr]
@@ -34,9 +34,9 @@ impl PyDataEndpointType {
     }
 }
 
-#[pyclass(name = "DataEndpoint", eq)]
+#[pyclass(name = "DataResource", eq)]
 #[derive(PartialEq, Clone)]
-pub enum DataEndpoint {
+pub enum DataResource {
     Warehouse {
         field_identifier: String,
         connection_details: AdapterConnectionDetails,

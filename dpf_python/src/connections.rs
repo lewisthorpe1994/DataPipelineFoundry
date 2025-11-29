@@ -97,3 +97,10 @@ impl PyConnectionProfile {
         self.0.path.to_string_lossy().into_owned()
     }
 }
+
+#[pymodule]
+pub fn add_connections_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    let sub = PyModule::new(py, "connections")?;
+    parent.add_submodule(&sub)?;
+    Ok(())
+}

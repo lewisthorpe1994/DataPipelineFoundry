@@ -87,21 +87,54 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
 
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-        let path = entry.path();
-        let target = dst.join(entry.file_name());
-        let metadata = entry.metadata()?;
+        let name = entry.file_name();
 
-        if metadata.is_dir() {
+        // Ignore local virtual environments or caches that may exist in example projects.
+        if should_skip_entry(&name) {
+            continue;
+        }
+
+        let path = entry.path();
+        let target = dst.join(&name);
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
             copy_dir_recursive(&path, &target)?;
-        } else {
+        } else if file_type.is_file() {
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::copy(&path, &target)?;
+        } else if file_type.is_symlink() {
+            // Follow symlinks to copy their targets when they are usable.
+            let metadata = fs::metadata(&path)?;
+            if metadata.is_dir() {
+                copy_dir_recursive(&path, &target)?;
+            } else if metadata.is_file() {
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(&path, &target)?;
+            }
         }
     }
 
     Ok(())
+}
+
+fn should_skip_entry(name: &std::ffi::OsStr) -> bool {
+    matches!(
+        name.to_str(),
+        Some(
+            ".venv"
+                | ".uv-cache"
+                | "__pycache__"
+                | ".mypy_cache"
+                | ".pytest_cache"
+                | ".ruff_cache"
+                | ".ipynb_checkpoints"
+        )
+    )
 }
 
 pub fn build_test_layers(root: PathBuf) -> HashMap<String, String> {

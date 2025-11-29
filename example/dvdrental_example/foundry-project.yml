@@ -30,10 +30,11 @@ sources:
     specifications: foundry_sources/api/specifications
     source_root: foundry_sources/api
 
+
 modelling_architecture: medallion
 connection_profile:
   profile: dev
   path: connections.yml
 
 python:
-  script_path: foundry_python
+  workspace_dir: foundry_python
