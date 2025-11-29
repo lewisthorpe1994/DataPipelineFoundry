@@ -1,5 +1,6 @@
 use common::config::components::global::FoundryConfig;
 use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
+use common::config::components::python::PythonConfig;
 use common::error::DiagnosticMessage;
 use common::traits::IsFileExtension;
 use common::types::sources::SourceType;
@@ -7,11 +8,10 @@ use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
 use log::warn;
 use std::fmt::Debug;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use toml::Table;
 use walkdir::WalkDir;
-use common::config::components::python::PythonConfig;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -69,10 +69,8 @@ pub fn parse_models(
     parent_model_dir: &Path,
     models_config: Option<&ResolvedModelsConfig>,
 ) -> Result<Vec<ParsedNode>, ParseError> {
-    // println!("models config {:#?}", models_config);
     let mut parsed_nodes: Vec<ParsedNode> = Vec::new();
     for dir in dirs.values() {
-        // println!("{:?}",dir);
         for entry in WalkDir::new(parent_model_dir.join(dir)) {
             let path = entry
                 .map_err(|e| ParseError::UnexpectedError {
@@ -194,16 +192,68 @@ fn kafka_node_type_from_path(path: &Path) -> Option<NodeTypes> {
     None
 }
 
-fn parse_python_nodes(py_cfg: &PythonConfig) -> Result<Vec<ParsedNode>, ParseError> {
-    let workspace_path = Path::new(&py_cfg.workspace_dir).join("pyproject.toml");
-    let file = std::fs::read_to_string(workspace_path)
-        .map_err(|e| ParseError::parser_error(format!("{:?}", e)))?;
-    let workspace_cfg = toml::from_str::<Table>(&file)
-        .map_err(|e| ParseError::parser_error(format!("{:?}", e)))?;
-    let mut parsed_nodes = Vec::new();
-    println!("{:#?}", workspace_cfg);
-    Ok(parsed_nodes)
+fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode>>, ParseError> {
+    let nodes: Option<Vec<ParsedNode>> = if let Some(py_cfg) = &cfg.project.python {
+        let workspace_path = Path::new(&py_cfg.workspace_dir).join("pyproject.toml");
+        let file = std::fs::read_to_string(&workspace_path)
+            .map_err(|e| ParseError::parser_error(format!("{e:?}")))?;
+        let cfg: toml::Value =
+            toml::from_str(&file).map_err(|e| ParseError::parser_error(format!("{e:?}")))?;
 
+        let dpf_config = cfg
+            .get("tool")
+            .and_then(|t| t.get("dpf"))
+            .ok_or(ParseError::parser_error("Failed to parse dpf config"))?;
+
+        let node_dir = dpf_config
+            .get("nodes_dir")
+            .ok_or(ParseError::not_found("nodes_dir not found in dpf config in pyproject.toml"))?
+            .as_str()
+            .ok_or(ParseError::parser_error("unable to parse nodes_dir from pyproject.toml"))?
+            .to_string();
+
+        let node_names: Vec<String> = cfg
+            .get("tool")
+            .and_then(|t| t.get("dpf"))
+            .and_then(|d| d.get("nodes"))
+            .and_then(|n| n.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| {
+                        v.as_str().map(str::to_owned)
+                    })
+                    .collect()
+            })
+            .ok_or(ParseError::parser_error("Failed to parse nodes"))?;
+
+        let nodes: Vec<ParsedNode> = node_names
+            .iter()
+            .map(|name| {
+                let node_path = Path::new(&py_cfg.workspace_dir)
+                    .join(&node_dir)
+                    .join(&name);
+                let files: Vec<PathBuf> = paths_with_ext(&node_path, "py").collect();
+                ParsedNode::Python {
+                    node: ParsedInnerNode {
+                        name: name.to_string(),
+                        path: node_path,
+                    },
+                    files,
+                    workspace_path
+                }
+            })
+            .collect();
+        Some(nodes)
+    } else {
+        None
+    };
+
+    Ok(nodes)
+}
+
+fn parse_python_file_names(path: &Path) -> Result<Vec<PathBuf>, ParseError> {
+    let files: Vec<PathBuf> = paths_with_ext(path, "py").collect();
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -232,6 +282,7 @@ mod tests {
                     ParsedNode::KafkaConnector { node } => connectors.push(node),
                     ParsedNode::KafkaSmt { node } => smts.push(node),
                     ParsedNode::KafkaSmtPipeline { node } => pipelines.push(node),
+                    _ => continue,
                 }
             }
 
@@ -324,14 +375,16 @@ mod tests {
         })
         .expect("change directory to fixture");
     }
-    
+
     #[test]
     fn test_parse_python_nodes() {
         let fixture = project_fixture("dvdrental_example").expect("copy example project");
 
         with_chdir(fixture.path(), move || {
             let config = read_config(None).expect("load example project config");
-            parse_python_nodes(&config.project.python.unwrap()).unwrap()
-        }).expect("load example project config");
+            let nodes = maybe_parse_python_nodes(&config).unwrap();
+            println!("{:#?}", nodes);
+        })
+        .expect("load example project config");
     }
 }

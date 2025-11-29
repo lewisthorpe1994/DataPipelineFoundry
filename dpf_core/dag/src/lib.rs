@@ -194,6 +194,25 @@ impl ModelsDag {
                     c_node.target.clone(),
                     &mut current_topics,
                 )?,
+                NodeDec::Python(py) => {
+                    py.sources
+                        .iter()
+                        .try_for_each(|name| -> Result<(), DagError> {
+                            self.upsert_node(
+                                name.clone(),
+                                false,
+                                DagNode {
+                                    name: name.clone(),
+                                    ast: None,
+                                    node_type: DagNodeType::SourceDb,
+                                    is_executable: false,
+                                    relations: None,
+                                    compiled_obj: None,
+                                    target: None,
+                                }
+                            )
+                        })?
+                }
             }
         }
 

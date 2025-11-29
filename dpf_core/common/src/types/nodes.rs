@@ -179,6 +179,11 @@ pub enum ParsedNode {
     KafkaSmtPipeline {
         node: ParsedInnerNode,
     },
+    Python {
+        node: ParsedInnerNode,
+        files: Vec<PathBuf>,
+        workspace_path: PathBuf,
+    }
 }
 
 impl ParsedNode {
@@ -188,6 +193,7 @@ impl ParsedNode {
             ParsedNode::KafkaConnector { node, .. } => node.name.clone(),
             ParsedNode::KafkaSmt { node, .. } => node.name.clone(),
             ParsedNode::KafkaSmtPipeline { node, .. } => node.name.clone(),
+            ParsedNode::Python { node, .. } => node.name.clone(),
         }
     }
 }

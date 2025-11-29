@@ -13,6 +13,12 @@ cache-dir = ".uv-cache"
 bronze_film_enricher = { workspace = true }
 dpf_python = { path = "../../../dpf_python", editable = true }
 
+[tool.dpf]
+nodes = [
+    "bronze_film_enricher"
+]
+nodes_dir = "jobs"
+
 [tool.uv.workspace]
 # Each ETL lives under foundry_python/jobs/<etl_name> with its own pyproject.toml
 members = ["jobs/*"]

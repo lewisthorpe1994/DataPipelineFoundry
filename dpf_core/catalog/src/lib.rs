@@ -11,15 +11,17 @@ use std::cmp::Ordering;
 use crate::error::CatalogError;
 use common::config::components::sources::warehouse_source::DbConfig;
 use common::types::kafka::KafkaConnectorType;
-use common::types::{Materialize, ModelRef, ParsedNode, SourceRef};
+use common::types::{Materialize, ModelRef, ParsedInnerNode, ParsedNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
+use python_parser::parse_relationships;
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::helpers::foundry_helpers::{AstValueFormatter, MacroFnCall, MacroFnCallType};
 use sqlparser::ast::{ObjectName, ObjectNamePart, Statement};
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -33,6 +35,7 @@ struct State {
     models: HashMap<String, ModelDecl>,
     sources: HashMap<String, DbConfig>,
     predicates: HashMap<String, PredicateDecl>,
+    python_decls: HashMap<String, PythonDecl>,
 }
 
 #[derive(Debug)]
@@ -42,6 +45,7 @@ pub enum NodeDec {
     KafkaConnector(KafkaConnectorMeta),
     Model(ModelDecl),
     WarehouseSource(WarehouseSourceDec),
+    Python(PythonDecl),
 }
 
 #[derive(Debug)]
@@ -152,6 +156,14 @@ impl MemoryCatalog {
                 }
             }
         }
+        
+        for (name, dec) in g.python_decls.iter() {
+            nodes.push(CatalogNode {
+                name: name.to_owned(),
+                declaration: NodeDec::Python(dec.clone()),
+                target: None,
+            });
+        }
         nodes
     }
 }
@@ -229,9 +241,16 @@ pub trait Register: Send + Sync + 'static {
         &self,
         ast: CreateSimpleMessageTransformPredicate,
     ) -> Result<(), CatalogError>;
+
+    fn register_python_node(
+        &self,
+        node: &ParsedInnerNode,
+        files: &Vec<PathBuf>,
+        workspace_path: &Path,
+    ) -> Result<(), CatalogError>;
 }
 
-fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
+fn compare_node(a: &ParsedNode, b: &ParsedNode) -> Ordering {
     fn priority(node: &ParsedNode) -> Option<u8> {
         match node {
             ParsedNode::KafkaSmt { .. } => Some(0),
@@ -243,7 +262,7 @@ fn compare_node(a: &ParsedNode, b: &ParsedNode) -> std::cmp::Ordering {
 
     match (priority(a), priority(b)) {
         (Some(pa), Some(pb)) => pa.cmp(&pb),
-        _ => std::cmp::Ordering::Equal,
+        _ => Ordering::Equal,
     }
 }
 
@@ -258,6 +277,7 @@ pub fn compare_catalog_node(a: &CatalogNode, b: &CatalogNode) -> Ordering {
             NodeDec::Model(_) => 3,
             NodeDec::KafkaSmt(_) => 4,
             NodeDec::KafkaSmtPipeline(_) => 5,
+            NodeDec::Python(_) => 6,
         }
     }
 
@@ -299,6 +319,14 @@ impl Register for MemoryCatalog {
                     })?;
 
                     (sql, None, node.name.clone(), node.path.clone())
+                }
+                ParsedNode::Python {
+                    node,
+                    files,
+                    workspace_path,
+                } => {
+                    self.register_python_node(node, files, workspace_path)?;
+                    continue
                 }
             };
 
@@ -535,6 +563,38 @@ impl Register for MemoryCatalog {
         };
 
         g.predicates.insert(id, pred);
+
+        Ok(())
+    }
+
+    fn register_python_node(
+        &self,
+        node: &ParsedInnerNode,
+        files: &Vec<PathBuf>,
+        workspace_path: &Path,
+    ) -> Result<(), CatalogError> {
+        let mut sources: HashSet<String> = HashSet::new();
+        let mut destinations: HashSet<String> = HashSet::new();
+        for file in files {
+            let python_str = std::fs::read_to_string(&file).map_err(|e| {
+                CatalogError::io(format!("unable to read python file {}", file.display()), e)
+            })?;
+            let rels = parse_relationships(&python_str).map_err(|e| {
+                CatalogError::python_node(format!("unable to parse relationships: {}", e))
+            })?;
+
+            sources.extend(rels.sources);
+            destinations.extend(rels.destinations);
+        }
+        let python_dec = PythonDecl {
+            name: node.name.clone(),
+            workspace_path: workspace_path.to_path_buf(),
+            sources,
+            destinations,
+        };
+
+        let mut g = self.inner.write();
+        g.python_decls.insert(node.name.clone(), python_dec);
 
         Ok(())
     }

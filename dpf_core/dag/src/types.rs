@@ -32,6 +32,8 @@ pub enum DagNodeType {
     Model,
     SourceDb,
     WarehouseSourceDb,
+    Api,
+    Python,
 }
 
 pub type DagResult<T> = Result<T, DagError>;

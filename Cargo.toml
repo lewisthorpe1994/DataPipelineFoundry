@@ -15,7 +15,8 @@ members = [
     "dpf_core/components/connector_versioning",
     "dpf_core/components/connector_versioning_derive",
     "foundry_web",
-    "dpf_python"]
+    "dpf_python",
+    "dpf_core/python_parser"]
 
 [workspace.package]
 version = "0.1.0"
@@ -50,7 +51,9 @@ executor = { path = "dpf_core/executor" }
 components = { path = "dpf_core/components", default-features = false}
 connector_versioning = { path = "dpf_core/components/connector_versioning"}
 connector_versioning_derive = {path = "dpf_core/components/connector_versioning_derive"}
+python_parser = { path = "dpf_core/python_parser"}
 foundry_web = { path = "foundry_web"}
+
 
 [workspace.lints.clippy]
 large_enum_variant = "allow"

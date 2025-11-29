@@ -11,6 +11,7 @@ use sqlparser::ast::{
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,27 +192,10 @@ impl WarehouseSourceDec {
     }
 }
 
-pub trait ExecutionTarget {
-    fn target_name(&self) -> Result<String, CatalogError>;
-}
-
-impl ExecutionTarget for ModelDecl {
-    fn target_name(&self) -> Result<String, CatalogError> {
-        let source_names = self
-            .sources
-            .iter()
-            .map(|s| s.source_name.clone())
-            .collect::<HashSet<String>>();
-        if source_names.len() > 1 {
-            return Err(CatalogError::unsupported(
-                "Cannot execute model with multiple sources",
-            ));
-        } else if source_names.is_empty() {
-            return Err(CatalogError::not_found(
-                "Cannot compile a model with no sources",
-            ));
-        }
-
-        Ok(source_names.into_iter().next().unwrap())
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PythonDecl {
+    pub name: String,
+    pub workspace_path: PathBuf,
+    pub sources: HashSet<String>,
+    pub destinations: HashSet<String>,
 }
