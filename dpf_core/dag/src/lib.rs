@@ -19,6 +19,7 @@ use sqlparser::ast::ModelSqlCompileError;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
+use common::types::{ResourceNodeRefType, ResourceNodeType};
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -195,23 +196,61 @@ impl ModelsDag {
                     &mut current_topics,
                 )?,
                 NodeDec::Python(py) => {
-                    py.sources
+                    // Add source and destination nodes if they don't exist
+                    let mut sources: BTreeSet<String> = BTreeSet::new();
+                    py.resources
                         .iter()
-                        .try_for_each(|name| -> Result<(), DagError> {
-                            self.upsert_node(
-                                name.clone(),
-                                false,
-                                DagNode {
-                                    name: name.clone(),
-                                    ast: None,
-                                    node_type: DagNodeType::SourceDb,
-                                    is_executable: false,
-                                    relations: None,
-                                    compiled_obj: None,
-                                    target: None,
+                        .try_for_each(|node| -> Result<(), DagError> {
+                            match node.reference {
+
+                                ResourceNodeRefType::Source => {
+                                    sources.insert(node.name.clone());
+                                    self.upsert_node(
+                                        node.name.clone(),
+                                        false,
+                                        DagNode {
+                                            name: node.name.clone(),
+                                            ast: None,
+                                            node_type: DagNodeType::from(node.node_type.clone()),
+                                            is_executable: false,
+                                            relations: None,
+                                            compiled_obj: None,
+                                            target: None,
+                                        }
+                                    )?
                                 }
-                            )
-                        })?
+                                ResourceNodeRefType::Destination => {
+                                    self.upsert_node(
+                                        node.name.clone(),
+                                        false,
+                                        DagNode {
+                                            name: node.name.clone(),
+                                            ast: None,
+                                            node_type: DagNodeType::from(node.node_type.clone()),
+                                            is_executable: false,
+                                            relations: Some(BTreeSet::from([py.name.clone()])),
+                                            compiled_obj: None,
+                                            target: None,
+                                        }
+                                    )?
+                                }
+                            }
+                            Ok(())
+                        })?;
+
+                    self.upsert_node(
+                        py.name.clone(),
+                        false,
+                        DagNode {
+                            name: py.name.clone(),
+                            ast: None,
+                            node_type: DagNodeType::Python,
+                            is_executable: false,
+                            relations: Some(sources),
+                            compiled_obj: None,
+                            target: None,
+                        }
+                    )?
                 }
             }
         }
@@ -734,7 +773,25 @@ mod tests {
     use common::config::loader::read_config;
     use ff_core::parser::parse_nodes;
     use std::collections::BTreeSet;
-    use test_utils::{get_root_dir, with_chdir};
+    use test_utils::{get_root_dir, project_fixture, with_chdir};
+
+    #[test]
+    fn test_dag() {
+        let fixture = project_fixture("dvdrental_example").expect("copy example project");
+
+        with_chdir(fixture.path(), move || {
+            let config = read_config(None).expect("load example project config");
+            let nodes = parse_nodes(&config).expect("parse model nodes");
+            let catalog = MemoryCatalog::new();
+            catalog.register_nodes(nodes, config.warehouse_source.clone()).expect("register nodes");
+            let mut dag = ModelsDag::new();
+
+            dag.build(&catalog, &config).expect("build dag");
+
+            println!("{:?}", dag);
+        }).expect("chdir");
+    }
+
     #[test]
     fn upsert_node_merges_relations_and_detects_duplicates() {
         let mut dag = ModelsDag::new();

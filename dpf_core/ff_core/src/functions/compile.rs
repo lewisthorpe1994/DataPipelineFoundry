@@ -26,6 +26,8 @@ pub enum ManifestNodeType {
     Kafka,
     DPF,
     DB,
+    Python,
+    Api
 }
 
 /// Description of a compiled model written to `manifest.json`.
@@ -86,6 +88,8 @@ pub fn compile(config: &FoundryConfig) -> Result<CompileOutput, FFError> {
             DagNodeType::SourceDb => ManifestNodeType::DB,
             DagNodeType::WarehouseSourceDb => ManifestNodeType::DB,
             DagNodeType::KafkaTopic => ManifestNodeType::Kafka,
+            DagNodeType::Python => ManifestNodeType::Python,
+            DagNodeType::Api => ManifestNodeType::Api,
         };
 
         manifest_models.push(ManifestModel {

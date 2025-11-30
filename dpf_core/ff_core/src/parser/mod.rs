@@ -61,6 +61,10 @@ pub fn parse_nodes(config: &FoundryConfig) -> Result<Vec<ParsedNode>, ParseError
     if let Some(k) = k_nodes {
         nodes.extend(k);
     }
+    let p_nodes = maybe_parse_python_nodes(config)?;
+    if let Some(p) = p_nodes {
+        nodes.extend(p);
+    }
     Ok(nodes)
 }
 
@@ -239,7 +243,7 @@ fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode
                         path: node_path,
                     },
                     files,
-                    workspace_path
+                    workspace_path: workspace_path.clone()
                 }
             })
             .collect();

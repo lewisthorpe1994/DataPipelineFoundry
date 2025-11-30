@@ -1,9 +1,31 @@
 use ruff_python_ast::{Alias, Expr, Mod, ModModule, Stmt};
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_parser::{parse, Mode};
+use ruff_python_parser::{parse, Mode, ParseError};
 use ruff_text_size::TextRange;
 use std::collections::{HashMap, HashSet};
 use common::types::{ResourceNode, ResourceNodeRefType, ResourceNodeType};
+use thiserror::Error;
+use common::error::DiagnosticMessage;
+
+#[derive(Debug, Error)]
+pub enum PythonParserError {
+    #[error("Not Found: {context}")]
+    NotFound { context: DiagnosticMessage },
+    #[error("Parse Error: {context} due to {source:?}")]
+    RuffParseError { context: DiagnosticMessage, source: ParseError },
+}
+
+impl PythonParserError {
+    #[track_caller]
+    fn not_found(message: impl Into<String>) -> Self {
+        Self::NotFound { context: DiagnosticMessage::new(message.into())}
+    }
+
+    #[track_caller]
+    fn ruff_parse_error(message: impl Into<String>, source: ParseError) -> Self {
+        Self::RuffParseError { context: DiagnosticMessage::new(message.into()), source}
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DpfFunction {
@@ -26,6 +48,7 @@ pub struct DpfCall {
     pub function: DpfFunction,
     pub range: TextRange,
     pub identifier: Option<String>,
+    pub name: String,
     pub ep_type: Option<ResourceNodeType>,
 }
 
@@ -47,11 +70,15 @@ fn alias_name(alias: &Alias) -> String {
 fn collect_dpf_imports(module: &ModModule) -> DpfImports {
     let mut imports = DpfImports::default();
 
+    let is_dpf_module = |module_name: &str| {
+        module_name == "dpf_python" || module_name.starts_with("dpf_python.")
+    };
+
     for stmt in &module.body {
         match stmt {
             Stmt::ImportFrom(import_from) if import_from.level == 0 => {
                 if let Some(module) = &import_from.module {
-                    if module.id.as_str() == "dpf_python" {
+                    if is_dpf_module(module.id.as_str()) {
                         for alias in &import_from.names {
                             if let Some(function) =
                                 DpfFunction::from_name(alias.name.id.as_str())
@@ -109,6 +136,26 @@ fn extract_identifier(call: &ruff_python_ast::ExprCall) -> Option<String> {
     None
 }
 
+fn extract_name(call: &ruff_python_ast::ExprCall) -> Result<String, PythonParserError> {
+    for keyword in call.arguments.keywords.iter() {
+        let arg = keyword
+            .arg
+            .as_ref()
+            .ok_or_else(|| PythonParserError::not_found("name"))?;
+        if arg.id.as_str() != "name" {
+            continue;
+        }
+
+        if let Expr::StringLiteral(lit) = &keyword.value {
+            return Ok(lit.value.to_str().to_string());
+        }
+    }
+    Err(PythonParserError::not_found(format!(
+        "name field missing in call {:?}",
+        call
+    )))
+}
+
 fn extract_ep_type(call: &ruff_python_ast::ExprCall) -> Option<ResourceNodeType> {
     for keyword in call.arguments.keywords.iter() {
         let arg = keyword.arg.as_ref()?;
@@ -120,14 +167,14 @@ fn extract_ep_type(call: &ruff_python_ast::ExprCall) -> Option<ResourceNodeType>
             Expr::Attribute(attr) => match attr.attr.id.as_str() {
                 "API" => return Some(ResourceNodeType::Api),
                 "SOURCE_DB" => return Some(ResourceNodeType::SourceDb),
-                "WAREHOUSE_DB" => return Some(ResourceNodeType::WarehouseDb),
+                "WAREHOUSE_DB" | "WAREHOUSE" => return Some(ResourceNodeType::WarehouseDb),
                 "KAFKA" => return Some(ResourceNodeType::Kafka),
                 _ => continue,
             },
             Expr::Name(name) => match name.id.as_str() {
                 "API" => return Some(ResourceNodeType::Api),
                 "SOURCE_DB" => return Some(ResourceNodeType::SourceDb),
-                "WAREHOUSE_DB" => return Some(ResourceNodeType::WarehouseDb),
+                "WAREHOUSE_DB" | "WAREHOUSE" => return Some(ResourceNodeType::WarehouseDb),
                 "KAFKA" => return Some(ResourceNodeType::Kafka),
                 _ => continue,
             },
@@ -141,6 +188,7 @@ fn extract_ep_type(call: &ruff_python_ast::ExprCall) -> Option<ResourceNodeType>
 struct DpfSourceVisitor<'imports> {
     imports: &'imports DpfImports,
     found: Vec<DpfCall>,
+    error: Option<PythonParserError>,
 }
 
 impl<'imports> DpfSourceVisitor<'imports> {
@@ -148,20 +196,34 @@ impl<'imports> DpfSourceVisitor<'imports> {
         Self {
             imports,
             found: Vec::new(),
+            error: None,
         }
     }
 }
 
 impl<'a> Visitor<'a> for DpfSourceVisitor<'_> {
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if self.error.is_some() {
+            return;
+        }
+
         if let Some(function) = match_dpf_function(expr, self.imports) {
             if let Expr::Call(call) = expr {
-                self.found.push(DpfCall {
-                    function,
-                    range: call.range,
-                    identifier: extract_identifier(call),
-                    ep_type: extract_ep_type(call),
-                });
+                match extract_name(call) {
+                    Ok(name) => {
+                        self.found.push(DpfCall {
+                            function,
+                            range: call.range,
+                            name,
+                            identifier: extract_identifier(call),
+                            ep_type: extract_ep_type(call),
+                        });
+                    }
+                    Err(err) => {
+                        self.error = Some(err);
+                        return;
+                    }
+                }
             }
         }
 
@@ -169,8 +231,9 @@ impl<'a> Visitor<'a> for DpfSourceVisitor<'_> {
     }
 }
 
-pub fn find_dpf_calls(source: &str) -> Result<Vec<DpfCall>, Box<dyn std::error::Error>> {
-    let parsed = parse(source, Mode::Module)?;
+pub fn find_dpf_calls(source: &str) -> Result<Vec<DpfCall>, PythonParserError> {
+    let parsed = parse(source, Mode::Module)
+        .map_err(|err| PythonParserError::ruff_parse_error("parse error", err))?;
     let module = match parsed.syntax() {
         Mod::Module(module) => module,
         _ => return Ok(Vec::new()),
@@ -179,7 +242,9 @@ pub fn find_dpf_calls(source: &str) -> Result<Vec<DpfCall>, Box<dyn std::error::
     let imports = collect_dpf_imports(module);
     let mut visitor = DpfSourceVisitor::new(&imports);
     visitor::walk_body(&mut visitor, &module.body);
-
+    if let Some(err) = visitor.error {
+        return Err(err.into());
+    }
     Ok(visitor.found)
 }
 
@@ -219,14 +284,24 @@ pub fn parse_relationships(python_str: &str) -> Result<HashSet<ResourceNode>, Bo
     let mut nodes: HashSet<ResourceNode> = HashSet::new();
 
     for call in find_dpf_calls(python_str)? {
-        if let (Some(identifier), Some(ep_type)) = (call.identifier, call.ep_type) {
+        if let Some(ep_type) = call.ep_type {
             let reference = match call.function {
                 DpfFunction::Source => ResourceNodeRefType::Source,
                 DpfFunction::Destination => ResourceNodeRefType::Destination,
             };
 
+            if (ep_type == ResourceNodeType::SourceDb || ep_type == ResourceNodeType::WarehouseDb)
+                && call.identifier.is_none()
+            {
+                return Err(Box::new(PythonParserError::not_found(
+                    "identifier required for SOURCE_DB or WAREHOUSE_DB",
+                )));
+            }
+
+            let name = call.identifier.clone().unwrap_or_else(|| call.name.clone());
+
             let node = ResourceNode {
-                name: identifier,
+                name,
                 node_type: ep_type,
                 reference,
             };
@@ -280,8 +355,10 @@ class FilmRow:
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].function, DpfFunction::Source);
         assert_eq!(calls[0].identifier.as_deref(), Some("public.film"));
+        assert_eq!(calls[0].name, "dvd_rental");
         assert_eq!(calls[1].function, DpfFunction::Source);
         assert_eq!(calls[1].identifier.as_deref(), None);
+        assert_eq!(calls[1].name, "tmdb_api");
     }
 
     #[test]
@@ -307,6 +384,7 @@ def demo():
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function, DpfFunction::Source);
         assert_eq!(calls[0].identifier.as_deref(), None);
+        assert_eq!(calls[0].name, "ok");
     }
 
     #[test]
@@ -314,12 +392,13 @@ def demo():
         let src = r#"
 from dpf_python import destination
 
-DEST = destination(identifier="my.dest.table")
+DEST = destination(name="dest", identifier="my.dest.table")
 "#;
         let calls = find_dpf_calls(src).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function, DpfFunction::Destination);
         assert_eq!(calls[0].identifier.as_deref(), Some("my.dest.table"));
+        assert_eq!(calls[0].name, "dest");
     }
 
     #[test]
@@ -329,12 +408,13 @@ from elsewhere import source
 from dpf_python import source as dpf_source
 
 bad = source(name="not ours")
-good = dpf_source(identifier="ours.table")
+good = dpf_source(name="ours", identifier="ours.table")
 "#;
         let calls = find_dpf_calls(src).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function, DpfFunction::Source);
         assert_eq!(calls[0].identifier.as_deref(), Some("ours.table"));
+        assert_eq!(calls[0].name, "ours");
     }
 
     #[test]
@@ -354,8 +434,8 @@ good = dpf_source(identifier="ours.table")
         let src = r#"
 from dpf_python import destination, source
 
-DEST = destination(identifier="dest.one")
-SRC = source(identifier="src.two")
+DEST = destination(name="dest", identifier="dest.one")
+SRC = source(name="src_two", identifier="src.two")
 "#;
         let dest_ids = find_destination_identifiers(src).unwrap();
         assert_eq!(dest_ids, vec!["dest.one".to_string()]);
@@ -368,9 +448,9 @@ SRC = source(identifier="src.two")
         let src = r#"
 from dpf_python import destination, source as src
 
-a = src(identifier="src.one", ep_type=DataResourceType.API)
-dest = destination(identifier="dest.one", ep_type=DataResourceType.WAREHOUSE_DB)
-src(identifier="src.two", ep_type=DataResourceType.SOURCE_DB)
+a = src(name="src_one", identifier="src.one", ep_type=DataResourceType.API)
+dest = destination(name="dest_one", identifier="dest.one", ep_type=DataResourceType.WAREHOUSE_DB)
+src(name="src_two", identifier="src.two", ep_type=DataResourceType.SOURCE_DB)
 destination(name="no_identifier_here", ep_type=DataResourceType.API)
 "#;
         let result = parse_relationships(src).unwrap();
@@ -389,8 +469,43 @@ destination(name="no_identifier_here", ep_type=DataResourceType.API)
                 name: "dest.one".to_string(),
                 node_type: ResourceNodeType::WarehouseDb,
                 reference: ResourceNodeRefType::Destination,
+            },
+            ResourceNode {
+                name: "no_identifier_here".to_string(),
+                node_type: ResourceNodeType::Api,
+                reference: ResourceNodeRefType::Destination,
             }
         ]);
         assert_eq!(result, expected)
+    }
+
+    #[test]
+    fn handles_nested_dpf_module_import_for_destination() {
+        let src = r#"
+from dpf_python.dpf_python import destination
+from dpf_python import source, DataResourceType
+
+FILMS_SOURCE_TABLE = source(name='dvd_rental', ep_type=DataResourceType.SOURCE_DB, identifier='public.film')
+FILMS_WAREHOUSE_TABLE = destination(name='dvdrentals_analytics', ep_type=DataResourceType.WAREHOUSE, identifier='raw.film_supplementary')
+"#;
+        let calls = find_dpf_calls(src).unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].function, DpfFunction::Source);
+        assert_eq!(calls[1].function, DpfFunction::Destination);
+
+        let nodes = parse_relationships(src).unwrap();
+        let expected = HashSet::from([
+            ResourceNode {
+                name: "public.film".to_string(),
+                node_type: ResourceNodeType::SourceDb,
+                reference: ResourceNodeRefType::Source,
+            },
+            ResourceNode {
+                name: "raw.film_supplementary".to_string(),
+                node_type: ResourceNodeType::WarehouseDb,
+                reference: ResourceNodeRefType::Destination,
+            },
+        ]);
+        assert_eq!(nodes, expected);
     }
 }

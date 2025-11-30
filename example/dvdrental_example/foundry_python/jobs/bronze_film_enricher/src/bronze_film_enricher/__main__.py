@@ -5,7 +5,9 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Iterable, Optional
-from dpf_python import source, DataResourceType, FoundryConfig
+
+
+from dpf_python import source, DataResourceType, FoundryConfig, destination
 
 import dlt
 import psycopg
@@ -16,6 +18,7 @@ TMDB_DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
 
 FILMS_SOURCE_TABLE = source(name='dvd_rental', ep_type=DataResourceType.SOURCE_DB, identifier='public.film')
 TMDB = source(name='tmdb_api', ep_type=DataResourceType.API)
+FILMS_WAREHOUSE_TABLE = destination(name='dvdrentals_analytics', ep_type=DataResourceType.WAREHOUSE, identifier='raw.film_supplementary')
 
 @dataclass
 class FilmRow:

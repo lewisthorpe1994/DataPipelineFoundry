@@ -9,6 +9,7 @@ use sqlparser::ast::{
 };
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
+use common::types::ResourceNodeType;
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -34,6 +35,17 @@ pub enum DagNodeType {
     WarehouseSourceDb,
     Api,
     Python,
+}
+
+impl From<ResourceNodeType> for DagNodeType {
+    fn from(value: ResourceNodeType) -> Self {
+        match value {
+            ResourceNodeType::WarehouseDb => DagNodeType::WarehouseSourceDb,
+            ResourceNodeType::SourceDb => DagNodeType::SourceDb,
+            ResourceNodeType::Api => DagNodeType::Api,
+            ResourceNodeType::Kafka => DagNodeType::KafkaTopic
+        }
+    }
 }
 
 pub type DagResult<T> = Result<T, DagError>;
