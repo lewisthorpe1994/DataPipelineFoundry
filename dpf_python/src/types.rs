@@ -1,3 +1,4 @@
+use pyo3::exceptions::PyValueError;
 use crate::connections::AdapterConnectionDetails;
 use crate::sources::kafka::PyKafkaSourceConfig;
 use common::types::sources::SourceType;
@@ -34,6 +35,15 @@ impl PyDataResourceType {
     }
 }
 
+#[pyclass(eq, frozen, name = "DataResourceConfig")]
+#[derive(PartialEq, Clone)]
+pub enum PyDataResourceConfig{
+    DB(AdapterConnectionDetails),
+    Kafka(PyKafkaSourceConfig),
+    Api(PyApiSourceConfig),
+}
+
+
 #[pyclass(name = "DataResource", eq)]
 #[derive(PartialEq, Clone)]
 pub enum DataResource {
@@ -52,5 +62,25 @@ pub enum DataResource {
     Api {
         name: String,
         config: PyApiSourceConfig,
+    }
+}
+#[pymethods]
+impl DataResource {
+    #[getter]
+    fn name(&self) -> String {
+        match self {
+            DataResource::Warehouse { field_identifier, .. } => field_identifier.clone(),
+            DataResource::SourceDb { field_identifier, .. } => field_identifier.clone(),
+            DataResource::Kafka { cluster_name, .. } => cluster_name.clone(),
+            DataResource::Api { name, .. } => name.clone(),
+        }
+    }
+    fn config(&self) -> PyDataResourceConfig {
+        match self {
+            DataResource::Warehouse { connection_details, .. } => PyDataResourceConfig::DB(connection_details.clone()),
+            DataResource::SourceDb { connection_details, .. } => PyDataResourceConfig::DB(connection_details.clone()),
+            DataResource::Kafka { cluster_config, .. } => PyDataResourceConfig::Kafka(cluster_config.clone()),
+            DataResource::Api { config, .. } => PyDataResourceConfig::Api(config.clone()),
+        }
     }
 }

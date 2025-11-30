@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import argparse
 import logging
-import os
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
@@ -112,13 +110,7 @@ def main() -> int:
     if not api_key:
         raise SystemExit("TMDB API key is required (set TMDB_API_KEY or pass --tmdb-api-key)")
 
-    db_config = config.get_db_adapter_details('dvd_rental')
-
-    source_conn = (
-        f"host={db_config.host} port={db_config.port} user={db_config.user} "
-        f"password={db_config.password} dbname={db_config.database}"
-    )
-    films = load_films(source_conn)
+    films = load_films(FILMS_SOURCE_TABLE.)
 
     resource = film_supplementary_resource(films, api_key=api_key, language='en-us')
 
