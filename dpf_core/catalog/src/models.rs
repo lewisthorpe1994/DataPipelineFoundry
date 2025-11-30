@@ -1,7 +1,7 @@
 use crate::CatalogError;
 use chrono::{DateTime, Utc};
 use common::types::kafka::KafkaConnectorType;
-use common::types::{KafkaConnectorProvider, Materialize, ModelRef, SourceRef};
+use common::types::{KafkaConnectorProvider, Materialize, ModelRef, ResourceNode, SourceRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use sqlparser::ast::helpers::foundry_helpers::KvPairs;
@@ -196,6 +196,5 @@ impl WarehouseSourceDec {
 pub struct PythonDecl {
     pub name: String,
     pub workspace_path: PathBuf,
-    pub sources: HashSet<String>,
-    pub destinations: HashSet<String>,
+    pub resources: HashSet<ResourceNode>
 }

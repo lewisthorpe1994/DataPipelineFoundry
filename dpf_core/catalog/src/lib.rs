@@ -11,7 +11,7 @@ use std::cmp::Ordering;
 use crate::error::CatalogError;
 use common::config::components::sources::warehouse_source::DbConfig;
 use common::types::kafka::KafkaConnectorType;
-use common::types::{Materialize, ModelRef, ParsedInnerNode, ParsedNode, SourceRef};
+use common::types::{Materialize, ModelRef, ParsedInnerNode, ParsedNode, ResourceNode, SourceRef};
 use common::utils::read_sql_file_from_path;
 use parking_lot::RwLock;
 use python_parser::parse_relationships;
@@ -573,8 +573,7 @@ impl Register for MemoryCatalog {
         files: &Vec<PathBuf>,
         workspace_path: &Path,
     ) -> Result<(), CatalogError> {
-        let mut sources: HashSet<String> = HashSet::new();
-        let mut destinations: HashSet<String> = HashSet::new();
+        let mut resources: HashSet<ResourceNode> = HashSet::new();
         for file in files {
             let python_str = std::fs::read_to_string(&file).map_err(|e| {
                 CatalogError::io(format!("unable to read python file {}", file.display()), e)
@@ -582,15 +581,15 @@ impl Register for MemoryCatalog {
             let rels = parse_relationships(&python_str).map_err(|e| {
                 CatalogError::python_node(format!("unable to parse relationships: {}", e))
             })?;
+            resources.extend(rels);
 
-            sources.extend(rels.sources);
-            destinations.extend(rels.destinations);
+
         }
         let python_dec = PythonDecl {
             name: node.name.clone(),
             workspace_path: workspace_path.to_path_buf(),
-            sources,
-            destinations,
+            resources,
+
         };
 
         let mut g = self.inner.write();

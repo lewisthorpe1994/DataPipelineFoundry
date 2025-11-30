@@ -1,8 +1,9 @@
 use ruff_python_ast::{Alias, Expr, Mod, ModModule, Stmt};
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_parser::{parse, Mode, ParseOptions};
+use ruff_python_parser::{parse, Mode};
 use ruff_text_size::TextRange;
 use std::collections::{HashMap, HashSet};
+use common::types::{ResourceNode, ResourceNodeRefType, ResourceNodeType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DpfFunction {
@@ -25,7 +26,7 @@ pub struct DpfCall {
     pub function: DpfFunction,
     pub range: TextRange,
     pub identifier: Option<String>,
-    pub ep_type: Option<RelationshipNodeType>,
+    pub ep_type: Option<ResourceNodeType>,
 }
 
 #[derive(Debug, Default)]
@@ -108,7 +109,7 @@ fn extract_identifier(call: &ruff_python_ast::ExprCall) -> Option<String> {
     None
 }
 
-fn extract_ep_type(call: &ruff_python_ast::ExprCall) -> Option<RelationshipNodeType> {
+fn extract_ep_type(call: &ruff_python_ast::ExprCall) -> Option<ResourceNodeType> {
     for keyword in call.arguments.keywords.iter() {
         let arg = keyword.arg.as_ref()?;
         if arg.id.as_str() != "ep_type" {
@@ -117,17 +118,17 @@ fn extract_ep_type(call: &ruff_python_ast::ExprCall) -> Option<RelationshipNodeT
 
         match &keyword.value {
             Expr::Attribute(attr) => match attr.attr.id.as_str() {
-                "API" => return Some(RelationshipNodeType::Api),
-                "SOURCE_DB" => return Some(RelationshipNodeType::SourceDb),
-                "WAREHOUSE_DB" => return Some(RelationshipNodeType::WarehouseDb),
-                "KAFKA" => return Some(RelationshipNodeType::Kafka),
+                "API" => return Some(ResourceNodeType::Api),
+                "SOURCE_DB" => return Some(ResourceNodeType::SourceDb),
+                "WAREHOUSE_DB" => return Some(ResourceNodeType::WarehouseDb),
+                "KAFKA" => return Some(ResourceNodeType::Kafka),
                 _ => continue,
             },
             Expr::Name(name) => match name.id.as_str() {
-                "API" => return Some(RelationshipNodeType::Api),
-                "SOURCE_DB" => return Some(RelationshipNodeType::SourceDb),
-                "WAREHOUSE_DB" => return Some(RelationshipNodeType::WarehouseDb),
-                "KAFKA" => return Some(RelationshipNodeType::Kafka),
+                "API" => return Some(ResourceNodeType::Api),
+                "SOURCE_DB" => return Some(ResourceNodeType::SourceDb),
+                "WAREHOUSE_DB" => return Some(ResourceNodeType::WarehouseDb),
+                "KAFKA" => return Some(ResourceNodeType::Kafka),
                 _ => continue,
             },
             _ => continue,
@@ -169,7 +170,7 @@ impl<'a> Visitor<'a> for DpfSourceVisitor<'_> {
 }
 
 pub fn find_dpf_calls(source: &str) -> Result<Vec<DpfCall>, Box<dyn std::error::Error>> {
-    let parsed = parse(source, ParseOptions::from(Mode::Module))?;
+    let parsed = parse(source, Mode::Module)?;
     let module = match parsed.syntax() {
         Mod::Module(module) => module,
         _ => return Ok(Vec::new()),
@@ -213,51 +214,36 @@ pub fn find_destination_identifiers(
     find_identifiers_for(source, DpfFunction::Destination)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RelationshipNodeType {
-    Api,
-    WarehouseDb,
-    SourceDb,
-    Kafka,
-}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RelationshipNode {
-    pub name: String,
-    pub node_type: RelationshipNodeType,
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct RelationshipNodes {
-    pub sources: Vec<RelationshipNode>,
-    pub destinations: Vec<RelationshipNode>,
-}
-
-pub fn parse_relationships(python_str: &str) -> Result<RelationshipNodes, Box<dyn std::error::Error>> {
-    let mut sources = Vec::new();
-    let mut destinations = Vec::new();
+pub fn parse_relationships(python_str: &str) -> Result<HashSet<ResourceNode>, Box<dyn std::error::Error>> {
+    let mut nodes: HashSet<ResourceNode> = HashSet::new();
 
     for call in find_dpf_calls(python_str)? {
         if let (Some(identifier), Some(ep_type)) = (call.identifier, call.ep_type) {
-            let node = RelationshipNode {
+            let reference = match call.function {
+                DpfFunction::Source => ResourceNodeRefType::Source,
+                DpfFunction::Destination => ResourceNodeRefType::Destination,
+            };
+
+            let node = ResourceNode {
                 name: identifier,
                 node_type: ep_type,
+                reference,
             };
-            match call.function {
-                DpfFunction::Source => sources.push(node),
-                DpfFunction::Destination => destinations.push(node),
-            }
+            nodes.insert(node);
         }
     }
 
-    Ok(RelationshipNodes { sources, destinations })
+    Ok(nodes)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+    use common::types::{ResourceNode, ResourceNodeRefType};
     use super::{
         find_destination_identifiers, find_dpf_calls, find_source_identifiers, parse_relationships,
-        DpfFunction, RelationshipNode, RelationshipNodeType, RelationshipNodes,
+        DpfFunction, ResourceNodeType,
     };
 
     const FILE: &str = r#"
@@ -388,24 +374,23 @@ src(identifier="src.two", ep_type=DataResourceType.SOURCE_DB)
 destination(name="no_identifier_here", ep_type=DataResourceType.API)
 "#;
         let result = parse_relationships(src).unwrap();
-        assert_eq!(
-            result,
-            RelationshipNodes {
-                sources: vec![
-                    RelationshipNode {
-                        name: "src.one".to_string(),
-                        node_type: RelationshipNodeType::Api
-                    },
-                    RelationshipNode {
-                        name: "src.two".to_string(),
-                        node_type: RelationshipNodeType::SourceDb
-                    }
-                ],
-                destinations: vec![RelationshipNode {
-                    name: "dest.one".to_string(),
-                    node_type: RelationshipNodeType::WarehouseDb
-                }]
+        let expected = HashSet::from([
+            ResourceNode {
+                name: "src.one".to_string(),
+                node_type: ResourceNodeType::Api,
+                reference: ResourceNodeRefType::Source,
+            },
+            ResourceNode {
+                name: "src.two".to_string(),
+                node_type: ResourceNodeType::SourceDb,
+                reference: ResourceNodeRefType::Source,
+            },
+            ResourceNode {
+                name: "dest.one".to_string(),
+                node_type: ResourceNodeType::WarehouseDb,
+                reference: ResourceNodeRefType::Destination,
             }
-        );
+        ]);
+        assert_eq!(result, expected)
     }
 }
