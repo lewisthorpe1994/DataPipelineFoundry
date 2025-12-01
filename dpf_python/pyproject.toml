@@ -17,4 +17,4 @@ classifiers = [
 
 [tool.maturin]
 python-source = "python"
-module-name = "dpf_python.dpf_python"
+module-name = "dpf_python"

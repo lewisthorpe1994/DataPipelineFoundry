@@ -211,9 +211,13 @@ fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode
 
         let node_dir = dpf_config
             .get("nodes_dir")
-            .ok_or(ParseError::not_found("nodes_dir not found in dpf config in pyproject.toml"))?
+            .ok_or(ParseError::not_found(
+                "nodes_dir not found in dpf config in pyproject.toml",
+            ))?
             .as_str()
-            .ok_or(ParseError::parser_error("unable to parse nodes_dir from pyproject.toml"))?
+            .ok_or(ParseError::parser_error(
+                "unable to parse nodes_dir from pyproject.toml",
+            ))?
             .to_string();
 
         let node_names: Vec<String> = cfg
@@ -223,9 +227,7 @@ fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode
             .and_then(|n| n.as_array())
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|v| {
-                        v.as_str().map(str::to_owned)
-                    })
+                    .filter_map(|v| v.as_str().map(str::to_owned))
                     .collect()
             })
             .ok_or(ParseError::parser_error("Failed to parse nodes"))?;
@@ -233,9 +235,7 @@ fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode
         let nodes: Vec<ParsedNode> = node_names
             .iter()
             .map(|name| {
-                let node_path = Path::new(&py_cfg.workspace_dir)
-                    .join(&node_dir)
-                    .join(&name);
+                let node_path = Path::new(&py_cfg.workspace_dir).join(&node_dir).join(&name);
                 let files: Vec<PathBuf> = paths_with_ext(&node_path, "py").collect();
                 ParsedNode::Python {
                     node: ParsedInnerNode {
@@ -243,7 +243,7 @@ fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode
                         path: node_path,
                     },
                     files,
-                    workspace_path: workspace_path.clone()
+                    workspace_path: workspace_path.clone(),
                 }
             })
             .collect();

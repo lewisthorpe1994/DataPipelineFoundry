@@ -4,10 +4,13 @@ use common::config::components::sources::kafka::{
 };
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[pyclass(name = "KafkaBootstrap")]
+#[gen_stub_pyclass]
+#[pyclass(name = "KafkaBootstrap", module = "dpf_python.kafka")]
 pub struct PyKafkaBootstrap(pub KafkaBootstrap);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyKafkaBootstrap {
     #[getter]
@@ -16,9 +19,11 @@ impl PyKafkaBootstrap {
     }
 }
 
-#[pyclass(name = "KafkaConnect")]
+#[gen_stub_pyclass]
+#[pyclass(name = "KafkaConnect", module = "dpf_python.kafka")]
 pub struct PyKafkaConnect(pub KafkaConnect);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyKafkaConnect {
     #[getter]
@@ -32,10 +37,12 @@ impl PyKafkaConnect {
     }
 }
 
-#[pyclass(name = "KafkaSourceConfig")]
+#[gen_stub_pyclass]
+#[pyclass(name = "KafkaSourceConfig", module = "dpf_python.kafka")]
 #[derive(Clone, PartialEq)]
 pub struct PyKafkaSourceConfig(pub RsKafkaSourceConfig);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyKafkaSourceConfig {
     #[getter]
@@ -54,9 +61,11 @@ impl PyKafkaSourceConfig {
     }
 }
 
-#[pyclass(name = "KafkaConnectorConfig")]
+#[gen_stub_pyclass]
+#[pyclass(name = "KafkaConnectorConfig", module = "dpf_python.kafka")]
 pub struct PyKafkaConnectorConfig(pub RsKafkaConnectorConfig);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyKafkaConnectorConfig {
     #[getter]

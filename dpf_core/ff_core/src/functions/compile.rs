@@ -27,7 +27,7 @@ pub enum ManifestNodeType {
     DPF,
     DB,
     Python,
-    Api
+    Api,
 }
 
 /// Description of a compiled model written to `manifest.json`.

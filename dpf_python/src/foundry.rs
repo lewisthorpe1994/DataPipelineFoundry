@@ -1,17 +1,19 @@
 use crate::connections::{AdapterConnectionDetails, PyConnectionProfile};
+use crate::sources::api::PyApiSourceConfig;
 use crate::sources::db::PyDbConfig;
 use crate::sources::kafka::{PyKafkaConnectorConfig, PyKafkaSourceConfig};
+use crate::types::{DataResource, PyDataResourceType};
 use common::config::components::global::FoundryConfig as GlobalFoundry;
 use common::config::loader::read_config;
+use common::types::sources::SourceType;
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use std::env;
 use std::path::{Path, PathBuf};
-use common::types::sources::SourceType;
-use crate::sources::api::PyApiSourceConfig;
-use crate::types::{DataResource, PyDataResourceType};
 
-#[pyclass(name = "FoundryConfig")]
+#[gen_stub_pyclass]
+#[pyclass(name = "FoundryConfig", module = "dpf_python")]
 pub struct FoundryConfig(GlobalFoundry);
 
 impl FoundryConfig {
@@ -20,6 +22,7 @@ impl FoundryConfig {
     }
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl FoundryConfig {
     #[new]
@@ -34,7 +37,10 @@ impl FoundryConfig {
         Ok(Self(config))
     }
 
-    pub fn get_db_adapter_details(&self, connection_name: &str) -> PyResult<AdapterConnectionDetails> {
+    pub fn get_db_adapter_details(
+        &self,
+        connection_name: &str,
+    ) -> PyResult<AdapterConnectionDetails> {
         let details = self
             .0
             .get_adapter_connection_details(connection_name)
@@ -130,7 +136,8 @@ impl FoundryConfig {
     }
 
     pub fn get_api_source_config(&self, name: &str) -> PyResult<PyApiSourceConfig> {
-        let cfg = self.0
+        let cfg = self
+            .0
             .get_api_source(name)
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
         Ok(PyApiSourceConfig(cfg.clone()))
@@ -140,30 +147,38 @@ impl FoundryConfig {
         &self,
         name: String,
         ep_type: PyDataResourceType,
-        identifier: Option<String>
+        identifier: Option<String>,
     ) -> PyResult<DataResource> {
         let ep = match ep_type.0 {
             SourceType::SourceDB => {
                 let db_creds = self.get_db_adapter_details(&name)?;
                 DataResource::SourceDb {
-                    field_identifier: identifier.ok_or_else(|| PyValueError::new_err("Source DB requires an identifier"))?,
+                    field_identifier: identifier
+                        .ok_or_else(|| PyValueError::new_err("Source DB requires an identifier"))?,
                     connection_details: db_creds,
                 }
-            },
+            }
             SourceType::Warehouse => {
                 let db_creds = self.get_db_adapter_details(&name)?;
                 DataResource::Warehouse {
-                    field_identifier: identifier.ok_or_else(|| PyValueError::new_err("Warehouse requires an identifier"))?,
+                    field_identifier: identifier
+                        .ok_or_else(|| PyValueError::new_err("Warehouse requires an identifier"))?,
                     connection_details: db_creds,
                 }
             }
             SourceType::Kafka => {
                 let cluster_config = self.get_kafka_cluster_conn(&name)?;
-                DataResource::Kafka { cluster_name: name, cluster_config}
-            },
+                DataResource::Kafka {
+                    cluster_name: name,
+                    cluster_config,
+                }
+            }
             SourceType::Api => {
                 let api_src = self.get_api_source_config(&name)?;
-                DataResource::Api { name, config: api_src}
+                DataResource::Api {
+                    name,
+                    config: api_src,
+                }
             }
         };
 

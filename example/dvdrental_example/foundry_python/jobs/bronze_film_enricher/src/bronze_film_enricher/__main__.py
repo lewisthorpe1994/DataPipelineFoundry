@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-
 from dpf_python import source, DataResourceType, FoundryConfig, destination
 
 import dlt
@@ -110,7 +109,7 @@ def main() -> int:
     if not api_key:
         raise SystemExit("TMDB API key is required (set TMDB_API_KEY or pass --tmdb-api-key)")
 
-    films = load_films(FILMS_SOURCE_TABLE.)
+    films = load_films(FILMS_SOURCE_TABLE.config)
 
     resource = film_supplementary_resource(films, api_key=api_key, language='en-us')
 

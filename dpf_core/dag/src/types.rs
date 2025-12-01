@@ -1,6 +1,7 @@
 use crate::error::DagError;
 use catalog::{KafkaConnectorMeta, MemoryCatalog};
 use common::config::components::global::FoundryConfig;
+use common::types::ResourceNodeType;
 use components::{KafkaSinkConnectorConfig, KafkaSourceConnectorConfig};
 use petgraph::Direction;
 use sqlparser::ast::{
@@ -9,7 +10,6 @@ use sqlparser::ast::{
 };
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
-use common::types::ResourceNodeType;
 
 /// Represents an empty edge structure in a graph or similar data structure.
 ///
@@ -43,7 +43,7 @@ impl From<ResourceNodeType> for DagNodeType {
             ResourceNodeType::WarehouseDb => DagNodeType::WarehouseSourceDb,
             ResourceNodeType::SourceDb => DagNodeType::SourceDb,
             ResourceNodeType::Api => DagNodeType::Api,
-            ResourceNodeType::Kafka => DagNodeType::KafkaTopic
+            ResourceNodeType::Kafka => DagNodeType::KafkaTopic,
         }
     }
 }

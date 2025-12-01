@@ -1,10 +1,13 @@
 use common::config::components::sources::warehouse_source::DbConfig as RsDbConfig;
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[pyclass(name = "DbConfig")]
+#[gen_stub_pyclass]
+#[pyclass(name = "DbConfig", module = "dpf_python.db")]
 pub struct PyDbConfig(pub RsDbConfig);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyDbConfig {
     #[getter]

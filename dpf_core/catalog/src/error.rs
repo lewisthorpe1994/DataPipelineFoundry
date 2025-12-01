@@ -73,15 +73,15 @@ impl CatalogError {
             context: DiagnosticMessage::new(message.into()),
         }
     }
-    
+
     #[track_caller]
     pub fn io(message: impl Into<String>, source: Error) -> Self {
         Self::Io {
             context: DiagnosticMessage::new(message.into()),
-            source
+            source,
         }
     }
-    
+
     #[track_caller]
     pub fn python_node(message: impl Into<String>) -> Self {
         Self::PythonNode {

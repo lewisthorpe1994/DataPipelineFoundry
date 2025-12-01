@@ -196,5 +196,5 @@ impl WarehouseSourceDec {
 pub struct PythonDecl {
     pub name: String,
     pub workspace_path: PathBuf,
-    pub resources: HashSet<ResourceNode>
+    pub resources: HashSet<ResourceNode>,
 }

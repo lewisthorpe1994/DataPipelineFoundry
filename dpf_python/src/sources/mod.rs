@@ -5,9 +5,9 @@ pub mod api;
 pub mod db;
 pub mod kafka;
 
-pub use kafka::add_kafka_submodule;
 use crate::sources::api::add_api_submodule;
 use crate::sources::db::add_db_submodule;
+pub use kafka::add_kafka_submodule;
 
 #[pymodule]
 pub fn add_sources_submodule(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {

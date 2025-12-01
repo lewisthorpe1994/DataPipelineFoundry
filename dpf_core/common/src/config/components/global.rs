@@ -3,13 +3,13 @@ use crate::config::components::connections::{
 };
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ResolvedModelsConfig;
+use crate::config::components::python::PythonConfig;
+use crate::config::components::sources::api::ApiSourceConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
 use crate::config::error::ConfigError;
 use std::collections::HashMap;
-use crate::config::components::python::PythonConfig;
-use crate::config::components::sources::api::ApiSourceConfig;
 
 // ---------------- global config ----------------
 #[derive(Debug)]

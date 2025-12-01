@@ -5,6 +5,7 @@ use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, TransitiveDirection};
 use catalog::{compare_catalog_node, Getter, KafkaConnectorMeta, MemoryCatalog, NodeDec};
 use common::config::components::global::FoundryConfig;
+use common::types::{ResourceNodeRefType, ResourceNodeType};
 use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
 use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
 use components::{
@@ -19,7 +20,6 @@ use sqlparser::ast::ModelSqlCompileError;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::Instant;
-use common::types::{ResourceNodeRefType, ResourceNodeType};
 
 /// A struct representing a Directed Acyclic Graph (DAG) for a model.
 ///
@@ -202,7 +202,6 @@ impl ModelsDag {
                         .iter()
                         .try_for_each(|node| -> Result<(), DagError> {
                             match node.reference {
-
                                 ResourceNodeRefType::Source => {
                                     sources.insert(node.name.clone());
                                     self.upsert_node(
@@ -216,24 +215,22 @@ impl ModelsDag {
                                             relations: None,
                                             compiled_obj: None,
                                             target: None,
-                                        }
+                                        },
                                     )?
                                 }
-                                ResourceNodeRefType::Destination => {
-                                    self.upsert_node(
-                                        node.name.clone(),
-                                        false,
-                                        DagNode {
-                                            name: node.name.clone(),
-                                            ast: None,
-                                            node_type: DagNodeType::from(node.node_type.clone()),
-                                            is_executable: false,
-                                            relations: Some(BTreeSet::from([py.name.clone()])),
-                                            compiled_obj: None,
-                                            target: None,
-                                        }
-                                    )?
-                                }
+                                ResourceNodeRefType::Destination => self.upsert_node(
+                                    node.name.clone(),
+                                    false,
+                                    DagNode {
+                                        name: node.name.clone(),
+                                        ast: None,
+                                        node_type: DagNodeType::from(node.node_type.clone()),
+                                        is_executable: false,
+                                        relations: Some(BTreeSet::from([py.name.clone()])),
+                                        compiled_obj: None,
+                                        target: None,
+                                    },
+                                )?,
                             }
                             Ok(())
                         })?;
@@ -249,7 +246,7 @@ impl ModelsDag {
                             relations: Some(sources),
                             compiled_obj: None,
                             target: None,
-                        }
+                        },
                     )?
                 }
             }
@@ -783,13 +780,16 @@ mod tests {
             let config = read_config(None).expect("load example project config");
             let nodes = parse_nodes(&config).expect("parse model nodes");
             let catalog = MemoryCatalog::new();
-            catalog.register_nodes(nodes, config.warehouse_source.clone()).expect("register nodes");
+            catalog
+                .register_nodes(nodes, config.warehouse_source.clone())
+                .expect("register nodes");
             let mut dag = ModelsDag::new();
 
             dag.build(&catalog, &config).expect("build dag");
 
             println!("{:?}", dag);
-        }).expect("chdir");
+        })
+        .expect("chdir");
     }
 
     #[test]

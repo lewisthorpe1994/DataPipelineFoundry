@@ -2,6 +2,7 @@ use crate::config::components::connections::{AdapterConnectionDetails, DatabaseA
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::global::FoundryConfig;
 use crate::config::components::model::{ResolvedModelLayerConfig, ResolvedModelsConfig};
+use crate::config::components::sources::api::ApiSourceConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::{SourcePathConfig, SourcePaths};
@@ -17,7 +18,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::config::components::sources::api::ApiSourceConfig;
 
 pub fn load_config<V>(path: &Path) -> Result<HashMap<String, V>, ConfigError>
 where
@@ -162,7 +162,6 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         Some(config) => load_config::<ApiSourceConfig>(&config.specifications)?,
         None => HashMap::new(),
     };
-       
 
     let conn_profile = proj_config.connection_profile.clone();
 
