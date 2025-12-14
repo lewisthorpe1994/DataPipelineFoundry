@@ -1,0 +1,30 @@
+{
+    "name": "Rust",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "dpf",
+    "workspaceFolder": "/workspace",
+    "containerEnv": {
+        "CARGO_HOME": "/home/vscode/.cargo",
+        "CARGO_TARGET_DIR": "/home/vscode/.cargo/target"
+    },
+    "remoteEnv": {
+        "CARGO_HOME": "/home/vscode/.cargo",
+        "CARGO_TARGET_DIR": "/home/vscode/.cargo/target"
+    },
+    "customizations" : {
+        "jetbrains" : {
+            "backend" : "RustRover",
+//            "projectDir": "/workspace/example/dvdrental_example"
+        }
+    },
+    "forwardPorts": [5173],
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "22"
+        }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind,consistency=cached,create_host_path=true"
+    ],
+    "postCreateCommand": "bash -lc 'set -euo pipefail; mkdir -p \"${CARGO_HOME}/bin\"; bash .devcontainer/setup-rust-toolchain-links.sh; if ! command -v codex >/dev/null 2>&1; then npm install -g @openai/codex@latest; fi; codex --version || true'"
+}

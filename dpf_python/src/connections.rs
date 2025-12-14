@@ -101,6 +101,8 @@ impl PyConnectionProfile {
 #[pymodule]
 pub fn add_connections_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let sub = PyModule::new(py, "connections")?;
+    sub.add_class::<AdapterConnectionDetails>()?;
+    sub.add_class::<PyConnectionProfile>()?;
     parent.add_submodule(&sub)?;
     Ok(())
 }

@@ -10,11 +10,11 @@ use logging::timeit;
 async fn execute_dag_nodes(nodes: Vec<&DagNode>, config: &FoundryConfig) -> Result<(), FFError> {
     timeit!("Executed all models", {
         for node in nodes {
-            if !node.is_executable {
+            if !node.is_executable() {
                 continue;
             };
 
-            timeit!(format!("Executed node {}", &node.name), {
+            timeit!(format!("Executed node {}", &node.name()), {
                 Executor::execute(node, config)
                     .await
                     .map_err(FFError::run)?;
@@ -70,7 +70,7 @@ pub async fn run(config: FoundryConfig, model: Option<String>) -> Result<(), FFE
                     }
                 };
 
-                if !node.is_executable {
+                if !node.is_executable() {
                     return Err(FFError::compile_msg(format!(
                         "Model '{model}' is marked non-executable"
                     )));

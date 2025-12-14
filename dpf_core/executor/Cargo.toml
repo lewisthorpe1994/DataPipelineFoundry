@@ -6,6 +6,7 @@ license.workspace = true
 
 [dev-dependencies]
 test_utils = { workspace = true }
+tempfile = { workspace = true }
 wiremock = { version = "0.6.4" }
 testcontainers = { version = "0.24.0" }
 tokio-postgres = { workspace = true }
@@ -23,4 +24,4 @@ common = { workspace = true }
 dag = { workspace = true }
 shared_clients = { workspace = true }
 thiserror = { workspace = true }
-
+log = "0.4.27"

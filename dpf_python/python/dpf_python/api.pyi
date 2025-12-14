@@ -47,6 +47,9 @@ class ApiSourceConfig:
     def endpoint_names(self) -> list[str]: ...
     def get_endpoint(self, name: str) -> ApiEndpointConfig: ...
 
+class ApiResource:
+    name: str
+    config: ApiSourceConfig
 
 __all__ = [
     "ApiAuthKind",
@@ -54,4 +57,5 @@ __all__ = [
     "ApiAuth",
     "ApiEndpointConfig",
     "ApiSourceConfig",
+    "ApiResource",
 ]

@@ -1,6 +1,7 @@
 use common::config::components::global::FoundryConfig;
 use common::config::components::model::{ModelLayers, ResolvedModelsConfig};
 use common::config::components::python::PythonConfig;
+use common::config::components::sources::kafka::KafkaConnectorConfig;
 use common::error::DiagnosticMessage;
 use common::traits::IsFileExtension;
 use common::types::sources::SourceType;
@@ -8,6 +9,7 @@ use common::types::{NodeTypes, ParsedInnerNode, ParsedNode};
 use common::utils::paths_with_ext;
 use log::warn;
 use std::fmt::Debug;
+use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use toml::Table;
@@ -163,8 +165,19 @@ fn parse_kafka_dir(root: &Path) -> Result<Vec<ParsedNode>, ParseError> {
             continue;
         };
 
+        let node_name = match node_type {
+            NodeTypes::KafkaConnector => kafka_connector_name_from_yaml(&entry).unwrap_or_else(|| {
+                warn!(
+                    "Kafka connector YAML missing/invalid for {}; falling back to SQL stem",
+                    entry.display()
+                );
+                stem.to_string()
+            }),
+            _ => stem.to_string(),
+        };
+
         let pi_node = ParsedInnerNode {
-            name: stem.to_string(),
+            name: node_name,
             path: entry.to_path_buf(),
         };
 
@@ -196,68 +209,37 @@ fn kafka_node_type_from_path(path: &Path) -> Option<NodeTypes> {
     None
 }
 
+fn kafka_connector_name_from_yaml(sql_path: &Path) -> Option<String> {
+    let yml_path = sql_path.with_extension("yml");
+    let file = fs::File::open(yml_path).ok()?;
+    let cfg: KafkaConnectorConfig = serde_yaml::from_reader(file).ok()?;
+    Some(cfg.name)
+}
+
 fn maybe_parse_python_nodes(cfg: &FoundryConfig) -> Result<Option<Vec<ParsedNode>>, ParseError> {
     let nodes: Option<Vec<ParsedNode>> = if let Some(py_cfg) = &cfg.project.python {
         let workspace_path = Path::new(&py_cfg.workspace_dir).join("pyproject.toml");
-        let file = std::fs::read_to_string(&workspace_path)
-            .map_err(|e| ParseError::parser_error(format!("{e:?}")))?;
-        let cfg: toml::Value =
-            toml::from_str(&file).map_err(|e| ParseError::parser_error(format!("{e:?}")))?;
-
-        let dpf_config = cfg
-            .get("tool")
-            .and_then(|t| t.get("dpf"))
-            .ok_or(ParseError::parser_error("Failed to parse dpf config"))?;
-
-        let node_dir = dpf_config
-            .get("nodes_dir")
-            .ok_or(ParseError::not_found("nodes_dir not found in dpf config in pyproject.toml"))?
-            .as_str()
-            .ok_or(ParseError::parser_error("unable to parse nodes_dir from pyproject.toml"))?
-            .to_string();
-
-        let node_names: Vec<String> = cfg
-            .get("tool")
-            .and_then(|t| t.get("dpf"))
-            .and_then(|d| d.get("nodes"))
-            .and_then(|n| n.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| {
-                        v.as_str().map(str::to_owned)
-                    })
-                    .collect()
-            })
-            .ok_or(ParseError::parser_error("Failed to parse nodes"))?;
-
-        let nodes: Vec<ParsedNode> = node_names
+        let nodes = cfg
+            .python_jobs
             .iter()
-            .map(|name| {
-                let node_path = Path::new(&py_cfg.workspace_dir)
-                    .join(&node_dir)
-                    .join(&name);
-                let files: Vec<PathBuf> = paths_with_ext(&node_path, "py").collect();
+            .map(|(n, j)| {
+                let files: Vec<PathBuf> = paths_with_ext(&j.job_path, "py").collect();
                 ParsedNode::Python {
                     node: ParsedInnerNode {
-                        name: name.to_string(),
-                        path: node_path,
+                        name: n.to_string(),
+                        path: j.job_path.clone(),
                     },
                     files,
-                    workspace_path: workspace_path.clone()
+                    workspace_path: workspace_path.clone(),
                 }
             })
-            .collect();
+            .collect::<Vec<ParsedNode>>();
         Some(nodes)
     } else {
         None
     };
 
     Ok(nodes)
-}
-
-fn parse_python_file_names(path: &Path) -> Result<Vec<PathBuf>, ParseError> {
-    let files: Vec<PathBuf> = paths_with_ext(path, "py").collect();
-    Ok(files)
 }
 
 #[cfg(test)]
@@ -327,12 +309,12 @@ mod tests {
 
             const EXPECTED_CONNECTORS: &[(&str, &str)] = &[
                 (
-                    "_film_rental_inventory_customer_payment_sink",
-                    "foundry_sources/kafka/definitions/_connectors/_sink/_film_rental_inventory_customer_payment_sink/_definition/_film_rental_inventory_customer_payment_sink.sql",
+                    "raw_film_data_sink",
+                    "foundry_sources/kafka/definitions/_connectors/_sink/_raw_film_data_sink/_definition/_raw_film_data_sink.sql",
                 ),
                 (
-                    "_film_rental_inventory_customer_payment_src",
-                    "foundry_sources/kafka/definitions/_connectors/_source/_film_rental_inventory_customer_payment_src/_definition/_film_rental_inventory_customer_payment_src.sql",
+                    "raw_film_data_src",
+                    "foundry_sources/kafka/definitions/_connectors/_source/_raw_film_data_src/_definition/_raw_film_data_src.sql",
                 ),
             ];
 

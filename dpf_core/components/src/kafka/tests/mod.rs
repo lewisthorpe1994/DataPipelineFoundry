@@ -145,7 +145,7 @@ fn foundry_config() -> FoundryConfig {
         kafka_sources,
         global_source_paths,
         kafka_connector_config,
-        HashMap::new()
+        HashMap::new(),
     )
 }
 

@@ -184,14 +184,35 @@ impl PyApiSourceConfig {
     }
 }
 
+#[pyclass(name = "ApiResource")]
+#[derive(Clone, PartialEq)]
+pub struct PyApiResource {
+    pub name: String,
+    pub config: PyApiSourceConfig,
+}
+
+#[pymethods]
+impl PyApiResource {
+    #[getter]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[getter]
+    fn config(&self) -> PyApiSourceConfig {
+        self.config.clone()
+    }
+}
+
 #[pymodule]
 pub fn add_api_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    let sub = PyModule::new(py,"api")?;
+    let sub = PyModule::new(py, "api")?;
     sub.add_class::<PyApiSourceConfig>()?;
     sub.add_class::<PyApiEndpointConfig>()?;
     sub.add_class::<PyApiAuth>()?;
     sub.add_class::<PyApiAuthKind>()?;
     sub.add_class::<PyHttpMethod>()?;
+    sub.add_class::<PyApiResource>()?;
     parent.add_submodule(&sub)?;
     Ok(())
 }

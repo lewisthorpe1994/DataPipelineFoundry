@@ -3,7 +3,7 @@ name = "dvdrental-foundry-python"
 version = "0.1.0"
 description = "Python ETL workspace for the FlowFoundry dvdrental example"
 requires-python = ">=3.11"
-dependencies = ["dpf_python"]
+dependencies = []
 
 [tool.uv]
 managed = true
@@ -11,7 +11,7 @@ cache-dir = ".uv-cache"
 
 [tool.uv.sources]
 bronze_film_enricher = { workspace = true }
-dpf_python = { path = "../../../dpf_python", editable = true }
+dpf_python = { path = "../../../dpf_python" }
 
 [tool.dpf]
 nodes = [

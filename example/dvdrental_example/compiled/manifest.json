@@ -1,6 +1,14 @@
 {
   "nodes": [
     {
+      "name": "public.category",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
       "name": "public.customer",
       "compiled_executable": null,
       "depends_on": null,
@@ -10,6 +18,14 @@
     },
     {
       "name": "public.film",
+      "compiled_executable": null,
+      "depends_on": null,
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "public.film_category",
       "compiled_executable": null,
       "depends_on": null,
       "executable": false,
@@ -41,10 +57,20 @@
       "target": null
     },
     {
+      "name": "dvdrental.category",
+      "compiled_executable": null,
+      "depends_on": [
+        "raw_film_data_src"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
       "name": "dvdrental.customer",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_src"
+        "raw_film_data_src"
       ],
       "executable": false,
       "node_type": "Kafka",
@@ -54,7 +80,17 @@
       "name": "dvdrental.film",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_src"
+        "raw_film_data_src"
+      ],
+      "executable": false,
+      "node_type": "Kafka",
+      "target": null
+    },
+    {
+      "name": "dvdrental.film_category",
+      "compiled_executable": null,
+      "depends_on": [
+        "raw_film_data_src"
       ],
       "executable": false,
       "node_type": "Kafka",
@@ -64,7 +100,7 @@
       "name": "dvdrental.inventory",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_src"
+        "raw_film_data_src"
       ],
       "executable": false,
       "node_type": "Kafka",
@@ -74,7 +110,7 @@
       "name": "dvdrental.payment",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_src"
+        "raw_film_data_src"
       ],
       "executable": false,
       "node_type": "Kafka",
@@ -84,7 +120,7 @@
       "name": "dvdrental.rental",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_src"
+        "raw_film_data_src"
       ],
       "executable": false,
       "node_type": "Kafka",
@@ -92,10 +128,12 @@
     },
     {
       "name": "reroute",
-      "compiled_executable": null,
+      "compiled_executable": "CREATE SIMPLE MESSAGE TRANSFORM reroute PRESET debezium.by_logical_table_router EXTEND (\"topic.regex\" = 'postgres\\.([^.]+).([^.]+)', \"topic.replacement\" = 'dvdrental.$2')",
       "depends_on": [
+        "public.category",
         "public.customer",
         "public.film",
+        "public.film_category",
         "public.inventory",
         "public.payment",
         "public.rental"
@@ -105,8 +143,8 @@
       "target": null
     },
     {
-      "name": "film_rental_inventory_customer_payment_src",
-      "compiled_executable": "{\n  \"name\": \"film_rental_inventory_customer_payment_src\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",\n    \"transforms\": \"preset_pipe_reroute\",\n    \"transforms.preset_pipe_reroute.topic.regex\": \"postgres\\\\.([^.]+).([^.]+)\",\n    \"transforms.preset_pipe_reroute.topic.replacement\": \"dvdrental.$2\",\n    \"transforms.preset_pipe_reroute.type\": \"io.debezium.transforms.ByLogicalTableRouter\",\n    \"database.hostname\": \"source_db\",\n    \"database.port\": 5432,\n    \"database.user\": \"postgres\",\n    \"database.password\": \"postgres\",\n    \"database.dbname\": \"dvdrental\",\n    \"topic.prefix\": \"postgres\",\n    \"tasks.max\": 1,\n    \"table.include.list\": \"public.inventory,public.rental,public.customer,public.payment,public.film\",\n    \"column.include.list\": \"public.inventory.inventory_id,public.inventory.film_id,public.inventory.store_id,public.inventory.last_update,public.rental.rental_id,public.rental.rental_date,public.rental.inventory_id,public.rental.customer_id,public.rental.return_date,public.rental.staff_id,public.rental.last_update,public.customer.customer_id,public.customer.store_id,public.customer.address_id,public.customer.activebool,public.customer.create_date,public.customer.last_update,public.customer.active,public.payment.payment_id,public.payment.customer_id,public.payment.staff_id,public.payment.rental_id,public.payment.amount,public.payment.payment_date,public.film.film_id,public.film.title,public.film.description,public.film.release_year,public.film.language_id,public.film.rental_duration,public.film.rental_date,public.film.length,public.film.replacement_cost,public.film.rating,public.film.last_update\",\n    \"snapshot.mode\": \"initial\"\n  }\n}",
+      "name": "raw_film_data_src",
+      "compiled_executable": "{\n  \"name\": \"raw_film_data_src\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",\n    \"transforms\": \"preset_pipe_reroute\",\n    \"transforms.preset_pipe_reroute.topic.regex\": \"postgres\\\\.([^.]+).([^.]+)\",\n    \"transforms.preset_pipe_reroute.topic.replacement\": \"dvdrental.$2\",\n    \"transforms.preset_pipe_reroute.type\": \"io.debezium.transforms.ByLogicalTableRouter\",\n    \"database.hostname\": \"source_db\",\n    \"database.port\": 5432,\n    \"database.user\": \"postgres\",\n    \"database.password\": \"postgres\",\n    \"database.dbname\": \"dvdrental\",\n    \"topic.prefix\": \"postgres\",\n    \"tasks.max\": 1,\n    \"table.include.list\": \"public.inventory,public.rental,public.film,public.customer,public.payment,public.film_category,public.category\",\n    \"column.include.list\": \"public.inventory.inventory_id,public.inventory.film_id,public.inventory.store_id,public.inventory.last_update,public.rental.rental_id,public.rental.rental_date,public.rental.inventory_id,public.rental.customer_id,public.rental.return_date,public.rental.staff_id,public.rental.last_update,public.film.film_id,public.film.title,public.film.description,public.film.release_year,public.film.language_id,public.film.rental_duration,public.film.rental_date,public.film.length,public.film.replacement_cost,public.film.rating,public.film.last_update,public.customer.customer_id,public.customer.store_id,public.customer.address_id,public.customer.activebool,public.customer.create_date,public.customer.last_update,public.customer.active,public.payment.payment_id,public.payment.customer_id,public.payment.staff_id,public.payment.rental_id,public.payment.amount,public.payment.payment_date,public.film_category.film_id,public.film_category.category_id,public.film_category.last_update,public.category.category_id,public.category.name,public.category.last_update\",\n    \"snapshot.mode\": \"initial\"\n  }\n}",
       "depends_on": [
         "preset_pipe"
       ],
@@ -115,11 +153,13 @@
       "target": "dvd_rental"
     },
     {
-      "name": "film_rental_inventory_customer_payment_sink",
-      "compiled_executable": "{\n  \"name\": \"film_rental_inventory_customer_payment_sink\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.jdbc.JdbcSinkConnector\",\n    \"topics.regex\": \"dvdrental\\\\.([^.]+)\",\n    \"connection.url\": \"jdbc:postgresql://source_db/dvdrental_analytics\",\n    \"connection.username\": \"postgres\",\n    \"connection.password\": \"postgres\",\n    \"tasks.max\": 1,\n    \"delete.enabled\": false,\n    \"insert.mode\": \"insert\",\n    \"collection.name.format\": \"raw.${source.table}\",\n    \"field.include.list\": \"film_id,title,description,release_year,language_id,rental_duration,rental_rate,length,replacement_cost,rating,last_update,inventory_id,film_id,store_id,last_update,payment_id,customer_id,staff_id,rental_id,amount,payment_date,rental_id,rental_date,inventory_id,customer_id,return_date,staff_id,last_update,customer_id,store_id,address_id,activebool,create_date,last_update,active\"\n  }\n}",
+      "name": "raw_film_data_sink",
+      "compiled_executable": "{\n  \"name\": \"raw_film_data_sink\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.jdbc.JdbcSinkConnector\",\n    \"topics.regex\": \"dvdrental\\\\.([^.]+)\",\n    \"connection.url\": \"jdbc:postgresql://source_db/dvdrental_analytics\",\n    \"connection.username\": \"postgres\",\n    \"connection.password\": \"postgres\",\n    \"tasks.max\": 1,\n    \"delete.enabled\": false,\n    \"insert.mode\": \"insert\",\n    \"collection.name.format\": \"raw.${source.table}\",\n    \"field.include.list\": \"film_id,title,description,release_year,language_id,rental_duration,rental_rate,length,replacement_cost,rating,last_update,inventory_id,film_id,store_id,last_update,payment_id,customer_id,staff_id,rental_id,amount,payment_date,customer_id,store_id,address_id,activebool,create_date,last_update,active,rental_id,rental_date,inventory_id,customer_id,return_date,staff_id,last_update\"\n  }\n}",
       "depends_on": [
+        "dvdrental.category",
         "dvdrental.customer",
         "dvdrental.film",
+        "dvdrental.film_category",
         "dvdrental.inventory",
         "dvdrental.payment",
         "dvdrental.rental"
@@ -132,7 +172,7 @@
       "name": "dvdrental_analytics.raw.film",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_sink"
+        "raw_film_data_sink"
       ],
       "executable": false,
       "node_type": "DB",
@@ -142,7 +182,7 @@
       "name": "dvdrental_analytics.raw.inventory",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_sink"
+        "raw_film_data_sink"
       ],
       "executable": false,
       "node_type": "DB",
@@ -152,17 +192,7 @@
       "name": "dvdrental_analytics.raw.payment",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_sink"
-      ],
-      "executable": false,
-      "node_type": "DB",
-      "target": null
-    },
-    {
-      "name": "dvdrental_analytics.raw.rental",
-      "compiled_executable": null,
-      "depends_on": [
-        "film_rental_inventory_customer_payment_sink"
+        "raw_film_data_sink"
       ],
       "executable": false,
       "node_type": "DB",
@@ -172,7 +202,17 @@
       "name": "dvdrental_analytics.raw.customer",
       "compiled_executable": null,
       "depends_on": [
-        "film_rental_inventory_customer_payment_sink"
+        "raw_film_data_sink"
+      ],
+      "executable": false,
+      "node_type": "DB",
+      "target": null
+    },
+    {
+      "name": "dvdrental_analytics.raw.rental",
+      "compiled_executable": null,
+      "depends_on": [
+        "raw_film_data_sink"
       ],
       "executable": false,
       "node_type": "DB",
@@ -183,36 +223,6 @@
       "compiled_executable": "DROP TABLE IF EXISTS silver.customer_agg_rentals_by_day CASCADE;\nCREATE TABLE silver.customer_agg_rentals_by_day AS WITH rentals_aggregated_by_day AS (SELECT customer_id, DATE_TRUNC('day', rental_date) AS date_of_rentals, SUM(rental_amount) AS total_rental_amount FROM silver.rental_customer WHERE is_active GROUP BY customer_id, date_of_rentals) SELECT * FROM rentals_aggregated_by_day",
       "depends_on": [
         "silver_rental_customer"
-      ],
-      "executable": true,
-      "node_type": "DPF",
-      "target": "dvdrental_analytics"
-    },
-    {
-      "name": "bronze_latest_film",
-      "compiled_executable": "DROP VIEW IF EXISTS bronze.latest_film CASCADE;\nCREATE VIEW bronze.latest_film AS WITH latest AS (SELECT film_id, MAX(last_update) AS last_update FROM dvdrental_analytics.raw.film GROUP BY film_id), film AS (SELECT f.film_id, title AS film_title, description, release_year, language_id, rental_duration, rental_rate, length AS film_length, replacement_cost, rating FROM dvdrental_analytics.raw.film AS f INNER JOIN latest AS l ON f.last_update = l.last_update AND f.film_id = l.film_id) SELECT * FROM film",
-      "depends_on": [
-        "dvdrental_analytics.raw.film"
-      ],
-      "executable": true,
-      "node_type": "DPF",
-      "target": "dvdrental_analytics"
-    },
-    {
-      "name": "silver_customer_agg_payments_by_day",
-      "compiled_executable": "DROP TABLE IF EXISTS silver.customer_agg_payments_by_day CASCADE;\nCREATE TABLE silver.customer_agg_payments_by_day AS WITH payments_aggregated_by_day AS (SELECT customer_id, DATE_TRUNC('day', payment_date) AS date_of_payment, SUM(payment_amount) AS total_payment_amount FROM silver.rental_customer WHERE is_active IS TRUE GROUP BY customer_id, date_of_payment) SELECT * FROM payments_aggregated_by_day",
-      "depends_on": [
-        "silver_rental_customer"
-      ],
-      "executable": true,
-      "node_type": "DPF",
-      "target": "dvdrental_analytics"
-    },
-    {
-      "name": "bronze_latest_inventory",
-      "compiled_executable": "DROP VIEW IF EXISTS bronze.latest_inventory CASCADE;\nCREATE VIEW bronze.latest_inventory AS WITH latest AS (SELECT inventory_id, MAX(last_update) AS last_update FROM dvdrental_analytics.raw.inventory GROUP BY inventory_id), inventory AS (SELECT f.inventory_id, film_id, store_id FROM dvdrental_analytics.raw.inventory AS f INNER JOIN latest AS l ON f.last_update = l.last_update AND f.inventory_id = l.inventory_id) SELECT * FROM inventory",
-      "depends_on": [
-        "dvdrental_analytics.raw.inventory"
       ],
       "executable": true,
       "node_type": "DPF",
@@ -233,11 +243,20 @@
       "target": "dvdrental_analytics"
     },
     {
-      "name": "gold_customer_daily_financials",
-      "compiled_executable": "DROP TABLE IF EXISTS gold.customer_daily_financials CASCADE;\nCREATE TABLE gold.customer_daily_financials AS WITH payments AS (SELECT customer_id, date_of_payment, total_payment_amount FROM silver.customer_agg_payments_by_day), rentals AS (SELECT customer_id, date_of_rentals, total_rental_amount FROM silver.customer_agg_rentals_by_day), customer_daily_financials AS (SELECT COALESCE(p.customer_id, r.customer_id) AS customer_id, COALESCE(p.date_of_payment, r.date_of_rentals) AS activity_date, COALESCE(p.total_payment_amount, 0) AS total_payment_amount, COALESCE(r.total_rental_amount, 0) AS total_rental_amount, COALESCE(p.total_payment_amount, 0) - COALESCE(r.total_rental_amount, 0) AS net_revenue FROM payments AS p FULL JOIN rentals AS r ON p.customer_id = r.customer_id AND p.date_of_payment = r.date_of_rentals) SELECT * FROM customer_daily_financials",
+      "name": "bronze_latest_inventory",
+      "compiled_executable": "DROP VIEW IF EXISTS bronze.latest_inventory CASCADE;\nCREATE VIEW bronze.latest_inventory AS WITH latest AS (SELECT inventory_id, MAX(last_update) AS last_update FROM dvdrental_analytics.raw.inventory GROUP BY inventory_id), inventory AS (SELECT f.inventory_id, film_id, store_id FROM dvdrental_analytics.raw.inventory AS f INNER JOIN latest AS l ON f.last_update = l.last_update AND f.inventory_id = l.inventory_id) SELECT * FROM inventory",
       "depends_on": [
-        "silver_customer_agg_payments_by_day",
-        "silver_customer_agg_rentals_by_day"
+        "dvdrental_analytics.raw.inventory"
+      ],
+      "executable": true,
+      "node_type": "DPF",
+      "target": "dvdrental_analytics"
+    },
+    {
+      "name": "bronze_latest_film",
+      "compiled_executable": "DROP VIEW IF EXISTS bronze.latest_film CASCADE;\nCREATE VIEW bronze.latest_film AS WITH latest AS (SELECT film_id, MAX(last_update) AS last_update FROM dvdrental_analytics.raw.film GROUP BY film_id), film AS (SELECT f.film_id, title AS film_title, description, release_year, language_id, rental_duration, rental_rate, length AS film_length, replacement_cost, rating FROM dvdrental_analytics.raw.film AS f INNER JOIN latest AS l ON f.last_update = l.last_update AND f.film_id = l.film_id) SELECT * FROM film",
+      "depends_on": [
+        "dvdrental_analytics.raw.film"
       ],
       "executable": true,
       "node_type": "DPF",
@@ -254,10 +273,31 @@
       "target": "dvdrental_analytics"
     },
     {
+      "name": "silver_customer_agg_payments_by_day",
+      "compiled_executable": "DROP TABLE IF EXISTS silver.customer_agg_payments_by_day CASCADE;\nCREATE TABLE silver.customer_agg_payments_by_day AS WITH payments_aggregated_by_day AS (SELECT customer_id, DATE_TRUNC('day', payment_date) AS date_of_payment, SUM(payment_amount) AS total_payment_amount FROM silver.rental_customer WHERE is_active IS TRUE GROUP BY customer_id, date_of_payment) SELECT * FROM payments_aggregated_by_day",
+      "depends_on": [
+        "silver_rental_customer"
+      ],
+      "executable": true,
+      "node_type": "DPF",
+      "target": "dvdrental_analytics"
+    },
+    {
       "name": "bronze_latest_customer",
       "compiled_executable": "DROP VIEW IF EXISTS bronze.latest_customer CASCADE;\nCREATE VIEW bronze.latest_customer AS WITH latest AS (SELECT customer_id, MAX(last_update) AS last_update FROM dvdrental_analytics.raw.customer GROUP BY customer_id), customer AS (SELECT f.customer_id, store_id, address_id, activebool, create_date, active AS is_active FROM dvdrental_analytics.raw.customer AS f INNER JOIN latest AS l ON f.last_update = l.last_update AND f.customer_id = l.customer_id) SELECT * FROM customer",
       "depends_on": [
         "dvdrental_analytics.raw.customer"
+      ],
+      "executable": true,
+      "node_type": "DPF",
+      "target": "dvdrental_analytics"
+    },
+    {
+      "name": "gold_customer_daily_financials",
+      "compiled_executable": "DROP TABLE IF EXISTS gold.customer_daily_financials CASCADE;\nCREATE TABLE gold.customer_daily_financials AS WITH payments AS (SELECT customer_id, date_of_payment, total_payment_amount FROM silver.customer_agg_payments_by_day), rentals AS (SELECT customer_id, date_of_rentals, total_rental_amount FROM silver.customer_agg_rentals_by_day), customer_daily_financials AS (SELECT COALESCE(p.customer_id, r.customer_id) AS customer_id, COALESCE(p.date_of_payment, r.date_of_rentals) AS activity_date, COALESCE(p.total_payment_amount, 0) AS total_payment_amount, COALESCE(r.total_rental_amount, 0) AS total_rental_amount, COALESCE(p.total_payment_amount, 0) - COALESCE(r.total_rental_amount, 0) AS net_revenue FROM payments AS p FULL JOIN rentals AS r ON p.customer_id = r.customer_id AND p.date_of_payment = r.date_of_rentals) SELECT * FROM customer_daily_financials",
+      "depends_on": [
+        "silver_customer_agg_payments_by_day",
+        "silver_customer_agg_rentals_by_day"
       ],
       "executable": true,
       "node_type": "DPF",
@@ -274,7 +314,7 @@
       "target": null
     },
     {
-      "name": "raw.film_supplementary",
+      "name": "raw.trending_external_films",
       "compiled_executable": null,
       "depends_on": [
         "bronze_film_enricher"
@@ -295,10 +335,9 @@
       "name": "bronze_film_enricher",
       "compiled_executable": null,
       "depends_on": [
-        "public.film",
         "tmdb_api"
       ],
-      "executable": false,
+      "executable": true,
       "node_type": "Python",
       "target": null
     }

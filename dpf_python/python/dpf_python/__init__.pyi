@@ -1,31 +1,21 @@
 from __future__ import annotations
 
-from .api import ApiSourceConfig
+from typing import Final, Literal, overload
+
+from .api import ApiResource, ApiSourceConfig
 from .connections import AdapterConnectionDetails
-from .kafka import KafkaSourceConfig
+from .db import DbResource
+from .kafka import KafkaConnectorResource, KafkaSourceConfig
 from . import api, connections, db, kafka
 
 
 class DataResourceType:
-    WAREHOUSE: DataResourceType
-    SOURCE_DB: DataResourceType
-    KAFKA: DataResourceType
-    API: DataResourceType
+    WAREHOUSE: Final[DataResourceType]
+    SOURCE_DB: Final[DataResourceType]
+    KAFKA: Final[DataResourceType]
+    API: Final[DataResourceType]
     value: str
     def __repr__(self) -> str: ...
-
-class DataResourceConfig:
-    DB: AdapterConnectionDetails
-    KAFKA: KafkaSourceConfig
-    API: ApiSourceConfig
-
-
-class DataResource:
-    def __repr__(self) -> str: ...
-    @property
-    def name(self) -> str: ...
-    @property
-    def config(self) -> DataResourceConfig: ...
 
 
 class FoundryConfig:
@@ -52,11 +42,48 @@ class FoundryConfig:
     def get_kafka_connector_config(self, name: str) -> kafka.KafkaConnectorConfig: ...
     def resolve_db_source(self, name: str, table: str) -> str: ...
     def get_api_source_config(self, name: str) -> api.ApiSourceConfig: ...
-    def get_data_endpoint(self, name: str, ep_type: DataResourceType, identifier: str | None = None) -> DataResource: ...
+    def get_data_endpoint_resource(
+        self,
+        name: str,
+        ep_type: DataResourceType,
+        identifier: str | None = None,
+    ) -> DbResource | KafkaConnectorResource | ApiResource: ...
 
 
-def source(name: str, ep_type: DataResourceType, identifier: str | None = None) -> DataResource: ...
-def destination(name: str, ep_type: DataResourceType, identifier: str | None = None) -> DataResource: ...
+@overload
+def source(
+    *, name: str, ep_type: Literal[DataResourceType.API], identifier: None = None
+) -> ApiResource: ...
+
+@overload
+def source(
+    *, name: str, ep_type: Literal[DataResourceType.SOURCE_DB], identifier: str
+) -> DbResource: ...
+
+@overload
+def source(
+    *, name: str, ep_type: Literal[DataResourceType.KAFKA], identifier: str | None = None
+) -> KafkaConnectorResource: ...
+
+@overload
+def source(
+    *, name: str, ep_type: DataResourceType, identifier: str | None = None
+) -> DbResource | KafkaConnectorResource | ApiResource: ...
+
+@overload
+def destination(
+    *, name: str, ep_type: Literal[DataResourceType.WAREHOUSE], identifier: str
+) -> DbResource: ...
+
+@overload
+def destination(
+    *, name: str, ep_type: DataResourceType, identifier: str | None = None
+) -> DbResource | KafkaConnectorResource | ApiResource: ...
+
+def api_source(*, name: str) -> ApiResource: ...
+def db_source(*, name: str, identifier: str) -> DbResource: ...
+def warehouse_destination(*, name: str, identifier: str) -> DbResource: ...
+def kafka_source(*, name: str, identifier: str | None = None) -> KafkaConnectorResource: ...
 
 
 __all__ = [
@@ -64,7 +91,6 @@ __all__ = [
     "destination",
     "FoundryConfig",
     "DataResourceType",
-    "DataResource",
     "api",
     "connections",
     "db",

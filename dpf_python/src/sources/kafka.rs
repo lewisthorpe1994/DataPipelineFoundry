@@ -92,12 +92,33 @@ impl PyKafkaConnectorConfig {
     }
 }
 
+#[pyclass(name = "KafkaConnectorResource")]
+pub struct PyKafkaConnectorResource {
+    pub cluster_name: String,
+    pub config: PyKafkaSourceConfig,
+}
+
+#[pymethods]
+impl PyKafkaConnectorResource {
+    #[getter]
+    fn cluster_name(&self) -> &str {
+        &self.cluster_name
+    }
+
+    #[getter]
+    fn config(&self) -> PyKafkaSourceConfig {
+        self.config.clone()
+    }
+}
+
+
 pub fn add_kafka_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let sub = PyModule::new(py, "kafka")?;
     sub.add_class::<PyKafkaBootstrap>()?;
     sub.add_class::<PyKafkaConnect>()?;
     sub.add_class::<PyKafkaSourceConfig>()?;
     sub.add_class::<PyKafkaConnectorConfig>()?;
+    sub.add_class::<PyKafkaConnectorResource>()?;
     parent.add_submodule(&sub)?;
     Ok(())
 }

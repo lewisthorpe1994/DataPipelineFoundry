@@ -48,7 +48,7 @@ pub enum ResourceNodeType {
 pub struct ResourceNode {
     pub name: String,
     pub node_type: ResourceNodeType,
-    pub reference: ResourceNodeRefType
+    pub reference: ResourceNodeRefType,
 }
 
 #[derive(Debug)]
@@ -83,7 +83,7 @@ pub enum ParsedNode {
         node: ParsedInnerNode,
         files: Vec<PathBuf>,
         workspace_path: PathBuf,
-    }
+    },
 }
 
 impl ParsedNode {

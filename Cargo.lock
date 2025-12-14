@@ -660,6 +660,7 @@ dependencies = [
  "serde_yaml",
  "test_utils",
  "thiserror",
+ "toml",
  "walkdir",
 ]
 
@@ -1026,10 +1027,12 @@ dependencies = [
  "chrono",
  "common",
  "dag",
+ "log",
  "serde",
  "serde_json",
  "shared_clients",
  "sqlparser",
+ "tempfile",
  "test_utils",
  "testcontainers",
  "thiserror",
@@ -1065,6 +1068,7 @@ dependencies = [
  "logging",
  "serde",
  "serde_json",
+ "serde_yaml",
  "shared_clients",
  "test_utils",
  "thiserror",

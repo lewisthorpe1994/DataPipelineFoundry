@@ -1,29 +1,37 @@
-use ruff_python_ast::{Alias, Expr, Mod, ModModule, Stmt};
+use common::error::DiagnosticMessage;
+use common::types::{ResourceNode, ResourceNodeRefType, ResourceNodeType};
 use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{Alias, Expr, Mod, ModModule, Stmt};
 use ruff_python_parser::{parse, Mode, ParseError};
 use ruff_text_size::TextRange;
 use std::collections::{HashMap, HashSet};
-use common::types::{ResourceNode, ResourceNodeRefType, ResourceNodeType};
 use thiserror::Error;
-use common::error::DiagnosticMessage;
 
 #[derive(Debug, Error)]
 pub enum PythonParserError {
     #[error("Not Found: {context}")]
     NotFound { context: DiagnosticMessage },
     #[error("Parse Error: {context} due to {source:?}")]
-    RuffParseError { context: DiagnosticMessage, source: ParseError },
+    RuffParseError {
+        context: DiagnosticMessage,
+        source: ParseError,
+    },
 }
 
 impl PythonParserError {
     #[track_caller]
     fn not_found(message: impl Into<String>) -> Self {
-        Self::NotFound { context: DiagnosticMessage::new(message.into())}
+        Self::NotFound {
+            context: DiagnosticMessage::new(message.into()),
+        }
     }
 
     #[track_caller]
     fn ruff_parse_error(message: impl Into<String>, source: ParseError) -> Self {
-        Self::RuffParseError { context: DiagnosticMessage::new(message.into()), source}
+        Self::RuffParseError {
+            context: DiagnosticMessage::new(message.into()),
+            source,
+        }
     }
 }
 
@@ -59,20 +67,14 @@ struct DpfImports {
 }
 
 fn alias_name(alias: &Alias) -> String {
-    alias
-        .asname
-        .as_ref()
-        .unwrap_or(&alias.name)
-        .id
-        .to_string()
+    alias.asname.as_ref().unwrap_or(&alias.name).id.to_string()
 }
 
 fn collect_dpf_imports(module: &ModModule) -> DpfImports {
     let mut imports = DpfImports::default();
 
-    let is_dpf_module = |module_name: &str| {
-        module_name == "dpf_python" || module_name.starts_with("dpf_python.")
-    };
+    let is_dpf_module =
+        |module_name: &str| module_name == "dpf_python" || module_name.starts_with("dpf_python.");
 
     for stmt in &module.body {
         match stmt {
@@ -80,9 +82,7 @@ fn collect_dpf_imports(module: &ModModule) -> DpfImports {
                 if let Some(module) = &import_from.module {
                     if is_dpf_module(module.id.as_str()) {
                         for alias in &import_from.names {
-                            if let Some(function) =
-                                DpfFunction::from_name(alias.name.id.as_str())
-                            {
+                            if let Some(function) = DpfFunction::from_name(alias.name.id.as_str()) {
                                 imports.functions.insert(alias_name(alias), function);
                             }
                         }
@@ -248,9 +248,7 @@ pub fn find_dpf_calls(source: &str) -> Result<Vec<DpfCall>, PythonParserError> {
     Ok(visitor.found)
 }
 
-pub fn find_dpf_source_calls(
-    source: &str,
-) -> Result<Vec<TextRange>, Box<dyn std::error::Error>> {
+pub fn find_dpf_source_calls(source: &str) -> Result<Vec<TextRange>, Box<dyn std::error::Error>> {
     Ok(find_dpf_calls(source)?
         .into_iter()
         .filter(|call| call.function == DpfFunction::Source)
@@ -279,8 +277,9 @@ pub fn find_destination_identifiers(
     find_identifiers_for(source, DpfFunction::Destination)
 }
 
-
-pub fn parse_relationships(python_str: &str) -> Result<HashSet<ResourceNode>, Box<dyn std::error::Error>> {
+pub fn parse_relationships(
+    python_str: &str,
+) -> Result<HashSet<ResourceNode>, Box<dyn std::error::Error>> {
     let mut nodes: HashSet<ResourceNode> = HashSet::new();
 
     for call in find_dpf_calls(python_str)? {
@@ -314,12 +313,12 @@ pub fn parse_relationships(python_str: &str) -> Result<HashSet<ResourceNode>, Bo
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-    use common::types::{ResourceNode, ResourceNodeRefType};
     use super::{
         find_destination_identifiers, find_dpf_calls, find_source_identifiers, parse_relationships,
         DpfFunction, ResourceNodeType,
     };
+    use common::types::{ResourceNode, ResourceNodeRefType};
+    use std::collections::HashSet;
 
     const FILE: &str = r#"
 from __future__ import annotations
@@ -474,7 +473,7 @@ destination(name="no_identifier_here", ep_type=DataResourceType.API)
                 name: "no_identifier_here".to_string(),
                 node_type: ResourceNodeType::Api,
                 reference: ResourceNodeRefType::Destination,
-            }
+            },
         ]);
         assert_eq!(result, expected)
     }

@@ -195,6 +195,7 @@ impl WarehouseSourceDec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PythonDecl {
     pub name: String,
+    pub job_dir: PathBuf,
     pub workspace_path: PathBuf,
-    pub resources: HashSet<ResourceNode>
+    pub resources: HashSet<ResourceNode>,
 }

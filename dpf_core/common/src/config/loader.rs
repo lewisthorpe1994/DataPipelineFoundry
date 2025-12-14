@@ -2,12 +2,15 @@ use crate::config::components::connections::{AdapterConnectionDetails, DatabaseA
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::global::FoundryConfig;
 use crate::config::components::model::{ResolvedModelLayerConfig, ResolvedModelsConfig};
+use crate::config::components::python::PythonJobConfig;
+use crate::config::components::sources::api::ApiSourceConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::{SourcePathConfig, SourcePaths};
 use crate::config::error::ConfigError;
 use crate::config::traits::ConfigName;
 use crate::types::sources::SourceType;
+use crate::types::ParsedNode;
 use crate::utils::paths_with_ext;
 use log::debug;
 use serde::de::{DeserializeOwned, Error};
@@ -17,7 +20,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::config::components::sources::api::ApiSourceConfig;
 
 pub fn load_config<V>(path: &Path) -> Result<HashMap<String, V>, ConfigError>
 where
@@ -162,7 +164,60 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         Some(config) => load_config::<ApiSourceConfig>(&config.specifications)?,
         None => HashMap::new(),
     };
-       
+
+    let python_nodes: HashMap<String, PythonJobConfig> = if let Some(py_cfg) = &proj_config.python {
+        let workspace_pyproject_rel = Path::new(&py_cfg.workspace_dir).join("pyproject.toml");
+        let workspace_path = resolve_path(&config_root, &workspace_pyproject_rel);
+        let file = std::fs::read_to_string(&workspace_path)
+            .map_err(|e| ConfigError::parse_error(format!("{e:?}")))?;
+        let cfg: toml::Value =
+            toml::from_str(&file).map_err(|e| ConfigError::parse_error(format!("{e:?}")))?;
+
+        let dpf_config = cfg
+            .get("tool")
+            .and_then(|t| t.get("dpf"))
+            .ok_or(ConfigError::parse_error("Failed to parse dpf config"))?;
+
+        let node_dir = dpf_config
+            .get("nodes_dir")
+            .ok_or(ConfigError::not_found(
+                "nodes_dir not found in dpf config in pyproject.toml",
+            ))?
+            .as_str()
+            .ok_or(ConfigError::parse_error(
+                "unable to parse nodes_dir from pyproject.toml",
+            ))?
+            .to_string();
+
+        let node_names: Vec<String> = cfg
+            .get("tool")
+            .and_then(|t| t.get("dpf"))
+            .and_then(|d| d.get("nodes"))
+            .and_then(|n| n.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .ok_or(ConfigError::parse_error("Failed to parse nodes"))?;
+
+        let nodes: HashMap<String, PythonJobConfig> = node_names
+            .iter()
+            .map(|name| {
+                let job_path = Path::new(&py_cfg.workspace_dir).join(&node_dir).join(&name);
+                (
+                    name.clone(),
+                    PythonJobConfig {
+                        name: name.clone(),
+                        job_path,
+                    },
+                )
+            })
+            .collect();
+        nodes
+    } else {
+        HashMap::new()
+    };
 
     let conn_profile = proj_config.connection_profile.clone();
 
@@ -177,6 +232,7 @@ pub fn read_config(project_config_path: Option<PathBuf>) -> Result<FoundryConfig
         resolved_sources,
         k_definitions,
         api_sources,
+        python_nodes,
     );
 
     Ok(config)

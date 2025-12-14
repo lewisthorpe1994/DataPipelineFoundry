@@ -156,7 +156,7 @@ impl MemoryCatalog {
                 }
             }
         }
-        
+
         for (name, dec) in g.python_decls.iter() {
             nodes.push(CatalogNode {
                 name: name.to_owned(),
@@ -326,7 +326,7 @@ impl Register for MemoryCatalog {
                     workspace_path,
                 } => {
                     self.register_python_node(node, files, workspace_path)?;
-                    continue
+                    continue;
                 }
             };
 
@@ -582,14 +582,12 @@ impl Register for MemoryCatalog {
                 CatalogError::python_node(format!("unable to parse relationships: {}", e))
             })?;
             resources.extend(rels);
-
-
         }
         let python_dec = PythonDecl {
             name: node.name.clone(),
+            job_dir: node.path.clone(),
             workspace_path: workspace_path.to_path_buf(),
             resources,
-
         };
 
         let mut g = self.inner.write();

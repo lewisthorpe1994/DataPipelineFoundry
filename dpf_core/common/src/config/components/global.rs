@@ -3,13 +3,13 @@ use crate::config::components::connections::{
 };
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ResolvedModelsConfig;
+use crate::config::components::python::{PythonConfig, PythonJobConfig};
+use crate::config::components::sources::api::ApiSourceConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
 use crate::config::error::ConfigError;
 use std::collections::HashMap;
-use crate::config::components::python::PythonConfig;
-use crate::config::components::sources::api::ApiSourceConfig;
 
 // ---------------- global config ----------------
 #[derive(Debug)]
@@ -22,6 +22,7 @@ pub struct FoundryConfig {
     pub connections: ConnectionsConfig,
     pub models: Option<ResolvedModelsConfig>,
     pub kafka_connectors: HashMap<String, KafkaConnectorConfig>,
+    pub python_jobs: HashMap<String, PythonJobConfig>,
     pub connection_profile: Connections,
     pub source_paths: SourcePaths,
 }
@@ -38,6 +39,7 @@ impl FoundryConfig {
         source_paths: SourcePaths,
         kafka_connectors: HashMap<String, KafkaConnectorConfig>,
         api_sources: HashMap<String, ApiSourceConfig>,
+        python_jobs: HashMap<String, PythonJobConfig>,
     ) -> Self {
         Self {
             project,
@@ -50,6 +52,7 @@ impl FoundryConfig {
             kafka_source,
             source_paths,
             kafka_connectors,
+            python_jobs,
         }
     }
 }

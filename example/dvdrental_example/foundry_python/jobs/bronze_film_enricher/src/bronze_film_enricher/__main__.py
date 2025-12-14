@@ -1,142 +1,215 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Iterable, Optional
+import os
+from datetime import date, datetime, timezone
+from typing import Iterable
 
+from dlt.destinations.impl.postgres.configuration import PostgresCredentials
 
-from dpf_python import source, DataResourceType, FoundryConfig, destination
+from dpf_python import source, DataResourceType, destination
 
 import dlt
-import psycopg
 import requests
 from dlt.destinations import postgres
 
-TMDB_DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
+TMDB = source(name="tmdb_api", ep_type=DataResourceType.API, identifier=None)
+FILMS_WAREHOUSE_TABLE = destination(
+    name="dvdrental_analytics",
+    ep_type=DataResourceType.WAREHOUSE,
+    identifier="raw.trending_external_films",
+)
 
-FILMS_SOURCE_TABLE = source(name='dvd_rental', ep_type=DataResourceType.SOURCE_DB, identifier='public.film')
-TMDB = source(name='tmdb_api', ep_type=DataResourceType.API)
-FILMS_WAREHOUSE_TABLE = destination(name='dvdrentals_analytics', ep_type=DataResourceType.WAREHOUSE, identifier='raw.film_supplementary')
-
-@dataclass
-class FilmRow:
-    film_id: int
-    title: str
-    release_year: Optional[int] = None
+DEFAULT_LANGUAGE = "en-US"
+DEFAULT_MAX_PAGES = 5
 
 
-def load_films(conn_str: str) -> list[FilmRow]:
-    films: list[FilmRow] = []
-    with psycopg.connect(conn_str) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT film_id, title, release_year FROM {}".format(FILMS_SOURCE_TABLE))
-            for film_id, title, release_year in cur.fetchall():
-                films.append(
-                    FilmRow(
-                        film_id=film_id,
-                        title=title.strip() if title else title,
-                        release_year=release_year,
-                    )
-                )
-    return films
+def _resolve_tmdb_api_key() -> str:
+    auth = getattr(TMDB.config, "auth", None)
+    token_name_or_value = getattr(auth, "token", None) if auth else None
+    if token_name_or_value:
+        return os.getenv(token_name_or_value) or token_name_or_value
+    api_key = os.getenv("TMDB_API_KEY")
+    if not api_key:
+        raise SystemExit("TMDB API key is required (set TMDB_API_KEY)")
+    return api_key
 
 
-def _tmdb_request_params(title: str, language: str, api_key: str) -> dict[str, str]:
-    return {
-        "api_key": api_key,
-        "include_adult": "false",
-        "include_video": "false",
-        "language": language,
-        "page": "1",
-        "sort_by": "popularity.desc",
-        "with_keywords": title,
-    }
-
-
-def _fetch_tmdb_row(
+def _fetch_tmdb_popular_page(
     session: requests.Session,
-    film: FilmRow,
     api_key: str,
-    language: str,
-) -> Optional[dict]:
-    params = _tmdb_request_params(film.title, language, api_key)
-    response = session.get(TMDB_DISCOVER_URL, params=params, timeout=30)
+    page: int,
+) -> dict:
+    api_cfg = TMDB.config
+    endpoint = TMDB.config.get_endpoint("popular_movies")
+    url = f"{TMDB.config.base_url}{endpoint.path}"
+
+    params = dict(endpoint.query_params or {})
+    params.update(
+        {
+            "api_key": api_key,
+            "page": str(page),
+        }
+    )
+
+    headers = dict(getattr(api_cfg, "default_headers", {}) or {})
+    headers.update(endpoint.headers or {})
+
+    response = session.get(url, params=params, headers=headers, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def _fetch_genres(session: requests.Session, api_key: str) -> dict[int, str]:
+    api_cfg = TMDB.config
+    endpoint = TMDB.config.get_endpoint("genre")
+    url = f"{TMDB.config.base_url}{endpoint.path}"
+
+    params = dict(endpoint.query_params or {})
+    params.update(
+        {
+            "api_key": api_key,
+        }
+    )
+
+    headers = dict(getattr(api_cfg, "default_headers", {}) or {})
+    headers.update(endpoint.headers or {})
+
+    response = session.get(url, params=params, headers=headers, timeout=30)
     response.raise_for_status()
     payload = response.json()
-    results = payload.get("results") or []
-    if not results:
-        logging.info("No TMDB match for '%s' (film_id=%s)", film.title, film.film_id)
-        return None
 
-    best_match = results[0]
-    return {
-        "film_id": film.film_id,
-        "keyword_query": film.title,
-        "film_release_year": film.release_year,
-        "tmdb_movie_id": best_match.get("id"),
-        "tmdb_title": best_match.get("title"),
-        "overview": best_match.get("overview"),
-        "popularity": best_match.get("popularity"),
-        "release_date": best_match.get("release_date"),
-        "vote_average": best_match.get("vote_average"),
-        "vote_count": best_match.get("vote_count"),
-        "language": language,
-        "source": TMDB_DISCOVER_URL,
-    }
-
-
-@dlt.resource(name="film_supplementary", write_disposition="merge", primary_key="film_id")
-def film_supplementary_resource(
-    films: list[FilmRow],
-    api_key: str,
-    language: str,
-) -> Iterable[dict]:
-    session = requests.Session()
-    for film in films:
-        try:
-            row = _fetch_tmdb_row(session, film, api_key=api_key, language=language)
-        except requests.HTTPError as exc:
-            logging.warning("TMDB lookup failed for '%s': %s", film.title, exc)
+    genre_map: dict[int, str] = {}
+    for item in payload.get("genres") or []:
+        genre_id = item.get("id")
+        name = item.get("name")
+        if genre_id is None or not name:
             continue
-        if row:
-            yield row
+        try:
+            genre_map[int(genre_id)] = str(name)
+        except (TypeError, ValueError):
+            continue
+    return genre_map
+
+
+
+@dlt.resource(
+    name="trending_external_films",
+    max_table_nesting=0,
+    write_disposition="merge",
+    primary_key="tmdb_movie_id",
+    file_format="typed-jsonl",
+    columns={
+        "tmdb_movie_id": {"data_type": "bigint", "nullable": False},
+        "as_of_date": {"data_type": "date", "nullable": False},
+        "ingested_at": {"data_type": "timestamp", "nullable": False},
+        "rank": {"data_type": "bigint"},
+        "page": {"data_type": "bigint"},
+        "release_date": {"data_type": "date"},
+        "vote_count": {"data_type": "bigint"},
+        "adult": {"data_type": "bool"},
+        "video": {"data_type": "bool"},
+        # Keep as JSON in the main table (avoid dlt normalization into child tables).
+        "genre_ids": {"data_type": "json"},
+        "payload_json": {"data_type": "json"},
+    },
+)
+def trending_external_films_resource(
+    api_key: str,
+    max_pages: int,
+) -> Iterable[dict]:
+    ingested_at = datetime.now(timezone.utc)
+    as_of_date = ingested_at.date()
+    session = requests.Session()
+    yielded = 0
+    genre_map = _fetch_genres(session, api_key)
+    try:
+        for page in range(1, max_pages + 1):
+            try:
+                payload = _fetch_tmdb_popular_page(
+                    session,
+                    api_key=api_key,
+                    page=page,
+                )
+            except requests.HTTPError as exc:
+                logging.warning("TMDB popular fetch failed for page %s: %s", page, exc)
+                break
+            results = payload.get("results") or []
+            if not results:
+                logging.info("TMDB popular returned no results for page %s", page)
+                break
+            logging.info("TMDB popular page %s: %s results", page, len(results))
+
+            for idx, movie in enumerate(results):
+                tmdb_movie_id = movie.get("id")
+                if tmdb_movie_id is None:
+                    continue
+
+                genre_ids = movie.get("genre_ids") or []
+                genre_names = [
+                    genre_map.get(int(genre_id))
+                    for genre_id in genre_ids
+                    if isinstance(genre_id, int) and int(genre_id) in genre_map
+                ]
+                genre_names_str = ", ".join(genre_names)
+
+                release_date_raw = movie.get("release_date")
+                release_date: date | None = None
+                if isinstance(release_date_raw, str) and release_date_raw:
+                    try:
+                        release_date = datetime.fromisoformat(release_date_raw).date()
+                    except ValueError:
+                        release_date = None
+
+                yielded += 1
+                yield {
+                    "tmdb_movie_id": tmdb_movie_id,
+                    "as_of_date": as_of_date,
+                    "ingested_at": ingested_at,
+                    "rank": (page - 1) * len(results) + (idx + 1),
+                    "page": page,
+                    "title": movie.get("title"),
+                    "original_title": movie.get("original_title"),
+                    "overview": movie.get("overview"),
+                    "release_date": release_date,
+                    "popularity": movie.get("popularity"),
+                    "vote_average": movie.get("vote_average"),
+                    "vote_count": movie.get("vote_count"),
+                    "original_language": movie.get("original_language"),
+                    "adult": movie.get("adult"),
+                    "video": movie.get("video"),
+                    "poster_path": movie.get("poster_path"),
+                    "backdrop_path": movie.get("backdrop_path"),
+                    "genre_ids": genre_ids,
+                    "genre_names": genre_names_str,
+                    "payload_json": movie,
+                    "source": "tmdb:/movie/popular",
+                }
+    finally:
+        logging.info("Emitted %s TMDB rows from API", yielded)
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    config = FoundryConfig()
-    api_key = '9127fc7a1362d4b835d669216761589d'
-    if not api_key:
-        raise SystemExit("TMDB API key is required (set TMDB_API_KEY or pass --tmdb-api-key)")
-
-    films = load_films(FILMS_SOURCE_TABLE.)
-
-    resource = film_supplementary_resource(films, api_key=api_key, language='en-us')
-
-    dest_db_config = config.get_db_adapter_details("dvdrental_analytics")
-    dest_credentials = {
-        "database": dest_db_config.database,
-        "host": dest_db_config.host,
-        "port": dest_db_config.port,
-        "user": dest_db_config.user,
-        "password": dest_db_config.password,
-    }
+    resource = trending_external_films_resource(
+        api_key=TMDB.config.auth.token,
+        max_pages=10
+    )
 
     pipeline = dlt.pipeline(
-        pipeline_name="tmdb_film_supplementary",
-        destination=postgres(),
-        # credentials=dest_credentials,
+        pipeline_name="tmdb_trending_external_films",
+        destination=postgres(
+            credentials=PostgresCredentials(
+                connection_string=FILMS_WAREHOUSE_TABLE.connection_string()
+            )
+        ),
+        dataset_name="raw",
     )
 
     load_info = pipeline.run(resource)
-    metrics = getattr(load_info, "metrics", {}) or {}
-    rows_loaded = metrics.get("rows") or metrics.get("rows_loaded") or 0
-    logging.info(
-        "Loaded %s TMDB supplement rows into table film_supplementary",
-        rows_loaded,
 
-    )
+    logging.info("Finished loading rows into table raw.trending_external_films")
     return 0
 
 

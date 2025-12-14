@@ -1,6 +1,8 @@
 use common::config::components::sources::warehouse_source::DbConfig as RsDbConfig;
+use common::config::components::connections::DatabaseAdapterType;
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
+use crate::connections::AdapterConnectionDetails;
 
 #[pyclass(name = "DbConfig")]
 pub struct PyDbConfig(pub RsDbConfig);
@@ -29,10 +31,48 @@ impl PyDbConfig {
     }
 }
 
+#[pyclass(name = "DbResource")]
+pub struct PyDbResource {
+    pub identifier: String,
+    pub connection_details: AdapterConnectionDetails,
+}
+
+#[pymethods]
+impl PyDbResource {
+    #[getter]
+    fn identifier(&self) -> &str {
+        &self.identifier
+    }
+
+    #[getter]
+    fn connection_details(&self) -> AdapterConnectionDetails {
+        self.connection_details.clone()
+    }
+
+    #[getter]
+    fn config(&self) -> AdapterConnectionDetails {
+        self.connection_details.clone()
+    }
+
+    fn connection_string(&self) -> String {
+        match self.connection_details.0.adapter_type {
+            DatabaseAdapterType::Postgres => format!(
+                "postgresql://{}:{}@{}:{}/{}",
+                self.connection_details.0.user,
+                self.connection_details.0.password,
+                self.connection_details.0.host,
+                self.connection_details.0.port,
+                self.connection_details.0.database
+            ),
+        }
+    }
+}
+
 #[pymodule]
 pub fn add_db_submodule(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let sub = PyModule::new(py, "db")?;
     sub.add_class::<PyDbConfig>()?;
+    sub.add_class::<PyDbResource>()?;
     parent.add_submodule(&sub)?;
     Ok(())
 }

@@ -24,10 +24,15 @@ class KafkaConnectorConfig:
     def table_include_list(self) -> str: ...
     def column_include_list(self, fields_only: bool = False) -> str: ...
 
+class KafkaConnectorResource:
+    cluster_name: str
+    config: KafkaSourceConfig
+
 
 __all__ = [
     "KafkaBootstrap",
     "KafkaConnect",
     "KafkaSourceConfig",
     "KafkaConnectorConfig",
+    "KafkaConnectorResource",
 ]
