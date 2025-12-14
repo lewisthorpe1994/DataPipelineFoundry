@@ -13,7 +13,7 @@ To try it:
 cargo run -p foundry -- compile --project example/dvdrental_example
 cargo run -p foundry -- run --project example/dvdrental_example
 # Or view the DAG:
-# cargo run -p foundry_backend -- --manifest example/dvdrental_example/compiled/manifest.json --static-dir foundry_web/ui/dist
+# cargo run -p backend -- --manifest example/dvdrental_example/compiled/manifest.json --static-dir dpf_web/ui/dist
 ```
 
 What’s missing (future work):

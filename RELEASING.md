@@ -17,7 +17,7 @@ This repository publishes ready-to-run archives that bundle the `foundry` CLI wi
    cargo fmt
    cargo clippy --all-targets -- -D warnings
    cargo test
-   (cd foundry_web/ui && npm ci && npm run build)
+   (cd dpf_web/ui && npm ci && npm run build)
    ```
 4. **Commit and tag** – commit the version bump and create an annotated tag, e.g. `git tag -a v0.5.0 -m "v0.5.0"`.
 5. **Push the tag** – `git push origin v0.5.0`.
@@ -36,11 +36,11 @@ To test packaging without tagging, trigger the workflow from the GitHub Actions 
 If you need to mirror CI locally, set `VERSION=<tag or commit>` and mimic the workflow steps:
 
 ```bash
-(cd foundry_web/ui && npm ci && npm run build)
+(cd dpf_web/ui && npm ci && npm run build)
 cargo build --locked --release -p dpf
 mkdir -p dist/foundry-$VERSION-linux-x86_64
 # copy target/release/dpf -> dist/.../foundry
-# copy foundry_web/ui/dist -> dist/.../web-ui-dist
+# copy dpf_web/ui/dist -> dist/.../web-ui-dist
 # tar czf dist/foundry-$VERSION-linux-x86_64.tar.gz -C dist foundry-$VERSION-linux-x86_64
 ```
 

@@ -927,8 +927,8 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "common",
+ "dpf_web",
  "ff_core",
- "foundry_web",
  "log",
  "minijinja",
  "serde",
@@ -947,6 +947,20 @@ dependencies = [
  "pyo3",
  "pyo3-stub-gen",
  "pyo3-stub-gen-derive",
+]
+
+[[package]]
+name = "dpf_web"
+version = "0.1.0"
+dependencies = [
+ "actix-cors",
+ "actix-files",
+ "actix-web",
+ "clap",
+ "env_logger",
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1140,20 +1154,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "foundry_web"
-version = "0.1.0"
-dependencies = [
- "actix-cors",
- "actix-files",
- "actix-web",
- "clap",
- "env_logger",
- "log",
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ use std::process::{Child, Command, Stdio};
 use clap::Args;
 use common::config::loader::read_config;
 use common::error::FFError;
-use foundry_web::{init_logging, run_backend, BackendConfig};
+use dpf_web::{init_logging, run_backend, BackendConfig};
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Args)]
@@ -25,7 +25,7 @@ pub struct WebArgs {
     #[arg(long)]
     pub no_frontend: bool,
 
-    /// Path to the frontend workspace (defaults to foundry_web/ui)
+    /// Path to the frontend workspace (defaults to dpf_web/ui)
     #[arg(long)]
     pub frontend_dir: Option<PathBuf>,
 }
@@ -115,7 +115,7 @@ fn default_frontend_dir() -> PathBuf {
         .and_then(|p| p.parent())
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    workspace_root.join("foundry_web/ui")
+    workspace_root.join("../../../../dpf_web/ui")
 }
 
 fn spawn_frontend(dir: &Path) -> Result<Child, FFError> {

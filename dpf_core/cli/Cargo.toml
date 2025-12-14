@@ -15,7 +15,7 @@ tracing-subscriber = {  version = "0.3.19", features = ["env-filter", "std", "lo
 time = {version = "0.3.41", features = ["formatting", "macros"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 log = "0.4.27"
-foundry_web = { workspace = true }
+dpf_web = { workspace = true }
 
 [dev-dependencies]
 serde_yaml = { workspace = true }

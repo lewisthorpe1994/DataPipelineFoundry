@@ -1,0 +1,7 @@
+source "https://rubygems.org"
+
+# Use the same dependency set GitHub Pages uses for Jekyll builds.
+gem "github-pages", group: :jekyll_plugins
+
+# Needed for `jekyll serve` on newer Ruby versions.
+gem "webrick", "~> 1.8"

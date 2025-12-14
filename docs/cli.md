@@ -1,20 +1,21 @@
 ---
 title: CLI
+nav_order: 6
+has_children: true
 ---
 
 # CLI
 
-The CLI binary is `foundry` (crate `crates/cli`).
+The Foundry CLI binary is currently built from the `dpf` Cargo package and is invoked as `dpf`. Most commands operate on a “project root” directory containing a `foundry-project.yml`.
 
-## Common commands
+Global options:
 
-```bash
-# show help
-cargo run -p foundry -- --help
+- `--config-path, -c <DIR>`: path to the project root directory (the CLI looks for `<DIR>/foundry-project.yml`). If omitted, the current working directory is used.
 
-# compile a project
-cargo run -p foundry -- compile
+See:
 
-# run a model / node
-cargo run -p foundry -- run -m <model>
-```
+- [init](cli-init.md)
+- [compile](cli-compile.md)
+- [run](cli-run.md)
+- [kafka](cli-kafka.md)
+- [web](cli-web.md)

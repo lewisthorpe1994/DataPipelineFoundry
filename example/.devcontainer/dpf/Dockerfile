@@ -28,7 +28,7 @@ COPY dpf_python ./dpf_python
 COPY foundry_web ./foundry_web
 
 # Install UI dependencies so `npm run` commands used by the CLI succeed
-RUN cd foundry_web/ui && npm install
+RUN cd dpf_web/ui && npm install
 
 # Build and install the CLI during image build so it can be reused at runtime
 RUN CARGO_TARGET_DIR=/tmp/devcontainer-target cargo install --path dpf_core/cli --locked --root /usr/local

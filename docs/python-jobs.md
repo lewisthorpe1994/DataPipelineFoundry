@@ -1,20 +1,42 @@
 ---
 title: Python Jobs
+nav_order: 9
 ---
 
 # Python Jobs
 
-Python jobs live under the project’s `foundry_python/` workspace (configured in `foundry-project.yml`).
+Foundry can treat Python code as DAG nodes. This is intended for lightweight ingestion/enrichment POCs where you want to mix “do some Python” with “build some SQL models” in one graph.
 
-## Running jobs
+## How Python jobs are discovered
 
-Use the CLI:
+In `foundry-project.yml`, enable a Python workspace:
 
-```bash
-cargo run -p foundry -- run -m <python_job_name>
+```yml
+python:
+  workspace_dir: foundry_python
 ```
 
-## Notes
+Foundry then reads `<workspace_dir>/pyproject.toml` and expects:
 
-- Jobs are executed via `uv run` by the Rust executor.
-- Job output is streamed back into the main process logs.
+- `[tool.dpf] nodes = ["job_a", "job_b", ...]`
+- `[tool.dpf] nodes_dir = "jobs"` (or similar)
+
+Each node name is treated as a job folder under `nodes_dir`.
+
+Example (from `example/dvdrental_example/foundry_python/pyproject.toml`):
+
+```toml
+[tool.dpf]
+nodes = ["bronze_film_enricher"]
+nodes_dir = "jobs"
+```
+
+## Execution model
+
+- `dpf run` executes Python nodes using `uv run ...` (see `executor` crate).
+- You need `uv` installed and available on `PATH`.
+- Logs default to structured logging; set `DPF_PYTHON_LOG_MODE=raw` to stream raw stdout/stderr.
+
+## Minimal job shape
+
+A job can be a Python module (`python -m ...`) or a file path (`python path/to/job.py`). In the example project, each job is a small `src/<package>/__main__.py` module inside its own `pyproject.toml` workspace member.

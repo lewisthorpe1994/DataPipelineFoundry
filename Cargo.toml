@@ -14,7 +14,7 @@ members = [
     "dpf_core/components",
     "dpf_core/components/connector_versioning",
     "dpf_core/components/connector_versioning_derive",
-    "foundry_web",
+    "dpf_web",
     "dpf_python",
     "dpf_core/python_parser"]
 
@@ -52,7 +52,7 @@ components = { path = "dpf_core/components", default-features = false}
 connector_versioning = { path = "dpf_core/components/connector_versioning"}
 connector_versioning_derive = {path = "dpf_core/components/connector_versioning_derive"}
 python_parser = { path = "dpf_core/python_parser"}
-foundry_web = { path = "foundry_web"}
+dpf_web = { path = "dpf_web" }
 
 
 [workspace.lints.clippy]

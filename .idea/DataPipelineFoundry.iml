@@ -18,8 +18,23 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/components/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/components/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/components/connector_versioning_derive/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/foundry_web/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/foundry_web/src/foundry_backend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/catalog/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/components/connector_versioning/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/components/connector_versioning_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/components/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/dag/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/executor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/ff_core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/logging/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/python_parser/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/shared_clients/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/sqlparser/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_core/test_utils/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_python/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_web/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/dpf_web/src/backend/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

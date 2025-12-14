@@ -1,6 +1,11 @@
 title: DPF / Foundry
 description: Developer documentation for the DPF/Foundry data platform.
-theme: jekyll-theme-cayman
+remote_theme: just-the-docs/just-the-docs
 
+plugins:
+  - jekyll-remote-theme
+
+color_scheme: light
+search_enabled: true
 # GitHub Pages defaults are fine for most repos; keep config minimal.
 markdown: kramdown
