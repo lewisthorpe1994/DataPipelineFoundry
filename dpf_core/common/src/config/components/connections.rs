@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 ///  ---------------- Connections Config ----------------
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DatabaseAdapterType {
     Postgres,
 }
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct AdapterConnectionDetails {
     pub host: String,
     pub user: String,

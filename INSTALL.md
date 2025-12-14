@@ -4,11 +4,11 @@ Official releases publish platform-specific archives produced by `.github/workfl
 
 ## 1. Download and extract
 
-1. Grab the archive for your OS/architecture from the GitHub Releases page.
-2. Extract it to a directory on disk, for example:
-   - macOS/Linux: `tar -xzf foundry-v0.1.0-linux-x86_64.tar.gz`
-   - Windows: unzip `foundry-v0.1.0-windows-x86_64.zip` with Explorer or PowerShell.
-3. (macOS/Linux only) mark the binary as executable if needed: `chmod +x foundry`.
+1.  Grab the archive for your OS/architecture from the GitHub Releases page.
+2.  Extract it to a directory on disk, for example:
+    -   macOS/Linux: `tar -xzf foundry-v0.1.0-linux-x86_64.tar.gz`
+    -   Windows: unzip `foundry-v0.1.0-windows-x86_64.zip` with Explorer or PowerShell.
+3.  (macOS/Linux only) mark the binary as executable if needed: `chmod +x foundry`.
 
 ## 2. Run the CLI
 

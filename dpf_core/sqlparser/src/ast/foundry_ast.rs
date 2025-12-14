@@ -87,7 +87,6 @@ impl CreateKafkaConnector {
 #[cfg(feature = "kafka")]
 impl fmt::Display for CreateKafkaConnector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // 1️⃣  pre-compute the optional bits
         let if_not_exists = if self.if_not_exists {
             "IF NOT EXISTS "
         } else {
@@ -880,8 +879,8 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                src(&["WH", "RAW"], "SOURCE('WH', 'RAW')"),
                 rf(&["bronze", "dim"], "Ref('bronze', 'dim')"),
+                src(&["WH", "RAW"], "SOURCE('WH', 'RAW')"),
             ]
         );
     }
@@ -917,7 +916,7 @@ mod tests {
 
         let got = calls(sql);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0], rf(&["bronze", "things"], "ref('bronze','things')"));
+        assert_eq!(got[0], rf(&["bronze", "things"], "ref('bronze', 'things')"));
     }
 
     #[test]
@@ -939,9 +938,9 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                src(&["wh", "a"], "source('wh','a')"),
-                rf(&["bronze", "b"], "ref('bronze','b')"),
-                src(&["wh", "c"], "source('wh','c')"),
+                rf(&["bronze", "b"], "ref('bronze', 'b')"),
+                src(&["wh", "a"], "source('wh', 'a')"),
+                src(&["wh", "c"], "source('wh', 'c')"),
             ]
         );
     }
@@ -969,9 +968,7 @@ mod tests {
             Ok(format!("{}.{}", name, table))
         }
 
-        let compiled = model
-            .compile(resolver)
-            .expect("compile");
+        let compiled = model.compile(resolver).expect("compile");
 
         assert!(compiled.contains("bronze.orders"));
         assert!(compiled.contains("warehouse.raw_orders"));

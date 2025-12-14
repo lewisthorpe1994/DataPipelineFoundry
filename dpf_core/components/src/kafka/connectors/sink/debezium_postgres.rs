@@ -199,10 +199,10 @@ pub struct DebeziumPostgresSinkConnector {
     #[serde(skip)]
     pub common: Option<CommonKafkaConnector>,
 
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, flatten)]
     pub transforms: Option<Transforms>,
 
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, flatten)]
     pub predicates: Option<Predicates>,
 }
 
@@ -224,6 +224,7 @@ impl DebeziumPostgresSinkConnector {
         con.common = Some(base);
         con.transforms = transforms;
         con.predicates = predicates;
+
         Ok(con)
     }
 

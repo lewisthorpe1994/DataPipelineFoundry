@@ -407,7 +407,7 @@ mod tests {
         assert!(reroute.exists());
         assert!(fs::read_to_string(&reroute)
             .expect("reroute sql")
-            .contains("CREATE SIMPLE MESSAGE TRANSFORM reroute"));
+            .contains(SAMPLE_KAFKA_SMT));
 
         let pipeline_sql = proj_path
             .join("foundry_sources/kafka/definitions/_common/_smt_pipelines/_unwrap_router.sql");

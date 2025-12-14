@@ -1,0 +1,13 @@
+# https://taskfile.dev
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: "3"
+
+tasks:
+  stub-gen:
+    desc: Generate stub file
+    cmds:
+      - |
+        PYO3_PYTHON=$(which python3.12)
+        RUSTFLAGS="$(python3.12-config --embed --ldflags)"
+        export PYO3_PYTHON RUSTFLAGS
+        cargo run -p dpf_python --bin stub_gen

@@ -1,4 +1,7 @@
+mod python;
 pub mod types;
+
+use crate::python::PythonExecutor;
 use common::config::components::global::FoundryConfig;
 use common::error::diagnostics::DiagnosticMessage;
 use dag::types::{DagNode, DagNodeType};
@@ -89,6 +92,13 @@ impl ExecutorError {
             source: None,
         }
     }
+
+    #[track_caller]
+    pub fn node_not_executable(message: impl Into<String>) -> Self {
+        Self::NodeNotExecutable {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -175,16 +185,24 @@ impl Executor {
         node: &DagNode,
         config: &FoundryConfig,
     ) -> Result<ExecutorResponse, ExecutorError> {
-        match node.node_type {
-            DagNodeType::Model => {
-                let executable = node.compiled_obj.as_ref().ok_or_else(|| {
+        if !node.is_executable() {
+            return Err(ExecutorError::node_not_executable(node.name()));
+        }
+        match node {
+            DagNode::Model {
+                name,
+                compiled_obj,
+                target,
+                ..
+            } => {
+                let executable = compiled_obj.as_ref().ok_or_else(|| {
                     ExecutorError::config("Expected an executable statement for model node")
                 })?;
 
-                let target_name = node.target.as_ref().ok_or_else(|| {
+                let target_name = target.as_ref().ok_or_else(|| {
                     ExecutorError::config(format!(
                         "Model '{}' is missing a target connection",
-                        node.name
+                        name
                     ))
                 })?;
 
@@ -201,14 +219,25 @@ impl Executor {
                 adapter.execute(executable).await?;
                 Ok(ExecutorResponse::Ok)
             }
-            DagNodeType::KafkaSourceConnector | DagNodeType::KafkaSinkConnector => {
-                let executable = node.compiled_obj.as_ref().ok_or_else(|| {
+            DagNode::KafkaSourceConnector {
+                name,
+                compiled_obj,
+                target,
+                ..
+            }
+            | DagNode::KafkaSinkConnector {
+                name,
+                compiled_obj,
+                target,
+                ..
+            } => {
+                let executable = compiled_obj.as_ref().ok_or_else(|| {
                     ExecutorError::config(
                         "Expected a rendered connector configuration but none was provided",
                     )
                 })?;
 
-                let kafka_conn_name = node.target.as_ref().ok_or_else(|| {
+                let kafka_conn_name = target.as_ref().ok_or_else(|| {
                     ExecutorError::config("Kafka connector node is missing a target cluster name")
                 })?;
 
@@ -231,45 +260,158 @@ impl Executor {
 
                 Ok(ExecutorResponse::Ok)
             }
+            DagNode::Python { name, job_dir, .. } => {
+                PythonExecutor::execute(name, job_dir).map_err(|e| {
+                    ExecutorError::unexpected(format!("Python executor failed: {}", e))
+                })?;
+                Ok(ExecutorResponse::Ok)
+            }
             _ => Err(ExecutorError::unexpected(format!(
-                "Node '{}' with type {:?} is not supported by the executor",
-                node.name, node.node_type
+                "Node '{:#?}' is not supported by the executor",
+                node
             ))),
         }
     }
 }
 
 #[cfg(test)]
-mod test {
-    
-    use common::config::components::connections::AdapterConnectionDetails;
-    
-    
-    
-    
-    use shared_clients::create_db_adapter;
-    
-    
-    
-    
-    
-    
-    
+mod tests {
+    use super::*;
+    use common::config::components::connections::{Connections, ConnectionsConfig};
+    use common::config::components::foundry_project::FoundryProjectConfig;
+    use common::config::components::global::FoundryConfig;
+    use common::config::components::model::ModelsProjects;
+    use common::config::components::sources::warehouse_source::DbConfig;
+    use common::config::components::sources::SourcePaths;
+    use dag::types::{DagNode, NodeAst};
+    use sqlparser::ast::{CreateSimpleMessageTransform, Ident};
+    use std::{collections::HashMap, path::PathBuf};
 
-    async fn set_up_table(pg_conn: AdapterConnectionDetails) {
-        let mut adapter = create_db_adapter(pg_conn).await.unwrap();
-        adapter
-            .execute(
-                "
-            DROP TABLE IF EXISTS test_connector_src;
-            CREATE TABLE test_connector_src (
-                id   SERIAL PRIMARY KEY,
-                name TEXT NOT NULL
-            );
-            INSERT INTO test_connector_src (name) VALUES ('alice'), ('bob');
-            ",
-            )
+    fn dummy_foundry_config() -> FoundryConfig {
+        let project = FoundryProjectConfig {
+            name: "test".into(),
+            version: "0.1".into(),
+            compile_path: "compiled".into(),
+            modelling_architecture: String::new(),
+            connection_profile: Connections {
+                profile: "default".into(),
+                path: PathBuf::new(),
+            },
+            models: ModelsProjects {
+                dir: "models".into(),
+                analytics_projects: None,
+            },
+            sources: SourcePaths::default(),
+            python: None,
+        };
+
+        FoundryConfig::new(
+            project,
+            HashMap::<String, DbConfig>::new(),
+            ConnectionsConfig::default(),
+            None,
+            HashMap::new(),
+            Connections {
+                profile: "default".into(),
+                path: PathBuf::new(),
+            },
+            HashMap::new(),
+            SourcePaths::default(),
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+        )
+    }
+
+    fn dummy_ast(name: &str) -> NodeAst {
+        NodeAst::KafkaSmt(CreateSimpleMessageTransform {
+            name: Ident::new(name),
+            if_not_exists: false,
+            config: Vec::new(),
+            preset: None,
+            overrides: Vec::new(),
+            predicate: None,
+        })
+    }
+
+    fn model_node(compiled: Option<&str>, target: Option<&str>, executable: bool) -> DagNode {
+        DagNode::Model {
+            name: "bronze_model".into(),
+            ast: dummy_ast("bronze_model"),
+            compiled_obj: compiled.map(str::to_owned),
+            is_executable: executable,
+            relations: None,
+            target: target.map(str::to_owned),
+        }
+    }
+
+    fn kafka_source_node(
+        compiled: Option<&str>,
+        target: Option<&str>,
+        executable: bool,
+    ) -> DagNode {
+        DagNode::KafkaSourceConnector {
+            name: "connector".into(),
+            ast: dummy_ast("connector"),
+            compiled_obj: compiled.map(str::to_owned),
+            is_executable: executable,
+            relations: None,
+            target: target.map(str::to_owned),
+        }
+    }
+
+    #[tokio::test]
+    async fn model_without_compiled_sql_errors() {
+        let config = dummy_foundry_config();
+        let node = model_node(None, Some("warehouse"), true);
+
+        let err = Executor::execute(&node, &config)
             .await
-            .expect("prepare table");
+            .expect_err("missing compiled sql");
+        assert!(matches!(err, ExecutorError::ConfigError { .. }));
+    }
+
+    #[tokio::test]
+    async fn model_without_target_is_rejected() {
+        let config = dummy_foundry_config();
+        let node = model_node(Some("SELECT 1"), None, true);
+
+        let err = Executor::execute(&node, &config)
+            .await
+            .expect_err("missing target should fail");
+        assert!(matches!(err, ExecutorError::ConfigError { .. }));
+    }
+
+    #[tokio::test]
+    async fn node_not_marked_executable_is_rejected() {
+        let config = dummy_foundry_config();
+        let node = model_node(Some("SELECT 1"), Some("warehouse"), false);
+
+        let err = Executor::execute(&node, &config)
+            .await
+            .expect_err("non executable");
+        assert!(matches!(err, ExecutorError::NodeNotExecutable { .. }));
+    }
+
+    #[tokio::test]
+    async fn kafka_connector_without_compiled_config_errors() {
+        let config = dummy_foundry_config();
+        let node = kafka_source_node(None, Some("cluster_a"), true);
+
+        let err = Executor::execute(&node, &config)
+            .await
+            .expect_err("missing compiled connector");
+        assert!(matches!(err, ExecutorError::ConfigError { .. }));
+    }
+
+    #[tokio::test]
+    async fn kafka_connector_with_unknown_cluster_errors() {
+        let config = dummy_foundry_config();
+        let node = kafka_source_node(Some("{}"), Some("cluster_a"), true);
+
+        let err = Executor::execute(&node, &config)
+            .await
+            .expect_err("cluster missing");
+        assert!(matches!(err, ExecutorError::ConfigError { .. }));
     }
 }

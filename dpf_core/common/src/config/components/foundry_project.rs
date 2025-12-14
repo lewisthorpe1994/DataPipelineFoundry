@@ -1,5 +1,6 @@
 use crate::config::components::connections::Connections;
 use crate::config::components::model::ModelsProjects;
+use crate::config::components::python::PythonConfig;
 use crate::config::components::sources::SourcePaths;
 use serde::Deserialize;
 
@@ -14,4 +15,5 @@ pub struct FoundryProjectConfig {
     pub connection_profile: Connections,
     pub models: ModelsProjects,
     pub sources: SourcePaths,
+    pub python: Option<PythonConfig>,
 }

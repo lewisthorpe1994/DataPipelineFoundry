@@ -1,0 +1,31 @@
+name: tmdb_api
+base_url: https://api.themoviedb.org/3
+default_headers:
+  Accept: application/json
+
+auth:
+  kind: api_key_query
+  # Set the TMDB API key via environment variable.
+  # The runtime reads this value as an env var name, and falls back to `TMDB_API_KEY`.
+  token: 9127fc7a1362d4b835d669216761589d
+  query_name: api_key
+
+endpoints:
+  discover_movie:
+    path: /discover/movie
+    method: GET
+    query_params:
+      include_adult: "false"
+      include_video: "false"
+      sort_by: popularity.desc
+    schema_name: raw.trending_external_films
+  popular_movies:
+    path: /movie/popular
+    method: GET
+    query_params:
+      language: en-US
+    schema_name: raw.trending_external_films
+  genre:
+    path: /genre/movie/list
+    method: GET
+

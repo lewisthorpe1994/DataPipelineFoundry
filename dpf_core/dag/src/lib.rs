@@ -5,6 +5,7 @@ use crate::error::DagError;
 use crate::types::{DagNode, DagNodeType, DagResult, EmtpyEdge, NodeAst, TransitiveDirection};
 use catalog::{compare_catalog_node, Getter, KafkaConnectorMeta, MemoryCatalog, NodeDec};
 use common::config::components::global::FoundryConfig;
+use common::types::{ResourceNodeRefType, ResourceNodeType};
 use components::connectors::sink::debezium_postgres::DebeziumPostgresSinkConnector;
 use components::connectors::source::debezium_postgres::DebeziumPostgresSourceConnector;
 use components::{
@@ -89,14 +90,9 @@ impl ModelsDag {
                     self.upsert_node(
                         source.identifier(),
                         false,
-                        DagNode {
+                        DagNode::WarehouseSourceDb {
                             name: source.identifier(),
-                            ast: None,
-                            node_type: DagNodeType::WarehouseSourceDb,
-                            compiled_obj: None,
-                            is_executable: false,
                             relations: None,
-                            target: None,
                         },
                     )?;
                 }
@@ -139,10 +135,9 @@ impl ModelsDag {
                     self.upsert_node(
                         c_node.name.clone(),
                         true,
-                        DagNode {
+                        DagNode::Model {
                             name: c_node.name.clone(),
-                            ast: Some(NodeAst::Model(Box::new(model.sql.clone()))),
-                            node_type: DagNodeType::Model,
+                            ast: NodeAst::Model(Box::new(model.sql.clone())),
                             is_executable: true,
                             relations: Some(rels),
                             compiled_obj: Some(compiled_obj),
@@ -161,14 +156,11 @@ impl ModelsDag {
                     self.upsert_node(
                         c_node.name.clone(),
                         true,
-                        DagNode {
+                        DagNode::KafkaPipeline {
                             name: c_node.name.clone(),
-                            ast: Some(NodeAst::KafkaSmtPipeline(pipe.sql.clone())),
-                            node_type: DagNodeType::KafkaPipeline,
-                            is_executable: false,
+                            ast: NodeAst::KafkaSmtPipeline(pipe.sql.clone()),
                             relations: Some(rels),
                             compiled_obj: Some(pipe.sql.to_string()),
-                            target: None,
                         },
                     )?;
                 }
@@ -176,14 +168,11 @@ impl ModelsDag {
                     self.upsert_node(
                         c_node.name.clone(),
                         false,
-                        DagNode {
+                        DagNode::KafkaSmt {
                             name: c_node.name.clone(),
-                            ast: Some(NodeAst::KafkaSmt(smt.sql.clone())),
-                            node_type: DagNodeType::KafkaSmt,
-                            is_executable: false,
+                            ast: NodeAst::KafkaSmt(smt.sql.clone()),
                             relations: None, // TODO - needs revisiting
                             compiled_obj: Some(smt.sql.to_string()),
-                            target: None,
                         },
                     )?;
                 }
@@ -194,12 +183,105 @@ impl ModelsDag {
                     c_node.target.clone(),
                     &mut current_topics,
                 )?,
+                NodeDec::Python(py) => {
+                    // Add source and destination nodes if they don't exist
+                    let mut sources: BTreeSet<String> = BTreeSet::new();
+                    py.resources
+                        .iter()
+                        .try_for_each(|node| -> Result<(), DagError> {
+                            match node.reference {
+                                ResourceNodeRefType::Source => {
+                                    sources.insert(node.name.clone());
+                                    match node.node_type {
+                                        ResourceNodeType::Kafka => self.upsert_node(
+                                            node.name.clone(),
+                                            false,
+                                            DagNode::KafkaTopic {
+                                                name: node.name.clone(),
+                                                relations: None,
+                                            },
+                                        )?,
+                                        ResourceNodeType::Api => self.upsert_node(
+                                            node.name.clone(),
+                                            false,
+                                            DagNode::Api {
+                                                name: node.name.clone(),
+                                                relations: None,
+                                            },
+                                        )?,
+                                        ResourceNodeType::SourceDb => self.upsert_node(
+                                            node.name.clone(),
+                                            false,
+                                            DagNode::SourceDb {
+                                                name: node.name.clone(),
+                                                relations: None,
+                                            },
+                                        )?,
+                                        ResourceNodeType::WarehouseDb => self.upsert_node(
+                                            node.name.clone(),
+                                            false,
+                                            DagNode::WarehouseSourceDb {
+                                                name: node.name.clone(),
+                                                relations: None,
+                                            },
+                                        )?,
+                                    }
+                                }
+                                ResourceNodeRefType::Destination => match node.node_type {
+                                    ResourceNodeType::Kafka => self.upsert_node(
+                                        node.name.clone(),
+                                        false,
+                                        DagNode::KafkaTopic {
+                                            name: node.name.clone(),
+                                            relations: Some(BTreeSet::from([py.name.clone()])),
+                                        },
+                                    )?,
+                                    ResourceNodeType::Api => self.upsert_node(
+                                        node.name.clone(),
+                                        false,
+                                        DagNode::Api {
+                                            name: node.name.clone(),
+                                            relations: Some(BTreeSet::from([py.name.clone()])),
+                                        },
+                                    )?,
+                                    ResourceNodeType::SourceDb => self.upsert_node(
+                                        node.name.clone(),
+                                        false,
+                                        DagNode::SourceDb {
+                                            name: node.name.clone(),
+                                            relations: Some(BTreeSet::from([py.name.clone()])),
+                                        },
+                                    )?,
+                                    ResourceNodeType::WarehouseDb => self.upsert_node(
+                                        node.name.clone(),
+                                        false,
+                                        DagNode::WarehouseSourceDb {
+                                            name: node.name.clone(),
+                                            relations: Some(BTreeSet::from([py.name.clone()])),
+                                        },
+                                    )?,
+                                },
+                            }
+                            Ok(())
+                        })?;
+
+                    self.upsert_node(
+                        py.name.clone(),
+                        false,
+                        DagNode::Python {
+                            name: py.name.clone(),
+                            is_executable: true,
+                            relations: Some(sources),
+                            job_dir: py.job_dir.clone(),
+                        },
+                    )?
+                }
             }
         }
 
         let node_indices: Vec<_> = self.graph.node_indices().collect();
         for node_idx in node_indices {
-            let Some(relations) = self.graph[node_idx].relations.clone() else {
+            let Some(relations) = self.graph[node_idx].relations().clone() else {
                 continue;
             };
 
@@ -209,7 +291,7 @@ impl ModelsDag {
                         .graph
                         .node_weight(node_idx)
                         .expect("node index must exist")
-                        .name
+                        .name()
                         .clone();
                     return Err(DagError::ref_not_found(format!(
                         "Unknown dependency '{}' for '{}'",
@@ -225,14 +307,14 @@ impl ModelsDag {
             if let Some(cyclic_refs) = kosaraju_scc(&self.graph).into_iter().find(|c| c.len() > 1) {
                 let cyclic_models = cyclic_refs
                     .iter()
-                    .map(|&node_idx| self.graph[node_idx].name.clone())
+                    .map(|&node_idx| self.graph[node_idx].name().clone())
                     .collect::<Vec<String>>();
                 return Err(DagError::cycle_detected(cyclic_models));
             }
         }
 
         info!(
-            "ModelsDag::build completed in {:.3}s",
+            "Dag build completed in {:.3}s",
             started.elapsed().as_secs_f64()
         );
         Ok(())
@@ -313,14 +395,11 @@ impl ModelsDag {
                     self.upsert_node(
                         t.name.to_string(),
                         false,
-                        DagNode {
+                        DagNode::KafkaSmt {
                             name: t.name.to_string(),
-                            ast: Some(NodeAst::KafkaSmt(transform.sql.clone())),
-                            node_type: DagNodeType::KafkaSmt,
-                            is_executable: false,
-                            relations: relations.clone(),
+                            ast: NodeAst::KafkaSmt(transform.sql.clone()),
                             compiled_obj: None,
-                            target: None,
+                            relations: relations.clone(),
                         },
                     )
                 })
@@ -351,13 +430,12 @@ impl ModelsDag {
         self.upsert_node(
             ctx.meta.name.clone(),
             true,
-            DagNode {
+            DagNode::KafkaSinkConnector {
                 name: ctx.meta.name.clone(),
-                ast: Some(NodeAst::KafkaConnector(ctx.meta.sql.clone())),
-                node_type: DagNodeType::KafkaSinkConnector,
+                ast: NodeAst::KafkaConnector(ctx.meta.sql.clone()),
+                compiled_obj: Some(ctx.connector_json.clone()),
                 is_executable,
                 relations: Some(topics),
-                compiled_obj: Some(ctx.connector_json.clone()),
                 target: ctx.target.clone(),
             },
         )?;
@@ -373,14 +451,9 @@ impl ModelsDag {
                     self.upsert_node(
                         name.clone(),
                         false,
-                        DagNode {
+                        DagNode::WarehouseSourceDb {
                             name: name.clone(),
-                            ast: None,
-                            node_type: DagNodeType::WarehouseSourceDb,
-                            is_executable: false,
                             relations: Some(BTreeSet::from([ctx.meta.name.clone()])),
-                            compiled_obj: None,
-                            target: None,
                         },
                     )?;
                     Ok(())
@@ -424,14 +497,9 @@ impl ModelsDag {
                 self.upsert_node(
                     src.to_string(),
                     false,
-                    DagNode {
+                    DagNode::SourceDb {
                         name: src.to_string(),
-                        ast: None,
-                        node_type: DagNodeType::SourceDb,
-                        is_executable: false,
                         relations: None,
-                        compiled_obj: None,
-                        target: None,
                     },
                 )?;
                 Ok(())
@@ -445,14 +513,9 @@ impl ModelsDag {
                 self.upsert_node(
                     topic.to_string(),
                     false,
-                    DagNode {
+                    DagNode::KafkaTopic {
                         name: topic.to_owned(),
-                        ast: None,
-                        node_type: DagNodeType::KafkaTopic,
-                        is_executable: false,
                         relations: Some(BTreeSet::from([ctx.meta.name.clone()])),
-                        compiled_obj: None,
-                        target: None,
                     },
                 )?;
                 Ok(())
@@ -468,10 +531,9 @@ impl ModelsDag {
         self.upsert_node(
             ctx.meta.name.clone(),
             true,
-            DagNode {
+            DagNode::KafkaSourceConnector {
                 name: ctx.meta.name.clone(),
-                ast: Some(NodeAst::KafkaConnector(ctx.meta.sql.clone())),
-                node_type: DagNodeType::KafkaSourceConnector,
+                ast: NodeAst::KafkaConnector(ctx.meta.sql.clone()),
                 is_executable,
                 relations: Some(conn_rels.clone()),
                 compiled_obj: Some(ctx.connector_json.clone()),
@@ -489,27 +551,27 @@ impl ModelsDag {
     ) -> DagResult<()> {
         let exists = self.check_node_exists(&node_key, raise_duplicate_error)?;
         if exists {
-            let existing_node = self
-                .get_mut(&node_key)
+            let idx = *self
+                .ref_to_index
+                .get(&node_key)
                 .expect("ref_to_index and graph out of sync");
 
             if raise_duplicate_error {
                 return Err(DagError::duplicate_node(node_key));
             }
 
-            if let Some(new_rels) = node.relations {
-                match existing_node.relations {
-                    Some(ref mut existing) => existing.extend(new_rels),
-                    None => existing_node.relations = Some(new_rels),
-                }
-            }
+            let merged = {
+                let existing = self
+                    .graph
+                    .node_weight(idx)
+                    .expect("ref_to_index and graph out of sync")
+                    .clone();
+                Self::merge_nodes(existing, node)
+            };
 
-            if node.ast.is_some() {
-                existing_node.ast = node.ast;
+            if let Some(weight) = self.graph.node_weight_mut(idx) {
+                *weight = merged;
             }
-
-            existing_node.node_type = node.node_type;
-            existing_node.is_executable = node.is_executable;
         } else {
             let idx = self.graph.add_node(node);
             self.ref_to_index.insert(node_key, idx);
@@ -526,6 +588,170 @@ impl ModelsDag {
             }
         } else {
             Ok(false)
+        }
+    }
+
+    fn merge_relations(
+        current: Option<BTreeSet<String>>,
+        incoming: Option<BTreeSet<String>>,
+    ) -> Option<BTreeSet<String>> {
+        match (current, incoming) {
+            (Some(mut existing), Some(mut new)) => {
+                existing.append(&mut new);
+                Some(existing)
+            }
+            (Some(existing), None) => Some(existing),
+            (None, Some(new)) => Some(new),
+            (None, None) => None,
+        }
+    }
+
+    fn merge_nodes(existing: DagNode, incoming: DagNode) -> DagNode {
+        let merged_relations =
+            Self::merge_relations(existing.relations().clone(), incoming.relations().clone());
+
+        match incoming {
+            DagNode::KafkaSourceConnector {
+                name,
+                ast,
+                compiled_obj,
+                is_executable,
+                relations: _,
+                target,
+            } => {
+                let (existing_compiled, existing_target) = match existing {
+                    DagNode::KafkaSourceConnector {
+                        compiled_obj,
+                        target,
+                        ..
+                    } => (compiled_obj, target),
+                    _ => (None, None),
+                };
+
+                DagNode::KafkaSourceConnector {
+                    name,
+                    ast,
+                    compiled_obj: compiled_obj.or(existing_compiled),
+                    is_executable,
+                    relations: merged_relations,
+                    target: target.or(existing_target),
+                }
+            }
+            DagNode::KafkaSinkConnector {
+                name,
+                ast,
+                compiled_obj,
+                is_executable,
+                relations: _,
+                target,
+            } => {
+                let (existing_compiled, existing_target) = match existing {
+                    DagNode::KafkaSinkConnector {
+                        compiled_obj,
+                        target,
+                        ..
+                    } => (compiled_obj, target),
+                    _ => (None, None),
+                };
+
+                DagNode::KafkaSinkConnector {
+                    name,
+                    ast,
+                    compiled_obj: compiled_obj.or(existing_compiled),
+                    is_executable,
+                    relations: merged_relations,
+                    target: target.or(existing_target),
+                }
+            }
+            DagNode::KafkaSmt {
+                name,
+                ast,
+                compiled_obj,
+                relations: _,
+            } => {
+                let existing_compiled = match existing {
+                    DagNode::KafkaSmt { compiled_obj, .. } => compiled_obj,
+                    _ => None,
+                };
+
+                DagNode::KafkaSmt {
+                    name,
+                    ast,
+                    compiled_obj: compiled_obj.or(existing_compiled),
+                    relations: merged_relations,
+                }
+            }
+            DagNode::KafkaPipeline {
+                name,
+                ast,
+                compiled_obj,
+                relations: _,
+            } => {
+                let existing_compiled = match existing {
+                    DagNode::KafkaPipeline { compiled_obj, .. } => compiled_obj,
+                    _ => None,
+                };
+
+                DagNode::KafkaPipeline {
+                    name,
+                    ast,
+                    compiled_obj: compiled_obj.or(existing_compiled),
+                    relations: merged_relations,
+                }
+            }
+            DagNode::Model {
+                name,
+                ast,
+                compiled_obj,
+                is_executable,
+                relations: _,
+                target,
+            } => {
+                let (existing_compiled, existing_target) = match existing {
+                    DagNode::Model {
+                        compiled_obj,
+                        target,
+                        ..
+                    } => (compiled_obj, target),
+                    _ => (None, None),
+                };
+
+                DagNode::Model {
+                    name,
+                    ast,
+                    compiled_obj: compiled_obj.or(existing_compiled),
+                    is_executable,
+                    relations: merged_relations,
+                    target: target.or(existing_target),
+                }
+            }
+            DagNode::KafkaTopic { name, relations: _ } => DagNode::KafkaTopic {
+                name,
+                relations: merged_relations,
+            },
+            DagNode::SourceDb { name, relations: _ } => DagNode::SourceDb {
+                name,
+                relations: merged_relations,
+            },
+            DagNode::WarehouseSourceDb { name, relations: _ } => DagNode::WarehouseSourceDb {
+                name,
+                relations: merged_relations,
+            },
+            DagNode::Api { name, relations: _ } => DagNode::Api {
+                name,
+                relations: merged_relations,
+            },
+            DagNode::Python {
+                name,
+                is_executable,
+                relations: _,
+                job_dir,
+            } => DagNode::Python {
+                name,
+                is_executable,
+                relations: merged_relations,
+                job_dir,
+            },
         }
     }
 
@@ -560,7 +786,7 @@ impl ModelsDag {
 
             let cycle = cyclic_refs
                 .into_iter()
-                .map(|idx| self.graph[idx].name.clone())
+                .map(|idx| self.graph[idx].name().clone())
                 .collect();
 
             DagError::CycleDetected(cycle)
@@ -659,10 +885,9 @@ impl ModelsDag {
 
         for idx in self.graph.node_indices() {
             let node = &self.graph[idx];
-            writeln!(dot, "    {} [label=\"{}\"];", idx.index(), node.name).unwrap();
+            writeln!(dot, "    {} [label=\"{}\"];", idx.index(), node.name()).unwrap();
         }
 
-        // 🔁 Reverse edge direction for visual data flow
         for edge in self.graph.edge_references() {
             writeln!(
                 dot,
@@ -715,34 +940,117 @@ mod tests {
     use catalog::Register;
     use common::config::loader::read_config;
     use ff_core::parser::parse_nodes;
-    use test_utils::{get_root_dir, with_chdir};
+    use std::collections::BTreeSet;
+    use test_utils::{get_root_dir, project_fixture, with_chdir};
 
     #[test]
-    fn test_graph() -> Result<(), DagError> {
-        env_logger::Builder::new()
-            .filter_level(log::LevelFilter::Info)
-            .is_test(true)
-            .try_init()
-            .ok();
-        let cat = MemoryCatalog::new();
-        let project_root = get_root_dir();
-        with_chdir(&project_root, move || {
+    fn test_dag() {
+        let fixture = project_fixture("dvdrental_example").expect("copy example project");
+
+        with_chdir(fixture.path(), move || {
             let config = read_config(None).expect("load example project config");
-            let wh_config = config.warehouse_source.clone();
-            let nodes = parse_nodes(&config).expect("parse example models");
-            // println!("{:#?}", nodes);
-            cat.register_nodes(nodes, wh_config)
+            let nodes = parse_nodes(&config).expect("parse model nodes");
+            let catalog = MemoryCatalog::new();
+            catalog
+                .register_nodes(nodes, config.warehouse_source.clone())
                 .expect("register nodes");
-
             let mut dag = ModelsDag::new();
-            dag.build(&cat, &config).expect("build models");
-            // println!("{:#?}", dag);
-            let ordered = dag.toposort().expect("toposort");
-            for o in ordered {
-                println!("{:#?}", dag.graph[o]);
-            }
-        })?;
 
-        Ok(())
+            dag.build(&catalog, &config).expect("build dag");
+
+            println!("{:?}", dag);
+        })
+        .expect("chdir");
+    }
+
+    #[test]
+    fn upsert_node_merges_relations_and_detects_duplicates() {
+        let mut dag = ModelsDag::new();
+        dag.upsert_node(
+            "model".into(),
+            false,
+            dummy_model_node("model", Some(&["bronze_a"])),
+        )
+        .expect("inserts first node");
+
+        dag.upsert_node(
+            "model".into(),
+            false,
+            dummy_model_node("model", Some(&["bronze_b"])),
+        )
+        .expect("merge relations");
+
+        let stored = dag.get("model").expect("node present");
+        let rels: Vec<_> = stored.relations().clone().unwrap().into_iter().collect();
+        assert_eq!(rels, vec!["bronze_a".to_string(), "bronze_b".to_string()]);
+
+        let err = dag
+            .upsert_node("model".into(), true, dummy_model_node("model", None))
+            .expect_err("duplicate should error");
+        assert!(matches!(err, DagError::DuplicateNode { .. }));
+    }
+
+    #[test]
+    fn included_nodes_filter_preserves_order() {
+        let dag = build_linear_dag();
+        let mut included = BTreeSet::new();
+        included.insert(dag.get_index("middle").unwrap());
+        included.insert(dag.get_index("tail").unwrap());
+
+        let nodes = dag
+            .get_included_dag_nodes(Some(&included))
+            .expect("subset succeeds");
+        assert_eq!(names(&nodes), vec!["middle", "tail"]);
+    }
+
+    #[test]
+    fn transitive_closure_respects_direction() {
+        let dag = build_linear_dag();
+
+        let upstream = dag
+            .transitive_closure("middle", TransitiveDirection::Incoming)
+            .expect("incoming");
+        assert_eq!(names(&upstream), vec!["head"]);
+
+        let downstream = dag
+            .transitive_closure("middle", TransitiveDirection::Outgoing)
+            .expect("outgoing");
+        assert_eq!(names(&downstream), vec!["tail"]);
+    }
+
+    #[test]
+    fn model_execution_order_includes_upstream_and_downstream() {
+        let dag = build_linear_dag();
+        let plan = dag
+            .get_model_execution_order("middle")
+            .expect("execution order");
+        assert_eq!(names(&plan), vec!["head", "middle", "tail"]);
+    }
+
+    fn dummy_model_node(name: &str, rels: Option<&[&str]>) -> DagNode {
+        DagNode::KafkaTopic {
+            name: name.to_string(),
+            relations: rels.map(|items| items.iter().map(|s| s.to_string()).collect()),
+        }
+    }
+
+    fn build_linear_dag() -> ModelsDag {
+        let mut dag = ModelsDag::new();
+        for name in ["head", "middle", "tail"] {
+            dag.upsert_node(name.into(), false, dummy_model_node(name, None))
+                .expect("insert node");
+        }
+
+        let head = dag.get_index("head").unwrap();
+        let middle = dag.get_index("middle").unwrap();
+        let tail = dag.get_index("tail").unwrap();
+
+        dag.graph.add_edge(head, middle, EmtpyEdge);
+        dag.graph.add_edge(middle, tail, EmtpyEdge);
+        dag
+    }
+
+    fn names(nodes: &[&DagNode]) -> Vec<String> {
+        nodes.iter().map(|n| n.name().clone()).collect()
     }
 }

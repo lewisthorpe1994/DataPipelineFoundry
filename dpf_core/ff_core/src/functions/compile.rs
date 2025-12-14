@@ -3,7 +3,7 @@ use catalog::{MemoryCatalog, Register};
 use common::config::components::global::FoundryConfig;
 use common::error::FFError;
 use components::KafkaConnector;
-use dag::types::DagNodeType;
+use dag::types::{DagNode, DagNodeType};
 use dag::ModelsDag;
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -26,6 +26,8 @@ pub enum ManifestNodeType {
     Kafka,
     DPF,
     DB,
+    Python,
+    Api,
 }
 
 /// Description of a compiled model written to `manifest.json`.
@@ -77,24 +79,26 @@ pub fn compile(config: &FoundryConfig) -> Result<CompileOutput, FFError> {
     let mut manifest_models = Vec::new();
 
     for node in dag_arc.graph.node_weights() {
-        let mn_type = match &node.node_type {
-            DagNodeType::KafkaSmt => ManifestNodeType::Kafka,
-            DagNodeType::KafkaPipeline => ManifestNodeType::Kafka,
-            DagNodeType::Model => ManifestNodeType::DPF,
-            DagNodeType::KafkaSinkConnector => ManifestNodeType::Kafka,
-            DagNodeType::KafkaSourceConnector => ManifestNodeType::Kafka,
-            DagNodeType::SourceDb => ManifestNodeType::DB,
-            DagNodeType::WarehouseSourceDb => ManifestNodeType::DB,
-            DagNodeType::KafkaTopic => ManifestNodeType::Kafka,
+        let mn_type = match &node {
+            DagNode::KafkaSmt {..}=> ManifestNodeType::Kafka,
+            DagNode::KafkaPipeline {..} => ManifestNodeType::Kafka,
+            DagNode::Model {..} => ManifestNodeType::DPF,
+            DagNode::KafkaSinkConnector {..} => ManifestNodeType::Kafka,
+            DagNode::KafkaSourceConnector {..} => ManifestNodeType::Kafka,
+            DagNode::SourceDb {..} => ManifestNodeType::DB,
+            DagNode::WarehouseSourceDb {..} => ManifestNodeType::DB,
+            DagNode::KafkaTopic {..} => ManifestNodeType::Kafka,
+            DagNode::Python {..} => ManifestNodeType::Python,
+            DagNode::Api {..} => ManifestNodeType::Api,
         };
 
         manifest_models.push(ManifestModel {
-            name: node.name.clone(),
-            depends_on: node.relations.clone(),
-            executable: node.is_executable,
-            compiled_executable: node.compiled_obj.clone(),
+            name: node.name().clone(),
+            depends_on: node.relations().clone(),
+            executable: node.is_executable().clone(),
+            compiled_executable: node.compiled_executable(),
             node_type: mn_type,
-            target: node.target.clone(),
+            target: node.target(),
         });
     }
 

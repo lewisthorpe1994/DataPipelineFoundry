@@ -1,0 +1,23 @@
+[project]
+name = "bronze_film_enricher"
+version = "0.1.0"
+description = "FlowFoundry ETL job that loads TMDB popular movies into the warehouse"
+requires-python = ">=3.11"
+dependencies = [
+    "dpf_python",
+    "dlt[postgres]>=0.5",
+    "requests>=2.32",
+]
+
+[project.scripts]
+bronze_film_enricher = "bronze_film_enricher.__main__:main"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+dpf_python = { path = "/workspace/dpf_python" }
+
+[build-system]
+requires = ["uv_build>=0.9.10,<0.10.0"]
+build-backend = "uv_build"

@@ -49,9 +49,7 @@ fn run_cmd(func: Result<(), FFError>) {
     }
 }
 fn main() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("info")
-    });
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let time_format =
         format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]");
 
@@ -86,6 +84,5 @@ fn main() {
         Cmd::Kafka(args) => run_cmd(handle_kafka(&args, cli.config_path.clone())),
         Cmd::Run(args) => run_cmd(handle_run(args.model, cli.config_path.clone())),
         Cmd::Web(args) => run_cmd(handle_web(args, cli.config_path.clone())),
-        _ => unimplemented!("Not implemented yet!"),
     }
 }

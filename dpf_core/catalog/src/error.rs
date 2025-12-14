@@ -1,5 +1,6 @@
 use common::error::diagnostics::DiagnosticMessage;
 use std::io;
+use std::io::Error;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -32,6 +33,8 @@ pub enum CatalogError {
     SqlParser { context: DiagnosticMessage },
     #[error("missing configuration: {context}")]
     MissingConfig { context: DiagnosticMessage },
+    #[error("python node error: {context}")]
+    PythonNode { context: DiagnosticMessage },
 }
 
 impl CatalogError {
@@ -67,6 +70,21 @@ impl CatalogError {
     #[track_caller]
     pub fn missing_config(message: impl Into<String>) -> Self {
         Self::MissingConfig {
+            context: DiagnosticMessage::new(message.into()),
+        }
+    }
+
+    #[track_caller]
+    pub fn io(message: impl Into<String>, source: Error) -> Self {
+        Self::Io {
+            context: DiagnosticMessage::new(message.into()),
+            source,
+        }
+    }
+
+    #[track_caller]
+    pub fn python_node(message: impl Into<String>) -> Self {
+        Self::PythonNode {
             context: DiagnosticMessage::new(message.into()),
         }
     }

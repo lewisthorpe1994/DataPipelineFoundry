@@ -26,9 +26,15 @@ sources:
   source_db:
     specifications: foundry_sources/database
     source_root: foundry_sources/database
+  api:
+    specifications: foundry_sources/api/specifications
+    source_root: foundry_sources/api
+
 
 modelling_architecture: medallion
 connection_profile:
   profile: dev
   path: connections.yml
 
+python:
+  workspace_dir: foundry_python

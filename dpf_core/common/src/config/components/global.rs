@@ -3,6 +3,8 @@ use crate::config::components::connections::{
 };
 use crate::config::components::foundry_project::FoundryProjectConfig;
 use crate::config::components::model::ResolvedModelsConfig;
+use crate::config::components::python::{PythonConfig, PythonJobConfig};
+use crate::config::components::sources::api::ApiSourceConfig;
 use crate::config::components::sources::kafka::{KafkaConnectorConfig, KafkaSourceConfig};
 use crate::config::components::sources::warehouse_source::DbConfig;
 use crate::config::components::sources::SourcePaths;
@@ -16,9 +18,11 @@ pub struct FoundryConfig {
     pub warehouse_source: HashMap<String, DbConfig>,
     pub kafka_source: HashMap<String, KafkaSourceConfig>,
     pub source_db_configs: HashMap<String, DbConfig>,
+    pub api_sources: HashMap<String, ApiSourceConfig>,
     pub connections: ConnectionsConfig,
     pub models: Option<ResolvedModelsConfig>,
     pub kafka_connectors: HashMap<String, KafkaConnectorConfig>,
+    pub python_jobs: HashMap<String, PythonJobConfig>,
     pub connection_profile: Connections,
     pub source_paths: SourcePaths,
 }
@@ -34,6 +38,8 @@ impl FoundryConfig {
         kafka_source: HashMap<String, KafkaSourceConfig>,
         source_paths: SourcePaths,
         kafka_connectors: HashMap<String, KafkaConnectorConfig>,
+        api_sources: HashMap<String, ApiSourceConfig>,
+        python_jobs: HashMap<String, PythonJobConfig>,
     ) -> Self {
         Self {
             project,
@@ -41,10 +47,12 @@ impl FoundryConfig {
             connections,
             models,
             source_db_configs,
+            api_sources,
             connection_profile,
             kafka_source,
             source_paths,
             kafka_connectors,
+            python_jobs,
         }
     }
 }
@@ -82,6 +90,19 @@ impl FoundryConfig {
                 .map(|k| k.to_string())
                 .collect::<Vec<String>>()
                 .join(", "),
+        )))
+    }
+
+    pub fn get_api_source(&self, name: &str) -> Result<&ApiSourceConfig, ConfigError> {
+        let api_source = self.api_sources.get(name);
+        api_source.ok_or(ConfigError::not_found(format!(
+            "Api source {} not found in registered config, available sources are {}",
+            name,
+            self.api_sources
+                .keys()
+                .map(|k| k.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
         )))
     }
 

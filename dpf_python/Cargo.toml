@@ -1,0 +1,17 @@
+[package]
+name = "dpf_python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dpf_python"
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.maturin]
+python-source = "python"
+
+[dependencies]
+pyo3 = { version = "0.27.1", features = ["extension-module"] }
+common = { workspace = true }
+pyo3-stub-gen = "0.17.2"
+pyo3-stub-gen-derive = "0.17.2"

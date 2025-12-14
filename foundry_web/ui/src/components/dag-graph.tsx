@@ -22,7 +22,9 @@ import "reactflow/dist/style.css";
 import kafkaIcon from "@/assets/Apache_Kafka_logo.svg?url";
 import dpfIcon from "@/assets/dpf.svg?url";
 import dbIcon from "@/assets/db.svg?url";
+import pythonLogo from "@/assets/python-logo.svg?url";
 import externalIcon from "@/assets/external.svg?url";
+import apiIcon from "@/assets/api-icon.svg?url";
 import { cn } from "@/lib/utils";
 import type { Manifest } from "@/types/manifest";
 import { Cloud } from "lucide-react";
@@ -50,7 +52,9 @@ const ICONS = {
   kafka: kafkaIcon,
   db: dbIcon,
   dpf: dpfIcon,
+  python: pythonLogo,
   external: externalIcon,
+  api: apiIcon,
   none: undefined
 } as const;
 
@@ -227,15 +231,27 @@ function layout(nodes: Node<TurboNodeData>[], edges: Edge<TurboEdgeData>[]) {
 
 function TurboNode({ data, selected }: NodeProps<TurboNodeData>) {
   const handleGlow = `0 6px 20px ${data.accentColor}66`;
-
   return (
     <div className="turbo-node relative h-full w-full">
       <div className="cloud gradient">
         <div>
           {data.icon ? (
-            <img src={data.icon} alt="" className="cloud-icon" />
+            <div
+              className="cloud-icon"
+              style={{
+                WebkitMaskImage: `url(${data.icon})`,
+                maskImage: `url(${data.icon})`,
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskSize: "contain",
+                maskSize: "contain",
+                WebkitMaskPosition: "center",
+                maskPosition: "center",
+                backgroundColor: data.accentColor
+              }}
+            />
           ) : (
-            <Cloud className="h-4 w-4 text-white" />
+            <Cloud className="h-4 w-4" style={{ color: data.accentColor }} />
           )}
         </div>
       </div>
@@ -339,6 +355,12 @@ function getIconForType(nodeType?: string) {
   if (value.includes("external")) {
     return ICONS.external;
   }
+  if (value.includes("python")) {
+    return ICONS.python;
+  }
+  if (value.includes("api")) {
+    return ICONS.api;
+  }
   return undefined;
 }
 
@@ -350,6 +372,22 @@ interface Palette {
 
 function getPaletteForType(nodeType?: string): Palette {
   const value = (nodeType ?? "").toLowerCase();
+
+  if (value.includes("python")) {
+    return {
+      accent: "#ec8103",
+      background: "linear-gradient(135deg, #FFD43B, #F7991EFF)",
+      edge: "#f7991e"
+    };
+  }
+
+  if (value.includes("api")) {
+    return {
+      accent: "#0079bf",
+      background: "linear-gradient(135deg, #0f172a, #0e7490)",
+      edge: "#67e8f9"
+    }
+  }
 
   if (value.includes("kafka")) {
     return {

@@ -1,0 +1,6 @@
+title: DPF / Foundry
+description: Developer documentation for the DPF/Foundry data platform.
+theme: jekyll-theme-cayman
+
+# GitHub Pages defaults are fine for most repos; keep config minimal.
+markdown: kramdown

@@ -153,6 +153,7 @@ impl From<CatalogError> for DagError {
             CatalogError::Io { context, source } => DagError::Io { context, source },
             CatalogError::Duplicate { context } => DagError::DuplicateNode { context },
             CatalogError::NotFound { context } => DagError::NotFound { context },
+            CatalogError::PythonNode { context } => DagError::UnexpectedError { context },
         }
     }
 }

@@ -11,8 +11,8 @@ pub struct Table {
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct Column {
     pub name: String,
-    description: Option<String>,
-    data_type: Option<String>, // TODO - implement enum
+    pub description: Option<String>,
+    pub data_type: Option<String>, // TODO - implement enum
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize)]

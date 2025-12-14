@@ -472,17 +472,44 @@ mod test {
 
     #[test]
     fn test_create_kafka_connector_source_no_pipeline() {
+        use common::types::KafkaConnectorType;
+        use sqlparser::ast::Statement;
         use sqlparser::parser::{GenericDialect, Parser};
-        let sql = r#"CREATE SOURCE KAFKA CONNECTOR KIND SOURCE IF NOT EXISTS test (
-            "connector.class" = "io.confluent.connect.kafka.KafkaSourceConnector",
-            "key.converter" = "org.apache.kafka.connect.json.JsonConverter",
-            "value.converter" = "org.apache.kafka.connect.json.JsonConverter",
-            "topics" = "topic1",
-            "kafka.bootstrap.servers" = "localhost:9092"
-        );"#;
 
-        let ast = Parser::parse_sql(&GenericDialect {}, sql).unwrap();
-        println!("{:?}", ast);
+        let sql = r#"
+        CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SOURCE IF NOT EXISTS test_source
+        USING KAFKA CLUSTER 'test_cluster' (
+            "database.hostname" = "localhost",
+            "database.user" = "app",
+            "database.password" = "secret",
+            "database.dbname" = "app_db",
+            "topic.prefix" = "app"
+        ) WITH CONNECTOR VERSION '3.1'
+        FROM SOURCE DATABASE 'adapter_source';
+        "#;
+
+        let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
+        assert_eq!(stmts.len(), 1);
+
+        match &stmts[0] {
+            Statement::CreateKafkaConnector(conn) => {
+                assert_eq!(conn.connector_type, KafkaConnectorType::Source);
+                assert!(conn.if_not_exists);
+                assert_eq!(conn.name.value, "test_source");
+                assert_eq!(conn.cluster_ident.value, "test_cluster");
+                assert!(conn.with_pipelines.is_empty());
+                assert_eq!(conn.db_ident.value, "adapter_source");
+                assert!(conn.schema_ident.is_none());
+
+                let topic_prefix = conn
+                    .with_properties
+                    .iter()
+                    .find(|(k, _)| k.value == "topic.prefix")
+                    .expect("missing topic prefix property");
+                assert_eq!(topic_prefix.1.to_string(), "\"app\"");
+            }
+            _ => panic!("expected CreateKafkaConnector"),
+        }
     }
 
     #[test]
@@ -609,7 +636,7 @@ mod test {
         use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"
-        CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline SOURCE (
+        CREATE KAFKA SIMPLE MESSAGE TRANSFORM PIPELINE IF NOT EXISTS some_pipeline (
             hash_email,
             drop_pii(fields = 'email_addr, phone_num', some_other_arg = 'test')
         ) WITH PIPELINE PREDICATE 'some_predicate';
@@ -670,13 +697,17 @@ mod test {
         use sqlparser::dialect::GenericDialect;
         use sqlparser::parser::Parser;
 
-        let sql = r#"CREATE SINK KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink (
-        "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
-        "key.converter"           = "org.apache.kafka.connect.json.JsonConverter",
-        "value.converter"         = "org.apache.kafka.connect.json.JsonConverter",
-        "topics"                  = "topic1",
-        "kafka.bootstrap.servers" = "localhost:9092"
-    );"#;
+        let sql = r#"
+        CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SINK IF NOT EXISTS test_sink
+        USING KAFKA CLUSTER 'kafka-cluster' (
+            "connector.class"         = "io.debezium.connector.jdbc.JdbcSinkConnector",
+            "topics"                  = "topic1",
+            "connection.url"          = "jdbc:postgresql://localhost:5432/app",
+            "connection.username"     = "app",
+            "connection.password"     = "secret"
+        ) WITH CONNECTOR VERSION '3.1'
+        INTO WAREHOUSE DATABASE 'warehouse_db' USING SCHEMA 'public';
+        "#;
 
         let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
         assert_eq!(stmts.len(), 1);
@@ -686,9 +717,19 @@ mod test {
                 assert_eq!(c.connector_type, KafkaConnectorType::Sink);
                 assert!(c.if_not_exists);
                 assert_eq!(c.name.value, "test_sink");
+                assert_eq!(c.cluster_ident.value, "kafka-cluster");
 
                 // no WITH PIPELINES clause in this variant
                 assert!(c.with_pipelines.is_empty());
+
+                assert_eq!(c.db_ident.value, "warehouse_db");
+                assert_eq!(
+                    c.schema_ident
+                        .as_ref()
+                        .expect("sink connectors require schema")
+                        .value,
+                    "public"
+                );
 
                 // sanity-check one property
                 let topics = c
@@ -711,13 +752,13 @@ mod test {
         // Minimal SQL that should produce the structure in your debug dump.
         // Adjust whitespace as needed; the assertions below match the AST, not formatting.
         let sql = r#"
-      create model some_model as
-      drop view if exists some_model cascade;
-      create table some_model as
+      create model bronze.some_model as
+      drop view if exists bronze.some_model cascade;
+      create table bronze.some_model as
       with test as (
         select *
-        from {{ ref('stg_orders') }} as o
-        join {{ source('raw','stg_customers') }} as c
+        from ref('bronze','stg_orders') as o
+        join source('raw','stg_customers') as c
           on o.customer_id = c.id
       )
       select * from test;
@@ -740,13 +781,14 @@ mod test {
             Statement::CreateModel(cm) => {
                 // name: Ident("some_model")
                 assert_eq!(cm.name.value.as_str(), "some_model");
+                assert_eq!(cm.schema.value.as_str(), "bronze");
 
                 // model: Table(CreateTable { name: ObjectName(["some_model"]), query: Some(Query { with: Some(...), body: Select(... from test) }) ... })
                 match &cm.model {
                     // If your enum is named differently (e.g., CreateModelDef::Table), adjust the path here.
                     ModelDef::Table(tbl) => {
                         // table name
-                        assert_eq!(tbl.name.to_string(), "some_model");
+                        assert_eq!(tbl.name.to_string(), "bronze.some_model");
 
                         // ensure there's an embedded query
                         let q = tbl.query.as_ref().expect("table.query should be Some");
@@ -785,7 +827,7 @@ mod test {
                 assert!(drop_stmt.if_exists, "DROP VIEW should be IF EXISTS");
                 assert!(drop_stmt.cascade, "DROP VIEW should be CASCADE");
                 assert_eq!(drop_stmt.names.len(), 1);
-                assert_eq!(drop_stmt.names[0].to_string(), "some_model");
+                assert_eq!(drop_stmt.names[0].to_string(), "bronze.some_model");
             }
             other => panic!("expected Statement::CreateModel, got: {:?}", other),
         }
@@ -798,13 +840,15 @@ mod test {
         use sqlparser::parser::{GenericDialect, Parser};
 
         let sql = r#"
-    CREATE SOURCE KAFKA CONNECTOR KIND SINK IF NOT EXISTS test_sink
+    CREATE KAFKA CONNECTOR KIND DEBEZIUM POSTGRES SINK IF NOT EXISTS test_sink
     USING KAFKA CLUSTER 'kafka-cluster' (
-        "connector.class"         = "io.confluent.connect.kafka.KafkaSinkConnector",
-        "key.converter"           = "org.apache.kafka.connect.json.JsonConverter",
-        "value.converter"         = "org.apache.kafka.connect.json.JsonConverter",
-        "topics"                  = "topic2"
-    ) WITH PIPELINES(filter_rejects, mask_data);
+        "connector.class"         = "io.debezium.connector.jdbc.JdbcSinkConnector",
+        "topics"                  = "topic2",
+        "connection.url"          = "jdbc:postgresql://localhost:5432/app",
+        "connection.username"     = "app",
+        "connection.password"     = "secret"
+    ) WITH CONNECTOR VERSION '3.1' AND PIPELINES(filter_rejects, mask_data)
+    INTO WAREHOUSE DATABASE 'warehouse_db' USING SCHEMA 'public';
     "#;
 
         let stmts = Parser::parse_sql(&GenericDialect {}, sql).expect("parse failed");
@@ -817,6 +861,14 @@ mod test {
                 assert!(c.if_not_exists);
                 assert_eq!(c.name.value, "test_sink");
                 assert_eq!(c.cluster_ident.value, "kafka-cluster");
+                assert_eq!(c.db_ident.value, "warehouse_db");
+                assert_eq!(
+                    c.schema_ident
+                        .as_ref()
+                        .expect("sink connectors require schema")
+                        .value,
+                    "public"
+                );
 
                 // ✔ pipelines captured in order
                 assert_eq!(
