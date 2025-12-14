@@ -5,8 +5,7 @@
     "workspaceFolder": "\\workspace\\example\\dvdrental_example",
     "customizations" : {
         "jetbrains" : {
-            "backend" : "RustRover",
-//            "projectDir": "/workspace/example/dvdrental_example"
+            "backend" : "PyCharm",
         }
     },
     "forwardPorts": ["5173:5173"],
@@ -15,6 +14,6 @@
             "version": "20"
         }
     },
-    "postCreateCommand": "sudo bash -lc 'set -eux; export UV_INSTALL_DIR=/usr/local/bin UV_CACHE_DIR=/opt/uv-cache; if ! command -v uv >/dev/null 2>&1; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi; uv --version; if ! UV_CACHE_DIR=${UV_CACHE_DIR} uv python find 3.13 >/dev/null 2>&1; then UV_CACHE_DIR=${UV_CACHE_DIR} uv python install 3.13; fi; ln -sf \"$(UV_CACHE_DIR=${UV_CACHE_DIR} uv python find 3.13)\" /usr/local/bin/python3.13; chown -R vscode:vscode ${UV_CACHE_DIR}'"
+//    "postCreateCommand": "sudo bash -lc 'set -eux; export UV_INSTALL_DIR=/usr/local/bin UV_CACHE_DIR=/opt/uv-cache; if ! command -v uv >/dev/null 2>&1; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi; uv --version; if ! UV_CACHE_DIR=${UV_CACHE_DIR} uv python find 3.13 >/dev/null 2>&1; then UV_CACHE_DIR=${UV_CACHE_DIR} uv python install 3.13; fi; ln -sf \"$(UV_CACHE_DIR=${UV_CACHE_DIR} uv python find 3.13)\" /usr/local/bin/python3.13; chown -R vscode:vscode ${UV_CACHE_DIR}'"
 
 }

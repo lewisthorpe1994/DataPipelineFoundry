@@ -3,11 +3,14 @@ use common::config::components::connections::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[pyclass(name = "AdapterConnectionDetails")]
+#[gen_stub_pyclass]
+#[pyclass(name = "AdapterConnectionDetails", module = "dpf_python.connections")]
 #[derive(Clone, PartialEq)]
 pub struct AdapterConnectionDetails(pub RsAdapterConnectionDetails);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl AdapterConnectionDetails {
     #[new]
@@ -82,9 +85,11 @@ impl AdapterConnectionDetails {
     }
 }
 
-#[pyclass(name = "ConnectionProfile")]
+#[gen_stub_pyclass]
+#[pyclass(name = "ConnectionProfile", module = "dpf_python.connections")]
 pub struct PyConnectionProfile(pub Connections);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyConnectionProfile {
     #[getter]

@@ -4,24 +4,38 @@ use common::config::components::sources::api::{
 };
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use std::collections::HashMap;
 
-#[pyclass(eq, frozen, name = "ApiAuthKind")]
+#[gen_stub_pyclass]
+#[pyclass(eq, frozen, module = "dpf_python.api", name = "ApiAuthKind")]
 #[derive(Clone, PartialEq)]
 pub struct PyApiAuthKind(pub RsApiAuthKind);
 
+#[allow(non_snake_case)]
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyApiAuthKind {
     #[classattr]
-    pub const NONE: Self = Self(RsApiAuthKind::None);
+    fn NONE() -> PyApiAuthKind {
+        PyApiAuthKind(RsApiAuthKind::None)
+    }
     #[classattr]
-    pub const BEARER: Self = Self(RsApiAuthKind::Bearer);
+    fn BEARER() -> PyApiAuthKind {
+        PyApiAuthKind(RsApiAuthKind::Bearer)
+    }
     #[classattr]
-    pub const BASIC: Self = Self(RsApiAuthKind::Basic);
+    fn BASIC() -> PyApiAuthKind {
+        PyApiAuthKind(RsApiAuthKind::Basic)
+    }
     #[classattr]
-    pub const API_KEY_HEADER: Self = Self(RsApiAuthKind::ApiKeyHeader);
+    fn API_KEY_HEADER() -> PyApiAuthKind {
+        PyApiAuthKind(RsApiAuthKind::ApiKeyHeader)
+    }
     #[classattr]
-    pub const API_KEY_QUERY: Self = Self(RsApiAuthKind::ApiKeyQuery);
+    fn API_KEY_QUERY() -> PyApiAuthKind {
+        PyApiAuthKind(RsApiAuthKind::ApiKeyQuery)
+    }
 
     #[getter]
     fn value(&self) -> &'static str {
@@ -39,22 +53,35 @@ impl PyApiAuthKind {
     }
 }
 
-#[pyclass(eq, frozen, name = "HttpMethod")]
+#[gen_stub_pyclass]
+#[pyclass(eq, frozen, module = "dpf_python.api", name = "HttpMethod")]
 #[derive(Clone, PartialEq)]
 pub struct PyHttpMethod(pub RsHttpMethod);
 
+#[allow(non_snake_case)]
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyHttpMethod {
     #[classattr]
-    pub const GET: Self = Self(RsHttpMethod::Get);
+    fn GET() -> PyHttpMethod {
+        PyHttpMethod(RsHttpMethod::Get)
+    }
     #[classattr]
-    pub const POST: Self = Self(RsHttpMethod::Post);
+    fn POST() -> PyHttpMethod {
+        PyHttpMethod(RsHttpMethod::Post)
+    }
     #[classattr]
-    pub const PUT: Self = Self(RsHttpMethod::Put);
+    fn PUT() -> PyHttpMethod {
+        PyHttpMethod(RsHttpMethod::Put)
+    }
     #[classattr]
-    pub const DELETE: Self = Self(RsHttpMethod::Delete);
+    fn DELETE() -> PyHttpMethod {
+        PyHttpMethod(RsHttpMethod::Delete)
+    }
     #[classattr]
-    pub const PATCH: Self = Self(RsHttpMethod::Patch);
+    fn PATCH() -> PyHttpMethod {
+        PyHttpMethod(RsHttpMethod::Patch)
+    }
 
     #[getter]
     fn value(&self) -> &'static str {
@@ -72,10 +99,12 @@ impl PyHttpMethod {
     }
 }
 
-#[pyclass(name = "ApiAuth")]
+#[gen_stub_pyclass]
+#[pyclass(name = "ApiAuth", module = "dpf_python.api")]
 #[derive(Clone, PartialEq)]
 pub struct PyApiAuth(pub RsApiAuth);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyApiAuth {
     #[getter]
@@ -109,10 +138,12 @@ impl PyApiAuth {
     }
 }
 
-#[pyclass(name = "ApiEndpointConfig")]
+#[gen_stub_pyclass]
+#[pyclass(name = "ApiEndpointConfig", module = "dpf_python.api")]
 #[derive(Clone, PartialEq)]
 pub struct PyApiEndpointConfig(pub RsApiEndpointConfig);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyApiEndpointConfig {
     #[getter]
@@ -146,10 +177,12 @@ impl PyApiEndpointConfig {
     }
 }
 
-#[pyclass(name = "ApiSourceConfig")]
+#[gen_stub_pyclass]
+#[pyclass(name = "ApiSourceConfig", module = "dpf_python.api")]
 #[derive(Clone, PartialEq)]
 pub struct PyApiSourceConfig(pub RsApiSourceConfig);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyApiSourceConfig {
     #[getter]
