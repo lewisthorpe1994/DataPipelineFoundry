@@ -6,12 +6,13 @@ edition = "2021"
 [lib]
 name = "dpf_python"
 crate-type = ["cdylib", "rlib"]
+test = false
 
 [package.metadata.maturin]
 python-source = "python"
 
 [dependencies]
-pyo3 = { version = "0.27.1", features = ["extension-module"] }
+pyo3 = { version = "0.27.1", features = ["extension-module", "abi3-py310"] }
 common = { workspace = true }
 pyo3-stub-gen = "0.17.2"
 pyo3-stub-gen-derive = "0.17.2"

@@ -3,6 +3,9 @@ FROM mcr.microsoft.com/devcontainers/rust:2-1-bullseye
 WORKDIR /workspace
 USER root
 
+COPY zscaler-root-ca.crt /usr/local/share/ca-certificates/zscaler-root-ca.crt
+
+
 ENV CARGO_HOME=/home/vscode/.cargo \
     CARGO_TARGET_DIR=/home/vscode/.cargo/target
 
@@ -19,7 +22,10 @@ RUN set -eux; \
 # System dependencies needed for crates that rely on OpenSSL and the web UI build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config libssl-dev curl ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+ENV UV_NATIVE_TLS=true
 
 # Install uv globally and a shared Python 3.13 runtime for Python workflows
 RUN set -eux; \
@@ -43,6 +49,10 @@ RUN set -eux; \
     chown -R vscode:vscode "${CARGO_TARGET_DIR}"; \
     if [[ -d /usr/local/cargo/registry ]]; then chgrp -R rustlang /usr/local/cargo/registry && chmod -R g+rwX /usr/local/cargo/registry; fi; \
     if [[ -d /usr/local/cargo/git ]]; then chgrp -R rustlang /usr/local/cargo/git && chmod -R g+rwX /usr/local/cargo/git; fi
+
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    NPM_CONFIG_CAFILE=/usr/local/share/ca-certificates/zscaler-root-ca.crt \
+    NPM_CONFIG_STRICT_SSL=true
 
 USER vscode
 

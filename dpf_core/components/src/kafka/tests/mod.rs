@@ -38,6 +38,7 @@ fn foundry_config() -> FoundryConfig {
             analytics_projects: None,
         },
         sources: project_sources,
+        python: None,
     };
 
     let mut profile_sources = HashMap::new();
@@ -146,6 +147,7 @@ fn foundry_config() -> FoundryConfig {
         global_source_paths,
         kafka_connector_config,
         HashMap::new(),
+        Default::default()
     )
 }
 
