@@ -5,7 +5,7 @@ nav_order: 9
 
 # Python Jobs
 
-Foundry can treat Python code as DAG nodes. This is intended for lightweight ingestion/enrichment POCs where you want to mix “do some Python” with “build some SQL models” in one graph.
+Foundry can treat Python code as DAG nodes. This is intended for lightweight ingestion/enrichment where you want to mix “do some Python” with “build some SQL models” in one graph.
 
 ## How Python jobs are discovered
 
@@ -35,7 +35,6 @@ nodes_dir = "jobs"
 
 - `dpf run` executes Python nodes using `uv run ...` (see `executor` crate).
 - You need `uv` installed and available on `PATH`.
-- Logs default to structured logging; set `DPF_PYTHON_LOG_MODE=raw` to stream raw stdout/stderr.
 
 ## Minimal job shape
 

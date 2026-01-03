@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -12,9 +12,12 @@ import ReactFlow, {
   NodeProps,
   NodeTypes,
   Position,
+  ReactFlowProvider,
   getBezierPath,
   useEdgesState,
-  useNodesState
+  useNodesInitialized,
+  useNodesState,
+  useUpdateNodeInternals
 } from "reactflow";
 import dagre from "dagre";
 import "reactflow/dist/style.css";
@@ -75,14 +78,58 @@ type LayoutResult = {
 };
 
 export function DagGraph({ manifest }: DagGraphProps) {
+  return (
+    <ReactFlowProvider>
+      <DagGraphInner manifest={manifest} />
+    </ReactFlowProvider>
+  );
+}
+
+function DagGraphInner({ manifest }: DagGraphProps) {
   const layouted = useMemo(() => buildGraph(manifest), [manifest]);
   const [nodes, setNodes, onNodesChange] = useNodesState<TurboNodeData>(layouted.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<TurboEdgeData>(layouted.edges);
+  const nodesInitialized = useNodesInitialized();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const pendingLayoutUpdate = useRef(false);
 
   useEffect(() => {
     setNodes(layouted.nodes);
     setEdges(layouted.edges);
+    pendingLayoutUpdate.current = true;
   }, [layouted.nodes, layouted.edges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!pendingLayoutUpdate.current || !nodesInitialized || nodes.length === 0) {
+      return;
+    }
+
+    pendingLayoutUpdate.current = false;
+    const nodeIds = nodes.map((node) => node.id);
+    const update = () => updateNodeInternals(nodeIds);
+    let frame2: number | undefined;
+    const frame = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(update);
+    });
+
+    let cancelled = false;
+    const fontReady = document.fonts?.ready;
+    if (fontReady) {
+      fontReady.then(() => {
+        if (!cancelled) {
+          update();
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      if (frame2 !== undefined) {
+        cancelAnimationFrame(frame2);
+      }
+    };
+  }, [nodes, nodesInitialized, updateNodeInternals]);
 
   return (
     <div className="dag-graph absolute inset-0 h-full w-full overflow-hidden rounded-xl border border-border">

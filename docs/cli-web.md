@@ -24,4 +24,4 @@ Common flags:
 - `--static-dir <PATH>`: serve a built frontend bundle from disk
 - `--no-frontend`: don’t try to start the Vite dev server
 
-If you don’t pass `--static-dir` and you don’t set `--no-frontend`, the CLI tries to run `npm run dev` in `foundry_web/ui`.
+If you don’t pass `--static-dir` and you don’t set `--no-frontend`, the CLI tries to run `npm run dev` in `dpf_web/ui`.
