@@ -7,7 +7,7 @@ auth:
   kind: api_key_query
   # Set the TMDB API key via environment variable.
   # The runtime reads this value as an env var name, and falls back to `TMDB_API_KEY`.
-  token: 9127fc7a1362d4b835d669216761589d
+  token: ""
   query_name: api_key
 
 endpoints:

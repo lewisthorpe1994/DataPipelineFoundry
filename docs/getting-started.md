@@ -15,7 +15,7 @@ nav_order: 2
 ## Clone the repo
 
 ```bash
-git clone <YOUR_REPO_URL>
+git clone https://github.com/lewisthorpe1994/DataPipelineFoundry.git
 cd DataPipelineFoundry
 ```
 
@@ -36,7 +36,8 @@ cargo run -p dpf -- --help
 The fastest “does this work?” loop is compiling the included example. This does not require a running database.
 
 ```bash
-cargo run -p dpf -- --config-path example/dvdrental_example compile
+cd example/dvdrental_example
+cargo run -p dpf compile
 ```
 
 Outputs:
@@ -49,19 +50,13 @@ Outputs:
 Compile first (above), then:
 
 ```bash
-cargo run -p dpf -- --config-path example/dvdrental_example web
+cargo run -p dpf web --frontend-dir ../../dpf_web/ui
 ```
 
 If you don’t have Node/npm (or you only want the backend), use:
 
 ```bash
-cargo run -p dpf -- --config-path example/dvdrental_example web --no-frontend
-```
-
-If the CLI can’t find the frontend directory, point it explicitly:
-
-```bash
-cargo run -p dpf -- --config-path example/dvdrental_example web --frontend-dir dpf_web/ui
+cargo run -p dpf web --no-frontend
 ```
 
 You should see something like this:
